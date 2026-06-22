@@ -714,7 +714,7 @@ html, body {
         <div class="brand-mark">L</div>
         <div class="brand-text">
           Lab Sales Dashboard
-          <span class="brand-sub">Sales · Production · Practice Operations <span style="opacity:.6;font-size:9px;margin-left:6px">v2026.06.19-CITYDRILL</span></span>
+          <span class="brand-sub">Sales · Production · Practice Operations <span style="opacity:.6;font-size:9px;margin-left:6px">v2026.06.19-CITYDRILL2</span></span>
         </div>
       </div>
       <div class="brand-divider"></div>
@@ -5447,12 +5447,14 @@ function drawCityMap() {
 /* State → City → Offices drill-down. Clicking a state opens this: a list of
    that state's cities (with office + doctor + case counts), each expandable to
    reveal the individual offices (practices) and the doctors at each. Built off
-   APP.raw so counts reflect lifetime totals, consistent with the map. */
+   the active filters (Group, State, date) so it matches what the map shows. */
 function openStateCityModal(sd) {
   ensureModalWired();
-  // Gather this state's records, grouped city → office(practice) → doctors
+  // Gather this state's records, grouped city → office(practice) → doctors.
+  // Read from APP.filtered so the Dental Group / State / date filters apply —
+  // otherwise the drill-down would show offices outside the selected group.
   const cityMap = new Map(); // city -> { city, revenue, cases, offices: Map<practice, {...}> , drs:Set }
-  for (const r of APP.raw) {
+  for (const r of APP.filtered) {
     if (r.state !== sd.name && r.stateAbbr !== sd.abbr) continue;
     const cityName = (r.city || '').trim() || 'Unknown city';
     let cm = cityMap.get(cityName);
@@ -5566,10 +5568,10 @@ function openStateCityModal(sd) {
 }
 
 function openStateDoctorModal(sd) {
-  // Aggregate doctors whose state matches this state (use full APP.raw so we
-  // see the doctor's lifetime totals, not just the current filter slice).
+  // Aggregate doctors whose state matches this state. Read from APP.filtered so
+  // the Group / State / date filters apply (consistent with the map + drill-down).
   const map = new Map();
-  for (const r of APP.raw) {
+  for (const r of APP.filtered) {
     if (r.state !== sd.name && r.stateAbbr !== sd.abbr) continue;
     let d = map.get(r.drId);
     if (!d) {
