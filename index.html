@@ -2646,11 +2646,15 @@ const SH_NEW_DAYS = 60;     // first case within 60 days = new
 
 function renderSalesHub() {
   const el = document.getElementById('panel-sales');
-  const maxDate = getMaxDate() || new Date();
+  // Sales Hub respects all top-bar filters (Range, State, Group) just like every
+  // other tab. It reads from APP.filtered and measures recency "as of" the end of
+  // the selected date range.
+  const maxDate = (APP.filters && APP.filters.toDate) || getMaxDate() || new Date();
+  const shRaw = APP.filtered;
 
-  // ── Build per-doctor history off the full raw dataset (not affected by date filter)
+  // ── Build per-doctor history off the filtered dataset
   const docMap = new Map();
-  for (const r of APP.raw) {
+  for (const r of shRaw) {
     let d = docMap.get(r.drId);
     if (!d) {
       d = { drId: r.drId, name: r.drName, practice: r.practice || "", email: r.email, city: r.city, state: r.state,
@@ -2686,12 +2690,18 @@ function renderSalesHub() {
     d.practice = d.practiceInfo.primary || d.practice || '';
   }
   // Per-doctor monthly revenue trend (used for velocity section)
-  for (const r of APP.raw) {
+  for (const r of shRaw) {
     const d = docMap.get(r.drId);
     if (!d.trend) d.trend = new Map();
     if (r.anchorMonth) d.trend.set(r.anchorMonth, (d.trend.get(r.anchorMonth) || 0) + r.netCost);
   }
-  const allMonths = aggByMonth().map(m => m.key);
+  // Month axis + revenue-by-month derived from the same filtered dataset so the
+  // flow chart's months and the MoM/YoY figures line up with the current view.
+  const shMonthRev = new Map();
+  for (const r of shRaw) {
+    if (r.anchorMonth) shMonthRev.set(r.anchorMonth, (shMonthRev.get(r.anchorMonth) || 0) + r.netCost);
+  }
+  const allMonths = Array.from(shMonthRev.keys()).sort();
   docs.forEach(d => {
     d.trendArr = allMonths.map(m => ({ m, rv: (d.trend && d.trend.get(m)) || 0 }));
   });
@@ -2705,8 +2715,8 @@ function renderSalesHub() {
   const medianRev = revs.length ? (revs.length % 2 === 0 ? (revs[revs.length/2-1] + revs[revs.length/2]) / 2 : revs[Math.floor(revs.length/2)]) : 0;
   const aov = totalCases ? totalRev / totalCases : 0;
 
-  // MoM / YoY revenue
-  const mo = aggByMonth();
+  // MoM / YoY revenue (respects current Range / State / Group filters)
+  const mo = allMonths.map(k => ({ key: k, revenue: shMonthRev.get(k) || 0 }));
   const lastM = mo[mo.length-1], prevM = mo[mo.length-2];
   const momPct = (lastM && prevM && prevM.revenue > 0) ? ((lastM.revenue - prevM.revenue) / prevM.revenue * 100) : null;
   let yoyPct = null;
@@ -3846,7 +3856,11 @@ function renderDoctorDetail() {
 const STATUS = { seg: 'current', query: '', winbackWindow: 30, sortKey: null, sortDir: 'desc' };
 
 function computeDoctorStatus() {
-  const maxDate = getMaxDate() || new Date();
+  // Engagement status now respects ALL top-bar filters (Group, State, Date).
+  // It reads from APP.filtered (which already applies them) and measures recency
+  // "as of" the end of the selected date range — so with a date range set, only
+  // cases inside the range count and days-since-last is measured to the range end.
+  const maxDate = (APP.filters && APP.filters.toDate) || getMaxDate() || new Date();
   // New thresholds (locked):
   //   new      → first case within last 15 days
   //   current  → last case 1–20 days ago (and not "new")
@@ -3864,7 +3878,7 @@ function computeDoctorStatus() {
   const winbackGapMs = 45 * 864e5; // looser gap for "winback" segment lookup
 
   const map = new Map();
-  for (const r of APP.raw) {
+  for (const r of APP.filtered) {
     let d = map.get(r.drId);
     if (!d) {
       d = {
@@ -3965,7 +3979,7 @@ function renderStatus() {
       desc: 'No case in 30+ days. Churn list — needs a win-back play.' }
   ];
 
-  const maxDate = getMaxDate();
+  const maxDate = (APP.filters && APP.filters.toDate) || getMaxDate();
   const asOfStr = maxDate ? maxDate.toLocaleDateString('en-US', {month:'numeric', day:'numeric', year:'numeric'}) : '—';
 
   const el = document.getElementById('panel-status');
@@ -3973,7 +3987,7 @@ function renderStatus() {
     <div class="section-header">
       <div>
         <div class="section-title">Doctor Status Tracker</div>
-        <div class="section-sub">Engagement status against the full dataset history — independent of the date filter.</div>
+        <div class="section-sub">Engagement status for the current Range, State, and Group selection. Recency is measured as of the range's end date.</div>
       </div>
       <div class="section-actions">
         <button class="btn-text" id="stExport">⬇ Export Current Segment</button>
@@ -3982,7 +3996,7 @@ function renderStatus() {
 
     <div class="status-asof">
       <span class="icon">🗓️</span>
-      <span>Counts calculated as of <b>${esc(asOfStr)}</b> (most recent case date in your data)</span>
+      <span>Counts calculated as of <b>${esc(asOfStr)}</b> (end of selected range)</span>
     </div>
     <div class="status-asof" style="font-size:11.5px">
       <span class="icon">🏷️</span>
