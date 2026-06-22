@@ -1321,6 +1321,27 @@ function normalizeRecords(rows) {
    6. FILTERING
    ────────────────────────────────────────── */
 
+/* Returns the raw dataset filtered by Group and State ONLY — deliberately
+   ignoring the date range. Used by recency-based views (the Status tracker and
+   Sales Hub churn) where clipping the timeline by date would distort the
+   "days since last case" math. Group and State don't affect recency, so they
+   still apply. Memoized per filter state. */
+function rawByGroupState() {
+  if (APP.derived._rawGS) return APP.derived._rawGS;
+  const f = APP.filters;
+  let data = APP.raw;
+  if (f.state) {
+    const target = String(f.state).trim();
+    const targetUpper = target.toUpperCase();
+    data = data.filter(r => r.state === target || r.stateAbbr === targetUpper);
+  }
+  if (f.group) {
+    data = data.filter(r => r.group === f.group);
+  }
+  APP.derived._rawGS = data;
+  return data;
+}
+
 function applyFilters() {
   const f = APP.filters;
   let data = APP.raw;
@@ -2646,13 +2667,14 @@ const SH_NEW_DAYS = 60;     // first case within 60 days = new
 
 function renderSalesHub() {
   const el = document.getElementById('panel-sales');
-  // Sales Hub respects all top-bar filters (Range, State, Group) just like every
-  // other tab. It reads from APP.filtered and measures recency "as of" the end of
-  // the selected date range.
-  const maxDate = (APP.filters && APP.filters.toDate) || getMaxDate() || new Date();
-  const shRaw = APP.filtered;
+  // Sales Hub churn respects the Group and State filters but uses FULL history
+  // (it ignores the date range), because churn detection — "silent for 60+ days"
+  // — needs the complete timeline. Group and State don't distort recency, so
+  // they still apply.
+  const maxDate = getMaxDate() || new Date();
+  const shRaw = rawByGroupState();
 
-  // ── Build per-doctor history off the filtered dataset
+  // ── Build per-doctor history off the group/state-scoped dataset (full history)
   const docMap = new Map();
   for (const r of shRaw) {
     let d = docMap.get(r.drId);
@@ -3176,8 +3198,15 @@ function renderSalesHub() {
     }
   });
 
-  // ── Category chart
-  const cats = aggByCategory();
+  // ── Category chart (built from the same full-history, group/state-scoped data)
+  const catMap = new Map();
+  for (const r of shRaw) {
+    const c = r.productCat || 'Uncategorized';
+    catMap.set(c, (catMap.get(c) || 0) + r.netCost);
+  }
+  const cats = Array.from(catMap.entries())
+    .map(([name, revenue]) => ({ name, revenue }))
+    .sort((a, b) => b.revenue - a.revenue);
   makeChart('cShCat', {
     type: 'bar',
     data: { labels: cats.map(c => c.name), datasets: [{ label: 'Revenue', data: cats.map(c => c.revenue), backgroundColor: CHART_PALETTE, borderRadius: 3 }] },
@@ -3856,11 +3885,10 @@ function renderDoctorDetail() {
 const STATUS = { seg: 'current', query: '', winbackWindow: 30, sortKey: null, sortDir: 'desc' };
 
 function computeDoctorStatus() {
-  // Engagement status now respects ALL top-bar filters (Group, State, Date).
-  // It reads from APP.filtered (which already applies them) and measures recency
-  // "as of" the end of the selected date range — so with a date range set, only
-  // cases inside the range count and days-since-last is measured to the range end.
-  const maxDate = (APP.filters && APP.filters.toDate) || getMaxDate() || new Date();
+  // Engagement status respects the Group and State filters but uses FULL history
+  // (it ignores the date range), because recency — "days since last case" — only
+  // makes sense measured against the complete timeline as of the latest data.
+  const maxDate = getMaxDate() || new Date();
   // New thresholds (locked):
   //   new      → first case within last 15 days
   //   current  → last case 1–20 days ago (and not "new")
@@ -3878,7 +3906,7 @@ function computeDoctorStatus() {
   const winbackGapMs = 45 * 864e5; // looser gap for "winback" segment lookup
 
   const map = new Map();
-  for (const r of APP.filtered) {
+  for (const r of rawByGroupState()) {
     let d = map.get(r.drId);
     if (!d) {
       d = {
@@ -3979,7 +4007,7 @@ function renderStatus() {
       desc: 'No case in 30+ days. Churn list — needs a win-back play.' }
   ];
 
-  const maxDate = (APP.filters && APP.filters.toDate) || getMaxDate();
+  const maxDate = getMaxDate();
   const asOfStr = maxDate ? maxDate.toLocaleDateString('en-US', {month:'numeric', day:'numeric', year:'numeric'}) : '—';
 
   const el = document.getElementById('panel-status');
@@ -3987,7 +4015,7 @@ function renderStatus() {
     <div class="section-header">
       <div>
         <div class="section-title">Doctor Status Tracker</div>
-        <div class="section-sub">Engagement status for the current Range, State, and Group selection. Recency is measured as of the range's end date.</div>
+        <div class="section-sub">Engagement status across full history, scoped to the current State and Group. (The date range doesn't apply here — recency needs the full timeline.)</div>
       </div>
       <div class="section-actions">
         <button class="btn-text" id="stExport">⬇ Export Current Segment</button>
@@ -3996,7 +4024,7 @@ function renderStatus() {
 
     <div class="status-asof">
       <span class="icon">🗓️</span>
-      <span>Counts calculated as of <b>${esc(asOfStr)}</b> (end of selected range)</span>
+      <span>Counts calculated as of <b>${esc(asOfStr)}</b> (most recent case date in your data)</span>
     </div>
     <div class="status-asof" style="font-size:11.5px">
       <span class="icon">🏷️</span>
