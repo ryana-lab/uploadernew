@@ -569,6 +569,29 @@ html, body {
 .dm-close { background: var(--bg); border: none; width: 34px; height: 34px; border-radius: 8px; cursor: pointer; font-size: 18px; color: var(--ink); display: flex; align-items: center; justify-content: center; font-weight: 700; flex-shrink: 0; transition: all .15s; font-family: inherit; }
 .dm-close:hover { background: var(--border); }
 .dm-body { padding: 6px 14px; overflow-y: auto; flex: 1; }
+/* City → Offices drill-down */
+.city-block { border-bottom: 1px solid var(--border); }
+.city-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 10px; cursor: pointer; border-radius: 8px; }
+.city-row:hover { background: var(--card-2); }
+.city-row-main { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.city-caret { font-size: 11px; color: var(--mut); width: 12px; flex-shrink: 0; }
+.city-name { font-weight: 700; font-size: 14px; color: var(--ink); }
+.city-row-stats { display: flex; align-items: center; gap: 14px; flex-shrink: 0; }
+.city-stat { font-size: 12px; color: var(--mut); }
+.city-stat b { color: var(--ink); font-weight: 700; }
+.city-rev { font-size: 13px; font-weight: 700; color: var(--accent); min-width: 70px; text-align: right; font-variant-numeric: tabular-nums; }
+.city-offices { padding: 2px 0 10px 22px; }
+.office-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 9px 10px; border-left: 2px solid var(--border); margin: 4px 0 4px 4px; }
+.office-row:hover { border-left-color: var(--accent); background: var(--card-2); }
+.office-name { font-weight: 600; font-size: 13px; color: var(--ink); margin-bottom: 4px; }
+.office-docs { display: flex; flex-wrap: wrap; gap: 5px; }
+.office-doc { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 600; color: var(--ink); background: var(--bg); border: 1px solid var(--border); padding: 2px 8px; border-radius: 999px; cursor: pointer; }
+.office-doc:hover { border-color: var(--accent); color: var(--accent); }
+.office-doc-rev { font-size: 10px; font-weight: 700; color: var(--mut); }
+.office-doc:hover .office-doc-rev { color: var(--accent); }
+.office-val { text-align: right; flex-shrink: 0; }
+.office-rev { font-size: 13px; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
+.office-sub { font-size: 11px; color: var(--mut); }
 .dm-foot { padding: 14px 26px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; gap: 10px; background: var(--bg); }
 .dm-count { font-size: 12px; color: var(--mut); font-weight: 600; }
 .dm-export { background: var(--accent); color: #fff; border: none; padding: 9px 18px; border-radius: 8px; font-weight: 700; font-size: 13px; cursor: pointer; font-family: inherit; transition: all .15s; }
@@ -691,7 +714,7 @@ html, body {
         <div class="brand-mark">L</div>
         <div class="brand-text">
           Lab Sales Dashboard
-          <span class="brand-sub">Sales · Production · Practice Operations <span style="opacity:.6;font-size:9px;margin-left:6px">v2026.06.18-PRACTICE</span></span>
+          <span class="brand-sub">Sales · Production · Practice Operations <span style="opacity:.6;font-size:9px;margin-left:6px">v2026.06.19-CITYDRILL</span></span>
         </div>
       </div>
       <div class="brand-divider"></div>
@@ -1791,6 +1814,7 @@ function openDoctorModal(title, sub, docs, exportName) {
   MODAL_STATE.title = title;
   MODAL_STATE.sub = sub || '';
   MODAL_STATE.docs = view;
+  MODAL_STATE.cityExport = null;
   MODAL_STATE.exportName = exportName || 'doctors.csv';
 
   document.getElementById('dmTitle').textContent = title;
@@ -1899,6 +1923,11 @@ function ensureModalWired() {
     }
   });
   document.getElementById('dmExport').addEventListener('click', () => {
+    // City→office drill-down modal exports its own flat city/office/doctor rows
+    if (MODAL_STATE.cityExport && MODAL_STATE.cityExport.length) {
+      downloadCSV(MODAL_STATE.exportName, MODAL_STATE.cityExport);
+      return;
+    }
     if (!MODAL_STATE.docs.length) { toast('Nothing to export'); return; }
     downloadCSV(MODAL_STATE.exportName, MODAL_STATE.docs.map(d => ({
       doctor: d.name, state: d.state, city: d.city,
@@ -5156,7 +5185,78 @@ function tlExport() {
    TAB 10: STATE MAP
    ═══════════════════════════════════════════════════════════════ */
 
+
+/* ──────────────────────────────────────────
+   CITY HEAT MAP support. CITY_COORDS maps a normalized "city|ST" key to
+   [lat, lng]. albersUsaXY projects lat/lng onto the same 960×600 viewBox the
+   state outlines use, so city bubbles land inside their states. ───────────── */
+const CITY_COORDS = {"elgin|IL":[42.0384,-88.2606],"tinley park|IL":[41.5963,-87.8434],"pontiac|IL":[40.8764,-88.6328],"naperville|IL":[41.7662,-88.141],"robinson|IL":[39.007,-87.7484],"clinton township|MI":[42.5565,-82.909],"lecanto|FL":[28.9303,-82.4905],"menomonee falls|WI":[43.1602,-88.1128],"roscoe|IL":[42.4217,-88.9943],"mokena|IL":[41.5342,-87.8911],"lansing|MI":[42.7335,-84.6391],"madison|WI":[43.073,-89.3817],"rocky mount|NC":[35.9427,-77.7608],"buffalo grove|IL":[42.1598,-87.9644],"louisville|KY":[38.2435,-85.7639],"bloomingdale|IL":[41.9483,-88.0782],"round lake|IL":[42.3668,-88.0888],"chicago|IL":[41.8858,-87.6181],"greensburg|PA":[40.3074,-79.5424],"virginia beach|VA":[36.8527,-75.9783],"machesney park|IL":[42.3472,-89.0389],"canton|GA":[34.2059,-84.4578],"elkhorn|NE":[41.2756,-96.2431],"davenport|FL":[28.22,-81.6205],"colorado springs|CO":[38.8335,-104.8206],"venice|FL":[27.0993,-82.4489],"walled lake|MI":[42.5504,-83.4796],"star|ID":[43.7013,-116.4967],"grandview|MO":[38.8819,-94.5205],"ocean isle beach|NC":[33.8913,-78.4298],"pewaukee|WI":[43.0788,-88.2729],"myrtle beach|SC":[33.7587,-78.8044],"overland park|KS":[38.9925,-94.6748],"mooresville|NC":[35.5774,-80.8226],"columbia|SC":[34.0726,-81.1796],"east peoria|IL":[40.6731,-89.5514],"park ridge|IL":[42.0122,-87.8417],"boone|IA":[42.0694,-93.8781],"harker heights|TX":[31.0642,-97.6521],"bourbonnais|IL":[41.1661,-87.879],"debary|FL":[28.8846,-81.3065],"omaha|NE":[41.261,-95.9376],"wheaton|IL":[41.8566,-88.1076],"ambler|PA":[40.1663,-75.2072],"naples|FL":[26.1377,-81.7966],"warner robins|GA":[32.5934,-83.6416],"birmingham|AL":[33.519,-86.8014],"blue springs|MO":[39.0169,-94.2814],"antioch|IL":[42.4648,-88.1178],"sebring|FL":[27.4924,-81.4357],"sioux city|IA":[42.4972,-96.4029],"waldorf|MD":[38.6371,-76.8778],"greer|SC":[34.8968,-82.2674],"williamsburg|VA":[37.2627,-76.7017],"south elgin|IL":[41.9969,-88.2986],"dickson|TN":[36.076,-87.3995],"arlington heights|IL":[42.1116,-87.9791],"wheeling|IL":[42.134,-87.9341],"hoffman estates|IL":[42.0481,-88.1047],"mount prospect|IL":[42.0624,-87.9377],"barrington|IL":[42.1614,-88.1383],"evansville|IN":[37.9746,-87.5674],"bonita springs|FL":[26.3869,-81.733],"batavia|IL":[41.8482,-88.3098],"sanford|FL":[28.8013,-81.285],"huntley|IL":[42.1756,-88.4268],"carbondale|IL":[37.72,-89.2158],"port saint lucie|FL":[27.2889,-80.298],"saint louis|MO":[38.6426,-90.3242],"bloomington|IL":[40.4783,-88.9893],"mesa|AZ":[33.4317,-111.8469],"gainesville|FL":[29.645,-82.31],"spring hill|FL":[28.4655,-82.5981],"wexford|PA":[40.612,-80.0649],"melbourne|FL":[28.0691,-80.62],"lithia springs|GA":[33.7939,-84.6606],"happy valley|OR":[45.445,-122.5341],"gurnee|IL":[42.3669,-87.9452],"ponte vedra|FL":[30.098,-81.4395],"willis|TX":[30.4247,-95.4797],"gilbert|AZ":[33.35,-111.8092],"fountain|CO":[38.6996,-104.7005],"alton|IL":[38.9087,-90.1568],"ocoee|FL":[28.5837,-81.5326],"estero|FL":[26.4351,-81.8102],"nokomis|FL":[27.1189,-82.4444],"arnold|MO":[38.4305,-90.387],"osprey|FL":[27.1838,-82.4853],"athens|GA":[33.9761,-83.3632],"sandusky|OH":[41.4349,-82.7063],"morris|IL":[41.3672,-88.4178],"dumfries|VA":[38.9113,-77.9302],"sterling heights|MI":[42.5648,-83.0701],"sterling|IL":[41.8055,-89.7054],"kokomo|IN":[40.4988,-86.1453],"tampa|FL":[28.0879,-82.4593],"keizer|OR":[44.9903,-123.025],"bradenton|FL":[27.5028,-82.5139],"mount gilead|OH":[40.5384,-82.8062],"katy|TX":[29.7509,-95.8117],"houston|TX":[29.5962,-95.4587],"lewisville|TX":[33.0461,-96.9939],"south barrington|IL":[42.4837,-89.0298],"watseka|IL":[40.7734,-87.7309],"oswego|IL":[41.6849,-88.3453],"fort myers|FL":[26.6204,-81.8725],"north port|FL":[27.0781,-82.1735],"hendersonville|NC":[35.3192,-82.5],"salem|OR":[44.926,-122.9797],"mount vernon|IL":[38.317,-88.9105],"west allis|WI":[43.4253,-88.1833],"tuscaloosa|AL":[33.1969,-87.5627],"muskego|WI":[42.9047,-88.1214],"knoxville|TN":[35.9609,-83.9189],"janesville|WI":[42.6915,-89.0331],"everett|WA":[47.9884,-122.2006],"austin|TX":[30.2107,-97.9427],"olathe|KS":[38.8822,-94.8178],"boulder|CO":[40.0497,-105.2143],"wesley chapel|FL":[28.2104,-82.289],"fort worth|TX":[32.7469,-97.3268],"hales corners|WI":[42.941,-88.0503],"ankeny|IA":[41.7276,-93.6022],"king george|VA":[38.2811,-77.126],"grayslake|IL":[42.3485,-88.0378],"mount sterling|KY":[38.0548,-83.9388],"nashville|TN":[36.167,-86.7784],"cape coral|FL":[26.5775,-81.9522],"mchenry county|IL":[42.3334,-88.2668],"walton|KY":[38.8875,-84.6328],"wake forest|NC":[35.9815,-78.5392],"littleton|CO":[39.5994,-105.0044],"river forest|IL":[41.8951,-87.8159],"cary|IL":[42.2196,-88.2426],"jacksonville|FL":[30.3163,-81.4175],"maple grove|MN":[45.2202,-93.9638],"northbrook|IL":[42.1254,-87.8465],"dekalb|IL":[41.9342,-88.7607],"fremont|NE":[41.4416,-96.4945],"middletown|OH":[39.5321,-84.3896],"deerfield|IL":[42.1705,-87.859],"bethesda|MD":[38.9806,-77.1008],"sarasota|FL":[27.4072,-82.5303],"charleston|WV":[38.349,-81.6306],"byron|GA":[32.6474,-83.7622],"grand junction|CO":[39.0783,-108.5457],"homewood|IL":[41.5556,-87.6616],"douglasville|GA":[33.7494,-84.7459],"red wing|MN":[44.5528,-92.5486],"fort collins|CO":[40.5813,-105.1039],"mulberry|FL":[27.902,-82.0015],"chickasha|OK":[35.0268,-97.9518],"riverview|FL":[27.8658,-82.3267],"milford|CT":[41.2175,-73.0549],"bellevue|NE":[41.1497,-95.9099],"green bay|WI":[44.4853,-88.0169],"villa park|IL":[41.8799,-87.9782],"north aurora|IL":[41.8089,-88.3274],"romeoville|IL":[41.6475,-88.0894],"schaumburg|IL":[42.0333,-88.0833],"jefferson city|MO":[38.5462,-92.1525],"hammond|IN":[41.6099,-87.5079],"elmwood park|IL":[41.9219,-87.8083],"pueblo|CO":[38.2879,-104.5848],"des plaines|IL":[42.0467,-87.8859],"winfield|IL":[41.8744,-88.1516],"indianapolis|IN":[39.9384,-86.1389],"bartlett|IL":[41.9836,-88.1604],"roselle|IL":[41.9798,-88.0857],"moncks corner|SC":[33.1631,-80.0366],"pooler|GA":[32.1149,-81.252],"monroe|WA":[47.8585,-121.9474],"kuna|ID":[43.487,-116.3819],"aurora|IL":[41.7826,-88.2607],"addison|IL":[41.9335,-88.0054],"kennewick|WA":[46.2109,-119.168],"west dundee|IL":[41.7292,-89.1909],"gainesville|GA":[34.3073,-83.8256],"thomasville|NC":[35.8713,-80.0913],"joliet|IL":[41.5272,-88.0824],"suwanee|GA":[34.0514,-84.0714],"punta gorda|FL":[26.9152,-82.0532],"elk grove|IL":[42.0056,-88.0128],"kalamazoo|MI":[42.2736,-85.5457],"dallas|TX":[32.9968,-96.7921],"atlanta|GA":[33.7498,-84.3169],"rogers|AR":[36.3363,-94.1148],"crystal river|FL":[28.9593,-82.6259],"denver|CO":[39.8406,-105.008],"saint paul|MN":[44.9027,-93.0964],"cookeville|TN":[36.1743,-85.4953],"east rockaway|NY":[40.6404,-73.6674],"gallatin|TN":[36.3834,-86.4512],"palos hills|IL":[41.7004,-87.8263],"grafton|WI":[43.3231,-87.9521],"niceville|FL":[30.4958,-86.4145],"san antonio|TX":[29.4685,-98.5264],"puyallup|WA":[47.1991,-122.3151],"salem|VA":[37.2853,-80.0692],"oklahoma city|OK":[35.3337,-97.4922],"snohomish|WA":[47.8954,-122.0716],"evans|GA":[33.5412,-82.1398],"queensbury|NY":[43.329,-73.6818],"noblesville|IN":[40.0563,-86.0163],"commerce city|CO":[39.8259,-104.9113],"chandler|AZ":[33.3301,-111.8632],"jewett city|CT":[41.6052,-71.9808],"westminster|CO":[39.8542,-105.0371],"streamwood|IL":[42.0225,-88.169],"skokie|IL":[42.0362,-87.7328],"lakeland|FL":[28.0381,-81.9392],"shorewood|IL":[41.5074,-88.2169],"latham|NY":[42.7462,-73.763],"charlotte|NC":[35.2269,-80.8433],"island lake|IL":[42.2742,-88.1926],"clearwater|FL":[27.9799,-82.7806],"zephyrhills|FL":[28.2333,-82.1813],"valrico|FL":[27.9124,-82.2466],"allen|TX":[33.0934,-96.6454],"evanston|IL":[42.0546,-87.6943],"easley|SC":[34.829,-82.5796],"crystal lake|IL":[42.2662,-88.3213],"summerville|SC":[33.028,-80.1739],"vernon hills|IL":[42.2288,-87.9719],"rolla|MO":[37.9485,-91.7603],"deer park|IL":[40.628,-89.3003],"saint charles|IL":[41.9194,-88.307],"sapulpa|OK":[36.003,-96.1106],"burbank|IL":[41.7447,-87.7699],"cheyenne|WY":[41.1437,-104.7962],"edmond|OK":[35.68,-97.53],"league city|TX":[29.5173,-95.0963],"tucson|AZ":[32.2139,-110.9694],"florissant|MO":[38.8069,-90.3401],"peoria|AZ":[33.5761,-112.2344],"burnsville|MN":[44.7678,-93.2775],"denton county|TX":[33.2289,-97.1314],"depew|NY":[42.905,-78.7041],"franklin park|IL":[41.9339,-87.8734],"bixby|OK":[35.9173,-95.8729],"roanoke|VA":[37.2725,-79.953],"killeen|TX":[31.117,-97.7261],"sugar grove|IL":[41.7741,-88.4397],"shepherdsville|KY":[38.0045,-85.6888],"marengo|IL":[42.2442,-88.6074],"fairfield|CT":[41.1648,-73.2657],"vero beach|FL":[27.633,-80.4031],"arlington|TX":[32.6336,-97.1469],"walker|MI":[43.7626,-86.083],"spring|TX":[30.0532,-95.3773],"patchogue|NY":[40.7735,-72.9981],"oak park|IL":[41.8886,-87.7986],"round rock|TX":[30.5145,-97.668],"bluffton|SC":[32.2513,-80.8721],"greenville|SC":[34.8472,-82.406],"glendale heights|IL":[41.9205,-88.0793],"deltona|FL":[28.8989,-81.2473],"orland park|IL":[41.6194,-87.8423],"lake havasu city|AZ":[34.4929,-114.3081],"monroeville|PA":[40.429,-79.7623],"floyds knobs|IN":[38.351,-85.8996],"austell|GA":[33.8337,-84.6252],"palatine|IL":[42.1258,-88.0764],"north myrtle beach|SC":[33.8228,-78.6779],"oak lawn|IL":[41.7143,-87.7516],"irving|TX":[32.842,-96.9719],"rockford|IL":[42.2922,-89.1161],"reno|NV":[39.5268,-119.8113],"cordova|TN":[35.1776,-89.7738],"simpsonville|SC":[34.7369,-82.2544],"mundelein|IL":[42.2636,-88.0048],"walla walla|WA":[46.0614,-118.3315],"islip terrace|NY":[40.7548,-73.1827],"new port richey|FL":[28.2326,-82.7327],"blairstown|NJ":[40.9674,-74.9651],"saint charles|MO":[38.8014,-90.5065],"lockhart|TX":[29.8868,-97.6769],"hallandale beach|FL":[25.9808,-80.1486],"saint augustine|FL":[29.8364,-81.2745],"elmhurst|IL":[41.8927,-87.941],"sandwich|IL":[41.6353,-88.6393],"spring hill|TN":[35.7173,-86.9048],"sayville|NY":[40.7461,-73.0823],"danville|IL":[40.137,-87.6217],"tomball|TX":[30.0739,-95.6201],"dade city|FL":[28.4297,-82.2082],"waco|TX":[31.5525,-97.1396],"memphis|TN":[35.0337,-89.9343],"port charlotte|FL":[26.9827,-82.1412],"downers grove|IL":[41.8034,-88.0138],"the woodlands|TX":[33.094,-96.8836],"algonquin|IL":[42.1709,-88.3014],"brookfield|WI":[43.0622,-88.098],"marshfield|MO":[37.3312,-92.925],"celina|TX":[33.3103,-96.7673],"longmont|CO":[40.1779,-105.1009],"springfield|IL":[39.8,-89.6495],"bettendorf|IA":[41.5509,-90.4942],"aurora|CO":[39.7378,-104.8152],"deland|FL":[29.0266,-81.3349],"franklin|TN":[35.9328,-86.8788],"cape girardeau|MO":[37.3169,-89.5459],"lincoln|NE":[40.8169,-96.7103],"fredericksburg|VA":[38.2995,-77.4772],"niles|IL":[42.0189,-87.8028],"hutto|TX":[30.5257,-97.5672],"cook county|IL":[40.536,-88.735],"wauconda|IL":[42.2636,-88.1333],"oxford|FL":[28.9272,-82.0375],"wilmington|NC":[34.2253,-77.9379],"fairbanks|AK":[64.8402,-147.7104],"libertyville|IL":[42.281,-87.95],"rockford|MI":[43.1152,-85.5136],"georgetown|TX":[30.633,-97.6707],"zion|IL":[42.4442,-87.8389],"staunton|VA":[38.1451,-79.0752],"concord|NC":[35.3716,-80.53],"pflugerville|TX":[30.4421,-97.6299],"marysville|WA":[48.0656,-122.1562],"kenosha|WI":[42.6052,-87.8299],"murfreesboro|TN":[35.7913,-86.357],"summit|IL":[41.7842,-87.8075],"cincinnati|OH":[39.0913,-84.2774],"madison|AL":[34.6578,-86.8056],"poplar bluff|MO":[36.7662,-90.4166],"lockport|IL":[41.6135,-88.0256],"groves|TX":[29.9448,-93.9152],"glenview|IL":[42.0758,-87.8223],"carpentersville|IL":[42.123,-88.2606],"cedar rapids|IA":[41.9743,-91.6554],"woodbridge|VA":[38.6356,-77.2683],"lexington|SC":[33.9814,-81.2364],"buckeye|AZ":[33.389,-112.6077],"hernando|MS":[34.8096,-90.0095],"lake in the hills|IL":[42.1817,-88.3303],"coralville|IA":[41.6937,-91.5906],"henderson|NV":[35.9927,-114.9517],"san antonio|FL":[28.3371,-82.2882],"cicero|IL":[41.8456,-87.7539],"valley park|MO":[38.5576,-90.4924],"saint robert|MO":[37.8281,-92.1775],"brighton|IL":[39.0361,-90.1443],"bailey|CO":[39.4482,-105.4693],"clermont|FL":[28.5525,-81.7574],"fate|TX":[32.9414,-96.3811],"new braunfels|TX":[29.6947,-98.113],"sebastian|FL":[27.8781,-80.5161],"missouri city|TX":[29.5704,-95.5423],"waukegan|IL":[42.3636,-87.8447],"darien|IL":[41.7519,-87.9739],"peoria|IL":[40.6854,-89.5953],"melrose park|IL":[41.9003,-87.8581],"streetsboro|OH":[41.2491,-81.3383],"richmond|VA":[37.4532,-77.4698],"franklin|WI":[42.9017,-88.0086],"orange city|FL":[28.9453,-81.2995],"marion county|IN":[40.5743,-85.6741],"grand rapids|MI":[42.9704,-85.6738],"rochester|MI":[42.7107,-83.1642],"bolingbrook|IL":[41.6976,-88.0873],"leander|TX":[30.4598,-97.9702],"castle rock|CO":[39.3926,-104.8602],"arvada|CO":[39.8039,-105.0859],"brookfield|IL":[41.8217,-87.8492],"aubrey|TX":[33.292,-96.9879],"prosper|TX":[33.2362,-96.7954],"coweta|OK":[35.9578,-95.6526],"moline|IL":[41.4906,-90.498],"delray beach|FL":[26.4564,-80.0793],"worth|IL":[41.6895,-87.7863],"allison park|PA":[40.57,-79.9665],"saint louis park|MN":[44.9023,-93.371],"twinsburg|OH":[41.3289,-81.4559],"hattiesburg|MS":[31.3146,-89.3065],"elgin|SC":[34.162,-80.8113],"cumming|GA":[34.247,-84.1812],"livonia|MI":[42.3615,-83.3649],"owens cross roads|AL":[34.6129,-86.4666],"charleston|SC":[32.9622,-79.8653],"holland|NY":[42.6396,-78.5439],"bethany|OK":[35.5043,-97.6399],"raleigh|NC":[35.7727,-78.6324],"tulsa|OK":[36.0557,-96.0602],"chattanooga|TN":[35.0455,-85.3081],"lisle|IL":[41.7862,-88.0879],"chesapeake|VA":[36.7352,-76.2384],"saint petersburg|FL":[27.7723,-82.6386],"winchester|VA":[39.1581,-78.2313],"richmond|IN":[39.8324,-84.8936],"apex|NC":[35.7225,-78.8408],"enid|OK":[36.4028,-97.8623],"fort smith|AR":[35.3653,-94.411],"murrells inlet|SC":[33.5507,-79.0528],"alachua county|FL":[29.797,-82.4805],"broomfield|CO":[39.9245,-105.0609],"albertville|MN":[45.2534,-93.6469],"richmond|TX":[29.5819,-95.7606],"brentwood|TN":[36.0331,-86.7828],"vista|CA":[33.1694,-117.242],"vandalia|IL":[38.9439,-89.1041],"denham springs|LA":[30.5821,-90.9341],"middletown|CT":[41.5569,-72.6652],"lakeville|MN":[44.6749,-93.2578],"elk grove village|IL":[42.0056,-88.0128],"duvall|WA":[47.725,-121.9369],"avon|IN":[39.7628,-86.3997],"florence|KY":[38.9989,-84.6267],"wimauma|FL":[27.7015,-82.3151],"allenton|WI":[43.4681,-88.3539],"wentzville|MO":[38.802,-90.8534],"pembroke pines|FL":[26.0229,-80.2974],"conroe|TX":[30.3125,-95.4527],"oak creek|WI":[42.8892,-87.9027],"fuquay varina|NC":[35.58,-78.7908],"plano|TX":[33.055,-96.7365],"boise|ID":[43.6136,-116.2025],"clinton|MD":[38.7549,-76.9026],"delafield|WI":[43.05,-88.3972],"bardstown|KY":[37.8083,-85.4613],"battle creek|MI":[42.3053,-85.1389],"clark|NJ":[40.6203,-74.3106],"little river|SC":[33.8768,-78.6508],"newton|KS":[38.0451,-97.3435],"sierra vista|AZ":[31.5365,-110.2666],"rogersville|MO":[37.131,-93.0964],"pittsburgh|PA":[40.4745,-79.9525],"woodstock|IL":[42.3198,-88.4477],"milwaukee|WI":[43.0343,-87.9151],"oak ridge|TN":[36.0159,-84.2623],"wilmette|IL":[42.0765,-87.7246],"greeley|CO":[40.414,-104.7048],"issaquah|WA":[47.5509,-122.0335],"spokane|WA":[47.6665,-117.4365],"palm bay|FL":[28.0146,-80.5991],"amarillo|TX":[35.2032,-101.8421],"lafayette|IN":[40.4177,-86.8884],"fox river grove|IL":[42.1936,-88.2205],"willoughby hills|OH":[41.6302,-81.4076],"palmyra|NY":[43.0622,-77.2218],"fort wayne|IN":[41.0716,-85.1367],"fayetteville|NC":[35.051,-78.8423],"winter garden|FL":[28.4867,-81.6051],"oldsmar|FL":[28.046,-82.6848],"chapel hill|NC":[35.9203,-79.0372],"macedonia|OH":[41.3222,-81.4996],"terre haute|IN":[39.4667,-87.4068],"las vegas|NV":[36.1721,-115.1224],"ada|OK":[34.78,-96.6924],"west chicago|IL":[41.8886,-88.2022],"round lake beach|IL":[42.3668,-88.0888],"evergreen|CO":[39.6333,-105.3167],"hampshire|IL":[42.0807,-88.517],"temple|TX":[31.0895,-97.3343],"highland park|IL":[42.1794,-87.8059],"raymore|MO":[38.8019,-94.4529],"clarksville|TN":[36.522,-87.349],"lubbock|TX":[33.5865,-101.8606],"waxhaw|NC":[34.9553,-80.7279],"conifer|CO":[39.5197,-105.3169],"warren|MI":[42.5159,-82.9824],"lombard|IL":[41.8721,-88.016],"columbia|IL":[38.4325,-90.2027],"beardstown|IL":[40.0044,-90.4229],"new lenox|IL":[41.5067,-87.9631],"salt lake city|UT":[40.7559,-111.8967],"saint cloud|FL":[28.248,-81.2876],"loganville|GA":[33.8389,-83.8981],"orlando|FL":[28.4988,-80.5825],"zionsville|IN":[39.9561,-86.2767],"richardson|TX":[32.966,-96.7452],"parker|CO":[39.5055,-104.7349],"brooksville|FL":[28.5658,-82.3737],"long grove|IL":[42.1783,-87.9978],"yorkville|IL":[41.6387,-88.4438],"matteson|IL":[41.5102,-87.7406],"cypress|TX":[29.9689,-95.6969],"waukesha|WI":[42.9993,-88.2196],"plainfield|IN":[39.716,-86.3951],"litchfield|IL":[39.1793,-89.6499],"smyrna|TN":[35.9656,-86.5048],"philadelphia|PA":[39.865,-75.2752],"portage|IN":[41.5672,-87.1757],"garden city|NY":[40.7245,-73.6487],"plymouth|NH":[43.7635,-71.6847],"avon|OH":[41.4467,-82.0204],"glastonbury|CT":[41.7073,-72.5727],"liberty|MO":[39.2419,-94.4337],"parrish|FL":[27.5572,-82.396],"arapahoe county|CO":[38.8417,-102.194],"wadsworth|OH":[41.0384,-81.7374],"kansas city|MO":[39.1632,-94.5699],"mequon|WI":[43.2364,-87.9844],"midland|TX":[31.9896,-102.0626],"carol stream|IL":[41.9166,-88.1209],"exton|PA":[40.0468,-75.6432],"buda|TX":[30.0918,-97.8534],"lutz|FL":[28.143,-82.4752],"largo|FL":[27.9163,-82.7996],"germantown|WI":[43.2189,-88.1165],"land o lakes|FL":[28.2682,-82.465],"kernersville|NC":[36.1165,-80.0831],"flower mound|TX":[33.0238,-97.1044],"cottage grove|MN":[44.8308,-92.9393],"berwyn|IL":[41.8418,-87.7908],"lake zurich|IL":[42.1967,-88.0703],"gate city|VA":[36.646,-82.6112],"effingham|IL":[39.1217,-88.5611],"delhi|NY":[42.2879,-74.9228],"moriches|NY":[40.8095,-72.8229],"defiance|OH":[41.2799,-84.3626],"blythewood|SC":[34.1911,-80.9758],"farmington hills|MI":[42.51,-83.4054],"laurel|MS":[31.7054,-89.1312],"palm coast|FL":[29.5847,-81.208],"red bank|NJ":[40.3541,-74.08],"glen ellyn|IL":[41.8661,-88.0648],"macomb|IL":[40.4617,-90.6787],"geneva|IL":[41.886,-88.311],"brighton|CO":[39.9806,-104.8103],"mount lebanon|PA":[40.4192,-76.2956],"shawnee|OK":[35.3491,-96.9313],"columbus|OH":[40.1444,-82.9789],"bonaire|GA":[32.546,-83.6047],"woodstock|GA":[34.106,-84.5117],"wichita|KS":[37.6898,-97.3415],"cortland|NY":[42.5952,-76.1857],"ormond beach|FL":[29.2855,-81.0561],"wyoming|MI":[42.9009,-85.7058],"frostburg|MD":[39.6494,-78.9306],"gettysburg|PA":[39.832,-77.2223],"elizabeth|CO":[39.3836,-104.592],"goodyear|AZ":[33.4368,-112.3834],"oliver springs|TN":[36.0366,-84.3486],"broken arrow|OK":[35.9908,-95.8143],"kittery|ME":[43.0921,-70.7429],"glandorf|OH":[41.0289,-84.0792],"waynesboro|PA":[39.7635,-77.5674],"brown county|WI":[43.6109,-88.5097],"antioch|CA":[37.9939,-121.8089],"fenton|MO":[38.5015,-90.4683],"belleville|MI":[42.1949,-83.4854],"columbus|IN":[39.2055,-85.9317],"athens|AL":[34.8036,-86.9707],"harrisonburg|VA":[38.4489,-78.8714],"morton grove|IL":[42.0431,-87.7899],"york|PA":[39.9635,-76.7269],"sun city west|AZ":[33.6626,-112.2554],"collin county|TX":[33.558,-96.9014],"ithaca|NY":[42.4485,-76.4929],"western springs|IL":[41.8049,-87.8995],"east haven|CT":[41.2805,-72.8741],"lafayette|LA":[30.2361,-92.0083],"midlothian|TX":[32.4757,-96.9936],"grovetown|GA":[33.4766,-82.2409],"derby|KS":[37.553,-97.2549],"johnstown|PA":[40.326,-78.9141],"azle|TX":[32.8925,-97.5367],"shelbyville|IN":[39.5043,-85.7875],"brandon|FL":[27.9378,-82.2861],"la grange|IL":[41.8013,-87.8753],"edwardsville|IL":[38.805,-89.9637],"montgomery|TX":[30.3881,-95.6961],"penfield|NY":[43.1396,-77.456],"valparaiso|IN":[41.4757,-87.0759],"north richland hills|TX":[32.854,-97.2207],"plover|WI":[44.4507,-89.5428],"champaign|IL":[40.111,-88.2407],"meredith|NH":[43.6502,-71.5113],"springfield|MO":[37.2152,-93.295],"pearland|TX":[29.5617,-95.2721],"poughkeepsie|NY":[41.7021,-73.9218],"miami|FL":[25.779,-80.1982],"the villages|FL":[28.9335,-82.0046],"mishawaka|IN":[41.6507,-86.1623],"gibsonia|PA":[40.6252,-79.9443],"kane county|IL":[39.2037,-90.3719],"mchenry|IL":[42.3334,-88.2668],"carrollton|TX":[32.9657,-96.8825],"indian wells|CA":[33.7163,-116.3381],"surprise|AZ":[33.63,-112.3314],"davenport|IA":[41.5218,-90.5743],"elk river|MN":[45.3136,-93.5814],"beloit|WI":[42.5229,-89.0399],"albuquerque|NM":[35.0936,-106.6423],"mount pleasant|PA":[40.1742,-79.5134],"fort mill|SC":[35.0074,-80.9451],"lees summit|MO":[38.9211,-94.3487],"oceanside|CA":[33.1951,-117.3776],"lexington|KY":[38.0174,-84.4854],"creve coeur|MO":[38.6608,-90.4226],"wildwood|MO":[38.5828,-90.6629],"thornton|CO":[39.868,-104.9719],"centennial|CO":[39.5807,-104.8772],"brown deer|WI":[43.1742,-87.969],"ofallon|IL":[38.592,-89.911],"lakewood|CO":[39.7047,-105.0814],"apple valley|MN":[44.7319,-93.2177],"greenwood village|CO":[39.6172,-104.9508],"mckees rocks|PA":[40.472,-80.0648],"oakbrook terrace|IL":[41.85,-87.9645],"dupage county|IL":[41.85,-88.0853],"fayette county|KY":[38.0407,-84.4583],"aurura|CO":[39.7294,-104.8319],"moon township|PA":[40.5187,-80.2009],"stewartville|MO":[39,-94.5],"marion county|in":[39.7817,-86.1478],"johns creek|GA":[34.0289,-84.1986]};
+
+const _ST_ABBR = {alabama:'AL',alaska:'AK',arizona:'AZ',arkansas:'AR',california:'CA',colorado:'CO',connecticut:'CT',delaware:'DE','district of columbia':'DC',florida:'FL',georgia:'GA',hawaii:'HI',idaho:'ID',illinois:'IL',indiana:'IN',iowa:'IA',kansas:'KS',kentucky:'KY',louisiana:'LA',maine:'ME',maryland:'MD',massachusetts:'MA',michigan:'MI',minnesota:'MN',mississippi:'MS',missouri:'MO',montana:'MT',nebraska:'NE',nevada:'NV','new hampshire':'NH','new jersey':'NJ','new mexico':'NM','new york':'NY','north carolina':'NC','north dakota':'ND',ohio:'OH',oklahoma:'OK',oregon:'OR',pennsylvania:'PA','rhode island':'RI','south carolina':'SC','south dakota':'SD',tennessee:'TN',texas:'TX',utah:'UT',vermont:'VT',virginia:'VA',washington:'WA','west virginia':'WV',wisconsin:'WI',wyoming:'WY'};
+function _abbrOf(state){ if(!state) return ''; const s=String(state).trim(); if(s.length===2) return s.toUpperCase(); return _ST_ABBR[s.toLowerCase()]||''; }
+function _normCityName(c){ return String(c||'').trim().toLowerCase().replace(/\bst\.?\b/g,'saint').replace(/\bmt\.?\b/g,'mount').replace(/\bft\.?\b/g,'fort').replace(/[^a-z0-9 ]/g,'').replace(/\s+/g,' ').trim(); }
+function cityKey(city, state){ const ab=_abbrOf(state); if(!ab) return null; return _normCityName(city)+'|'+ab; }
+
+/* AlbersUSA projection (d3-compatible) tuned to scale 1070 / translate [480,300]
+   so it lines up with this map's STATE_PATHS. Returns [x,y] or null. */
+const albersUsaXY = (function(){
+  const radians = Math.PI/180;
+  const phi0=29.5*radians, phi1=45.5*radians;
+  const sy0=Math.sin(phi0);
+  const n=(sy0+Math.sin(phi1))/2;
+  const c=1+sy0*(2*n-sy0);
+  const r0=Math.sqrt(c)/n;
+  function raw(lambda,phi){ const r=Math.sqrt(c-2*n*Math.sin(phi))/n; return [r*Math.sin(lambda*n), r0-r*Math.cos(lambda*n)]; }
+  // Calibrated empirically by least-squares fitting lat/lng against the actual
+  // drawn STATE_PATHS centers (avg residual ~7px). The map SVG uses a slightly
+  // non-uniform scale, so X and Y are calibrated independently.
+  const scaleX=1298.76, scaleY=1323.97, tx=486.43, ty=305.44, rotate=96, cLng=-0.6, cPhi=38.7;
+  const cen=raw(cLng*radians, cPhi*radians);
+  return function(lng,lat){
+    if (lat==null||lng==null) return null;
+    // Alaska & Hawaii insets (lower-left), matching the state-outline layout
+    if (lat > 51 && lng < -129) { // Alaska
+      const ax = (lng + 152) * 1.6 + 130;
+      const ay = (64 - lat) * 3.1 + 460;
+      return [ax, ay];
+    }
+    if (lat < 23 && lng < -150) { // Hawaii
+      const hx = (lng + 158) * 5 + 250;
+      const hy = (22 - lat) * 5 + 555;
+      return [hx, hy];
+    }
+    const p=raw((lng+rotate)*radians, lat*radians);
+    return [scaleX*(p[0]-cen[0])+tx, ty - scaleY*(p[1]-cen[1])];
+  };
+})();
+
+/* Aggregate the current filtered data by city. Returns sorted array of
+   { city, state, abbr, x, y, revenue, cases, doctors, remakes } for cities we
+   have coordinates for. */
+function aggByCity() {
+  const m = new Map();
+  for (const r of APP.filtered) {
+    if (!r.city) continue;
+    const key = cityKey(r.city, r.state);
+    if (!key || !CITY_COORDS[key]) continue;
+    let o = m.get(key);
+    if (!o) {
+      const [lat,lng] = CITY_COORDS[key];
+      const xy = albersUsaXY(lng, lat);
+      if (!xy) continue;
+      o = { city: r.city.trim(), state: r.state, abbr: _abbrOf(r.state), x: xy[0], y: xy[1], revenue: 0, cases: 0, remakes: 0, _drs: new Set() };
+      m.set(key, o);
+    }
+    o.revenue += r.netCost; o.cases++; if (r.remake) o.remakes++; if (r.drId) o._drs.add(r.drId);
+  }
+  const arr = [];
+  for (const o of m.values()) { o.doctors = o._drs.size; delete o._drs; arr.push(o); }
+  arr.sort((a,b) => b.revenue - a.revenue);
+  return arr;
+}
+
 const MAP_STATE = { metric: 'revenue' };
+MAP_STATE.mode = 'cities'; // 'states' | 'cities'
 
 function renderMap() {
   const el = document.getElementById('panel-map');
@@ -5170,9 +5270,13 @@ function renderMap() {
     <div class="section-header">
       <div>
         <div class="section-title">🗺️ United States — Doctor Distribution</div>
-        <div class="section-sub">Click a state to filter the dashboard. Hover for details.</div>
+        <div class="section-sub" id="mapSub">Each bubble is a city — size and shade show intensity. Hover for details. Switch to States for the choropleth.</div>
       </div>
       <div class="section-actions">
+        <div class="pill-group" id="mapMode">
+          <button class="pill" data-mode="states">States</button>
+          <button class="pill active" data-mode="cities">Cities</button>
+        </div>
         <div class="pill-group" id="mapMetric">
           <button class="pill active" data-metric="revenue">Revenue</button>
           <button class="pill" data-metric="cases">Cases</button>
@@ -5203,6 +5307,17 @@ function renderMap() {
   `;
 
   drawMap(byAbbr);
+  document.querySelectorAll('#mapMode .pill').forEach(b => {
+    b.addEventListener('click', () => {
+      document.querySelectorAll('#mapMode .pill').forEach(x => x.classList.remove('active'));
+      b.classList.add('active'); MAP_STATE.mode = b.dataset.mode;
+      const sub = document.getElementById('mapSub');
+      if (sub) sub.textContent = MAP_STATE.mode === 'cities'
+        ? 'Each bubble is a city — size and shade show intensity. Hover for details.'
+        : 'Click a state to filter the dashboard. Hover for details.';
+      drawMap(byAbbr);
+    });
+  });
   document.querySelectorAll('#mapMetric .pill').forEach(b => {
     b.addEventListener('click', () => {
       document.querySelectorAll('#mapMetric .pill').forEach(x => x.classList.remove('active'));
@@ -5219,6 +5334,7 @@ function renderMap() {
 }
 
 function drawMap(byAbbr) {
+  if (MAP_STATE.mode === 'cities') { drawCityMap(); return; }
   const svg = document.getElementById('usMap');
   if (!svg) return;
   const metric = MAP_STATE.metric;
@@ -5262,14 +5378,193 @@ function drawMap(byAbbr) {
     p.addEventListener('click', () => {
       const sd = byAbbr.get(p.dataset.st);
       if (!sd) return;
-      openStateDoctorModal(sd);
+      openStateCityModal(sd);
     });
     p.style.cursor = 'pointer';
   });
 }
 
+/* City heat map: muted state outlines as a base, then one bubble per city sized
+   and shaded by the active metric. */
+function drawCityMap() {
+  const svg = document.getElementById('usMap');
+  if (!svg) return;
+  const metric = MAP_STATE.metric;
+  const cities = aggByCity();
+  const valOf = c => metric === 'revenue' ? c.revenue : metric === 'cases' ? c.cases : c.doctors;
+
+  let max = 0;
+  for (const c of cities) { const v = valOf(c); if (v > max) max = v; }
+
+  // Base layer: faint state outlines for geographic context
+  let html = '';
+  for (const [abbr, d] of Object.entries(STATE_PATHS)) {
+    html += `<path d="${d}" fill="#eef1f6" stroke="#dfe4ec" stroke-width="0.6"></path>`;
+  }
+
+  // Bubbles, largest first so small ones sit on top and stay hoverable
+  const sorted = cities.slice().sort((a,b) => valOf(b) - valOf(a));
+  const heat = ['#a5b4fc', '#818cf8', '#6366f1', '#4f46e5', '#3730a3'];
+  const colorFor = v => {
+    if (!v || max === 0) return heat[0];
+    const r = Math.log(v + 1) / Math.log(max + 1);
+    if (r >= 0.8) return heat[4];
+    if (r >= 0.6) return heat[3];
+    if (r >= 0.4) return heat[2];
+    if (r >= 0.2) return heat[1];
+    return heat[0];
+  };
+  const rFor = v => {
+    if (!v || max === 0) return 2;
+    const r = Math.sqrt(v) / Math.sqrt(max); // area-proportional
+    return 2.5 + r * 14;
+  };
+
+  for (const c of sorted) {
+    const v = valOf(c);
+    html += `<circle cx="${c.x.toFixed(1)}" cy="${c.y.toFixed(1)}" r="${rFor(v).toFixed(1)}" fill="${colorFor(v)}" fill-opacity="0.72" stroke="#fff" stroke-width="0.6" data-city="${esc(c.city)}" data-abbr="${esc(c.abbr)}" style="cursor:pointer"></circle>`;
+  }
+  svg.innerHTML = html;
+
+  const fmtVal = (c) => `Revenue: ${fmtUSDFull(c.revenue)}<br>Cases: ${fmtN(c.cases)}<br>Doctors: ${fmtN(c.doctors)}<br>Remake: ${fmtPct(c.cases ? c.remakes / c.cases : 0)}`;
+  const byKey = new Map(cities.map(c => [c.city + '|' + c.abbr, c]));
+  const tip = document.getElementById('mapTooltip');
+  svg.querySelectorAll('circle').forEach(el => {
+    el.addEventListener('mouseenter', () => {
+      const c = byKey.get(el.dataset.city + '|' + el.dataset.abbr);
+      if (!c) return;
+      tip.innerHTML = `<b>${esc(c.city)}, ${esc(c.abbr)}</b>${fmtVal(c)}`;
+      tip.style.display = 'block';
+      el.setAttribute('fill-opacity', '0.95');
+    });
+    el.addEventListener('mousemove', e => { tip.style.left = (e.clientX+14)+'px'; tip.style.top = (e.clientY+14)+'px'; });
+    el.addEventListener('mouseleave', () => { tip.style.display = 'none'; el.setAttribute('fill-opacity', '0.72'); });
+  });
+}
+
 /* Open the drilldown modal for a state — shared by the SVG map and the
    ranked-states table so both routes behave the same. */
+/* State → City → Offices drill-down. Clicking a state opens this: a list of
+   that state's cities (with office + doctor + case counts), each expandable to
+   reveal the individual offices (practices) and the doctors at each. Built off
+   APP.raw so counts reflect lifetime totals, consistent with the map. */
+function openStateCityModal(sd) {
+  ensureModalWired();
+  // Gather this state's records, grouped city → office(practice) → doctors
+  const cityMap = new Map(); // city -> { city, revenue, cases, offices: Map<practice, {...}> , drs:Set }
+  for (const r of APP.raw) {
+    if (r.state !== sd.name && r.stateAbbr !== sd.abbr) continue;
+    const cityName = (r.city || '').trim() || 'Unknown city';
+    let cm = cityMap.get(cityName);
+    if (!cm) { cm = { city: cityName, revenue: 0, cases: 0, offices: new Map(), drs: new Set() }; cityMap.set(cityName, cm); }
+    cm.revenue += r.netCost; cm.cases++; if (r.drId) cm.drs.add(r.drId);
+    const office = (r.practice || '').trim() || '(no practice name)';
+    let om = cm.offices.get(office);
+    if (!om) { om = { office, revenue: 0, cases: 0, doctors: new Map() }; cm.offices.set(office, om); }
+    om.revenue += r.netCost; om.cases++;
+    let dm = om.doctors.get(r.drId);
+    if (!dm) { dm = { drId: r.drId, name: r.drName, revenue: 0, cases: 0, lastDate: null }; om.doctors.set(r.drId, dm); }
+    dm.revenue += r.netCost; dm.cases++;
+    if (r.anchorDate && (!dm.lastDate || r.anchorDate > dm.lastDate)) dm.lastDate = r.anchorDate;
+  }
+
+  // Sort cities by revenue desc
+  const cities = Array.from(cityMap.values()).map(cm => ({
+    city: cm.city, revenue: cm.revenue, cases: cm.cases,
+    officeCount: cm.offices.size, doctorCount: cm.drs.size,
+    offices: Array.from(cm.offices.values()).map(om => ({
+      office: om.office, revenue: om.revenue, cases: om.cases,
+      doctors: Array.from(om.doctors.values()).sort((a,b) => b.revenue - a.revenue)
+    })).sort((a,b) => b.revenue - a.revenue)
+  })).sort((a,b) => b.revenue - a.revenue);
+
+  const totalOffices = cities.reduce((s,c) => s + c.officeCount, 0);
+  const totalDoctors = new Set(Array.from(cityMap.values()).flatMap(cm => Array.from(cm.drs))).size;
+
+  // Header
+  document.getElementById('dmTitle').textContent = sd.name + ' — Cities & Offices';
+  document.getElementById('dmSub').textContent =
+    cities.length + ' cit' + (cities.length === 1 ? 'y' : 'ies') + ' · ' +
+    fmtN(totalOffices) + ' offices · ' + fmtN(totalDoctors) + ' doctors · ' + fmtUSDFull(sd.revenue);
+  document.getElementById('dmCount').textContent = cities.length.toLocaleString() + ' cities';
+
+  // Body: expandable city rows
+  const body = document.getElementById('dmBody');
+  body.innerHTML = cities.map((c, ci) => `
+    <div class="city-block" data-ci="${ci}">
+      <div class="city-row" role="button" tabindex="0">
+        <div class="city-row-main">
+          <span class="city-caret">▸</span>
+          <span class="city-name">${esc(c.city)}</span>
+        </div>
+        <div class="city-row-stats">
+          <span class="city-stat"><b>${fmtN(c.officeCount)}</b> ${c.officeCount === 1 ? 'office' : 'offices'}</span>
+          <span class="city-stat"><b>${fmtN(c.doctorCount)}</b> ${c.doctorCount === 1 ? 'dr' : 'drs'}</span>
+          <span class="city-stat"><b>${fmtN(c.cases)}</b> cases</span>
+          <span class="city-rev">${fmtUSDFull(c.revenue)}</span>
+        </div>
+      </div>
+      <div class="city-offices" hidden>
+        ${c.offices.map(o => `
+          <div class="office-row">
+            <div class="office-main">
+              <div class="office-name">${esc(o.office)}</div>
+              <div class="office-docs">${o.doctors.map(d => `
+                <span class="office-doc" data-drid="${esc(d.drId)}" title="Open ${esc(d.name)}">
+                  ${esc(d.name)} <span class="office-doc-rev">${fmtUSDFull(d.revenue)}</span>
+                </span>`).join('')}
+              </div>
+            </div>
+            <div class="office-val">
+              <div class="office-rev">${fmtUSDFull(o.revenue)}</div>
+              <div class="office-sub">${fmtN(o.cases)} cases</div>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `).join('');
+
+  // Expand / collapse city rows
+  body.querySelectorAll('.city-block').forEach(block => {
+    const row = block.querySelector('.city-row');
+    const panel = block.querySelector('.city-offices');
+    const caret = block.querySelector('.city-caret');
+    const toggle = () => {
+      const open = panel.hasAttribute('hidden');
+      if (open) { panel.removeAttribute('hidden'); caret.textContent = '▾'; block.classList.add('open'); }
+      else { panel.setAttribute('hidden', ''); caret.textContent = '▸'; block.classList.remove('open'); }
+    };
+    row.addEventListener('click', toggle);
+    row.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } });
+  });
+  // Clicking a doctor chip jumps to their detail page
+  body.querySelectorAll('.office-doc').forEach(el => {
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const id = el.dataset.drid;
+      if (!id) return;
+      closeDoctorModal();
+      APP.selectedDoctorId = id;
+      switchTab('docdetail');
+    });
+  });
+
+  // Export: flat city/office/doctor rows
+  MODAL_STATE.exportName = sd.abbr + '_cities_offices.csv';
+  MODAL_STATE.docs = [];
+  MODAL_STATE.cityExport = [];
+  cities.forEach(c => c.offices.forEach(o => o.doctors.forEach(d => {
+    MODAL_STATE.cityExport.push({
+      city: c.city, office: o.office, doctor: d.name,
+      revenue: +d.revenue.toFixed(2), cases: d.cases,
+      last_case: d.lastDate ? isoDate(d.lastDate) : ''
+    });
+  })));
+
+  document.getElementById('dmOverlay').classList.add('show');
+}
+
 function openStateDoctorModal(sd) {
   // Aggregate doctors whose state matches this state (use full APP.raw so we
   // see the doctor's lifetime totals, not just the current filter slice).
@@ -5317,7 +5612,7 @@ function drawMapTable(stateData) {
     { key: 'remakeRate', label: 'Remake %', num: true, render: s => s.remakeRate > 0 ? fmtPct(s.remakeRate) : '<span class="text-mut">—</span>' }
   ], {
     defaultSort: metric === 'revenue' ? 'revenue' : metric, defaultDir: 'desc',
-    rowClick: s => openStateDoctorModal(s)
+    rowClick: s => openStateCityModal(s)
   });
 }
 
