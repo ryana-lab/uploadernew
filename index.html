@@ -714,7 +714,7 @@ html, body {
         <div class="brand-mark">L</div>
         <div class="brand-text">
           Lab Sales Dashboard
-          <span class="brand-sub">Sales · Production · Practice Operations <span style="opacity:.6;font-size:9px;margin-left:6px">v2026.06.19-CITYDRILL2</span></span>
+          <span class="brand-sub">Sales · Production · Practice Operations <span style="opacity:.6;font-size:9px;margin-left:6px">v2026.06.19-SHVIEW2</span></span>
         </div>
       </div>
       <div class="brand-divider"></div>
@@ -2696,21 +2696,37 @@ const SH_NEW_DAYS = 60;     // first case within 60 days = new
 
 function renderSalesHub() {
   const el = document.getElementById('panel-sales');
-  // Sales Hub churn respects the Group and State filters but uses FULL history
-  // (it ignores the date range), because churn detection — "silent for 60+ days"
-  // — needs the complete timeline. Group and State don't distort recency, so
-  // they still apply.
-  const maxDate = getMaxDate() || new Date();
-  const shRaw = rawByGroupState();
+  // The churn analysis is computed on FULL history (group + state scoped) so the
+  // New / Winback / Established-&-Lost classification stays correct — clipping the
+  // timeline would make established clients look new and hide silent ones. The
+  // DATE RANGE then acts purely as a VIEW filter: a doctor is shown if their
+  // activity falls within the selected range. Headline revenue/cases/AOV/MoM use
+  // the date-filtered slice so those figures still track the range.
+  const fullMaxDate = getMaxDate() || new Date();
+  const maxDate = fullMaxDate; // churn recency is measured against the full timeline
+  const shRaw = rawByGroupState();           // full history, group+state scoped
+  const rangeFrom = (APP.filters && APP.filters.fromDate) || null;
+  const rangeTo   = (APP.filters && APP.filters.toDate)   || null;
+  const fullMin   = getMinDate();
+  // A range is "active" when it's narrower than the whole dataset on either end.
+  const rangeActive = !!(rangeFrom && fullMin && rangeFrom.getTime() > fullMin.getTime() + 864e5)
+                   || !!(rangeTo && fullMaxDate && rangeTo.getTime() < fullMaxDate.getTime() - 864e5);
+  const inRangeDate = (dt) => {
+    if (!dt) return false;
+    if (rangeFrom && dt < rangeFrom) return false;
+    if (rangeTo && dt > rangeTo) return false;
+    return true;
+  };
 
-  // ── Build per-doctor history off the group/state-scoped dataset (full history)
+  // ── Build per-doctor history off the FULL (group/state-scoped) dataset
   const docMap = new Map();
   for (const r of shRaw) {
     let d = docMap.get(r.drId);
     if (!d) {
       d = { drId: r.drId, name: r.drName, practice: r.practice || "", email: r.email, city: r.city, state: r.state,
             cases: 0, rv: 0, units: 0, dates: [], products: new Set(), practices: new Map(),
-            firstDate: null, lastDate: null };
+            firstDate: null, lastDate: null,
+            rangeCases: 0, rangeRev: 0, inRange: false };
       docMap.set(r.drId, d);
     }
     d.cases++; d.rv += r.netCost; d.units += r.qty;
@@ -2720,6 +2736,8 @@ function renderSalesHub() {
       d.dates.push(r.anchorDate);
       if (!d.firstDate || r.anchorDate < d.firstDate) d.firstDate = r.anchorDate;
       if (!d.lastDate || r.anchorDate > d.lastDate) d.lastDate = r.anchorDate;
+      // Track activity that falls inside the selected date range (the view filter)
+      if (inRangeDate(r.anchorDate)) { d.inRange = true; d.rangeCases++; d.rangeRev += r.netCost; }
     }
   }
   const docs = Array.from(docMap.values());
@@ -2746,23 +2764,37 @@ function renderSalesHub() {
     if (!d.trend) d.trend = new Map();
     if (r.anchorMonth) d.trend.set(r.anchorMonth, (d.trend.get(r.anchorMonth) || 0) + r.netCost);
   }
-  // Month axis + revenue-by-month derived from the same filtered dataset so the
-  // flow chart's months and the MoM/YoY figures line up with the current view.
+  // Month axis + revenue-by-month. Built from full history (so churn/acquisition
+  // classification is correct), but the DISPLAYED months are limited to the
+  // selected date range — the Doctor Flow and Monthly Net Doctor Change charts
+  // should only show months inside the range (default "All" = every month).
   const shMonthRev = new Map();
   for (const r of shRaw) {
     if (r.anchorMonth) shMonthRev.set(r.anchorMonth, (shMonthRev.get(r.anchorMonth) || 0) + r.netCost);
   }
-  const allMonths = Array.from(shMonthRev.keys()).sort();
+  const fromMonthKey = rangeFrom ? monthKey(rangeFrom) : null;
+  const toMonthKey   = rangeTo   ? monthKey(rangeTo)   : null;
+  const monthInRange = (mk) => {
+    if (!rangeActive) return true;
+    if (fromMonthKey && mk < fromMonthKey) return false;
+    if (toMonthKey && mk > toMonthKey) return false;
+    return true;
+  };
+  const allMonths = Array.from(shMonthRev.keys()).sort().filter(monthInRange);
   docs.forEach(d => {
     d.trendArr = allMonths.map(m => ({ m, rv: (d.trend && d.trend.get(m)) || 0 }));
   });
   docs.sort((a,b) => b.rv - a.rv);
 
-  // ── Top-level metrics
-  const totalDrs = docs.length;
-  const totalRev = docs.reduce((s,d) => s + d.rv, 0);
-  const totalCases = docs.reduce((s,d) => s + d.cases, 0);
-  const revs = docs.map(d => d.rv).sort((a,b) => a - b);
+  // ── Top-level metrics. These track the DATE RANGE: when a range is active we
+  // count each doctor's in-range revenue/cases and only doctors active in the
+  // range. (Churn classification above still uses full history.)
+  const useRange = rangeActive;
+  const bookDocs = useRange ? docs.filter(d => d.inRange) : docs;
+  const totalDrs = bookDocs.length;
+  const totalRev = bookDocs.reduce((s,d) => s + (useRange ? d.rangeRev : d.rv), 0);
+  const totalCases = bookDocs.reduce((s,d) => s + (useRange ? d.rangeCases : d.cases), 0);
+  const revs = bookDocs.map(d => useRange ? d.rangeRev : d.rv).sort((a,b) => a - b);
   const medianRev = revs.length ? (revs.length % 2 === 0 ? (revs[revs.length/2-1] + revs[revs.length/2]) / 2 : revs[Math.floor(revs.length/2)]) : 0;
   const aov = totalCases ? totalRev / totalCases : 0;
 
@@ -2785,7 +2817,13 @@ function renderSalesHub() {
   const ESTABLISHED_TENURE = 180; // at least 6 months
   const WINBACK_GAP = 45;
 
-  const allChurned = docs.filter(d => d.dsl != null && d.dsl >= SILENT_DAYS);
+  // Churn status is computed on full history. The date range is a VIEW filter:
+  // when a range narrower than the whole dataset is selected, only show churned
+  // doctors whose activity falls within that range (so categories stay correct
+  // but the list reflects the period you're looking at). "All" shows everyone.
+  const churnView = d => !rangeActive || d.inRange;
+
+  const allChurned = docs.filter(d => d.dsl != null && d.dsl >= SILENT_DAYS && churnView(d));
   const churnedRev = allChurned.reduce((s,d) => s + d.rv, 0);
 
   const newLost = [], winbackLost = [], establishedLost = [];
