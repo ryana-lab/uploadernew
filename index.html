@@ -101,6 +101,9 @@ html, body {
 .tab-btn { padding: 12px 14px; background: none; border: none; border-bottom: 2px solid transparent; color: var(--mut); font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer; white-space: nowrap; transition: all .12s; }
 .tab-btn:hover { color: var(--text); }
 .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 700; }
+.nav-back { flex-shrink: 0; align-self: center; margin-right: 4px; width: 28px; height: 28px; border-radius: 7px; border: 1px solid var(--border); background: var(--card); color: var(--mut); font-size: 16px; line-height: 1; cursor: pointer; transition: all .12s; display: flex; align-items: center; justify-content: center; }
+.nav-back:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); background: var(--card-2); }
+.nav-back:disabled { opacity: .35; cursor: default; }
 .content { max-width: 1480px; margin: 0 auto; padding: 18px 24px 80px; }
 .tab-panel { display: none; }
 
@@ -567,6 +570,8 @@ html, body {
 .dm-title { font-size: 18px; font-weight: 800; letter-spacing: -.02em; color: var(--ink); }
 .dm-sub { font-size: 12px; color: var(--mut); margin-top: 3px; }
 .dm-close { background: var(--bg); border: none; width: 34px; height: 34px; border-radius: 8px; cursor: pointer; font-size: 18px; color: var(--ink); display: flex; align-items: center; justify-content: center; font-weight: 700; flex-shrink: 0; transition: all .15s; font-family: inherit; }
+.dm-back { background: var(--bg); border: 1px solid var(--border); width: 34px; height: 34px; border-radius: 8px; cursor: pointer; font-size: 18px; color: var(--mut); display: flex; align-items: center; justify-content: center; font-weight: 700; flex-shrink: 0; transition: all .15s; font-family: inherit; }
+.dm-back:hover { color: var(--accent); border-color: var(--accent); background: var(--card-2); }
 .dm-close:hover { background: var(--border); }
 .dm-body { padding: 6px 14px; overflow-y: auto; flex: 1; }
 /* City → Offices drill-down */
@@ -714,7 +719,7 @@ html, body {
         <div class="brand-mark">L</div>
         <div class="brand-text">
           Lab Sales Dashboard
-          <span class="brand-sub">Sales · Production · Practice Operations <span style="opacity:.6;font-size:9px;margin-left:6px">v2026.06.19-SHVIEW2</span></span>
+          <span class="brand-sub">Sales · Production · Practice Operations <span style="opacity:.6;font-size:9px;margin-left:6px">v2026.06.19-NAVBACK3</span></span>
         </div>
       </div>
       <div class="brand-divider"></div>
@@ -756,6 +761,7 @@ html, body {
     </div>
 
     <div class="tabs" id="tabsBar">
+      <button class="nav-back" id="navBack" title="Back" disabled aria-label="Go back">←</button>
       <button class="tab-btn active" data-tab="overview">📊 Sales Overview</button>
       <button class="tab-btn" data-tab="sales">💼 Sales Hub</button>
       <button class="tab-btn" data-tab="docgrid">👨‍⚕️ Doctor Grid</button>
@@ -790,6 +796,7 @@ html, body {
 <div class="dm-overlay" id="dmOverlay" aria-hidden="true">
   <div class="dm" role="dialog" aria-labelledby="dmTitle" aria-modal="true">
     <div class="dm-head">
+      <button class="dm-back" id="dmBack" aria-label="Back" title="Back">←</button>
       <div style="min-width:0;flex:1">
         <div class="dm-title" id="dmTitle">Doctors</div>
         <div class="dm-sub" id="dmSub"></div>
@@ -1878,6 +1885,17 @@ function closeDoctorModal() {
   document.getElementById('dmOverlay').classList.remove('show');
 }
 
+/* User-initiated close (X / overlay / Esc). Besides hiding the modal, reset the
+   current view to the underlying tab so the back stack stays consistent. */
+function userCloseModal() {
+  closeDoctorModal();
+  if (NAV_CURRENT && NAV_CURRENT.type === 'modal') {
+    const activeBtn = document.querySelector('.tab-btn.active');
+    NAV_CURRENT = { type: 'tab', tab: activeBtn ? activeBtn.dataset.tab : 'overview',
+                    doctorId: APP.selectedDoctorId, product: APP.selectedProduct };
+  }
+}
+
 /* Aggregate doctors who match a per-record predicate. Returns lifetime totals
    (operates on APP.raw so the picture isn't truncated by the date filter).
    Used by Overview / Operations drilldowns. */
@@ -1910,16 +1928,25 @@ function aggDoctorsWhere(predicate) {
 /* Wire up the modal's close button, overlay-click, escape key, and export.
    Done lazily on first call from a renderer (idempotent guard). */
 let MODAL_WIRED = false;
+/* The ← button inside the modal. If we're in a drill-down view (state/city),
+   step back through the history (offices → city list → map). Otherwise just
+   close the popup. */
+function modalBack() {
+  if (NAV_CURRENT && NAV_CURRENT.type === 'modal') navBack();
+  else userCloseModal();
+}
+
 function ensureModalWired() {
   if (MODAL_WIRED) return;
   MODAL_WIRED = true;
-  document.getElementById('dmClose').addEventListener('click', closeDoctorModal);
+  document.getElementById('dmClose').addEventListener('click', userCloseModal);
+  document.getElementById('dmBack').addEventListener('click', modalBack);
   document.getElementById('dmOverlay').addEventListener('click', (e) => {
-    if (e.target.id === 'dmOverlay') closeDoctorModal();
+    if (e.target.id === 'dmOverlay') userCloseModal();
   });
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && document.getElementById('dmOverlay').classList.contains('show')) {
-      closeDoctorModal();
+      userCloseModal();
     }
   });
   document.getElementById('dmExport').addEventListener('click', () => {
@@ -2061,6 +2088,12 @@ function initDashboard() {
   // Bind tabs
   document.querySelectorAll('.tab-btn').forEach(b => {
     b.addEventListener('click', () => switchTab(b.dataset.tab));
+  });
+  const backBtn = document.getElementById('navBack');
+  if (backBtn) backBtn.addEventListener('click', navBack);
+  // Alt+Left as a keyboard shortcut for Back
+  document.addEventListener('keydown', e => {
+    if (e.altKey && e.key === 'ArrowLeft') { e.preventDefault(); navBack(); }
   });
 
   // Bind topbar actions
@@ -2208,10 +2241,66 @@ function refreshAllTabs() {
   if (active) renderTab(active.dataset.tab, true);
 }
 
+/* ──────────────────────────────────────────
+   NAVIGATION HISTORY — a back stack so the ← button can return to the previous
+   view. A "view" is one of:
+     { type:'tab',   tab, doctorId, product }
+     { type:'modal', stateAbbr, expandedCity|null }   (State→City→Offices drill-down)
+   The drill-down modal is part of the history, so Back walks: doctor detail →
+   the city (offices expanded) → the state's city list → the map. ───────────── */
+const NAV_HISTORY = [];
+let NAV_GOING_BACK = false;
+let NAV_CURRENT = { type: 'tab', tab: 'overview', doctorId: null, product: null };
+
+function sameView(a, b) {
+  if (!a || !b || a.type !== b.type) return false;
+  if (a.type === 'tab') return a.tab === b.tab && a.doctorId === b.doctorId && a.product === b.product;
+  return a.stateAbbr === b.stateAbbr && (a.expandedCity || null) === (b.expandedCity || null);
+}
+
+function navPush(prevView) {
+  if (NAV_GOING_BACK) return;
+  if (sameView(prevView, NAV_HISTORY[NAV_HISTORY.length - 1])) return;
+  NAV_HISTORY.push(prevView);
+  if (NAV_HISTORY.length > 60) NAV_HISTORY.shift();
+}
+
+function updateBackButton() {
+  const btn = document.getElementById('navBack');
+  if (btn) btn.disabled = NAV_HISTORY.length === 0;
+}
+
+function navBack() {
+  if (!NAV_HISTORY.length) return;
+  const prev = NAV_HISTORY.pop();
+  NAV_GOING_BACK = true;
+  if (prev.type === 'modal') {
+    // Reopen the drill-down for that state, expanding the right city if any
+    const sd = aggByState().find(x => x.abbr === prev.stateAbbr || x.name === prev.stateAbbr);
+    if (sd) {
+      openStateCityModal(sd, { expandCity: prev.expandedCity || null });
+      NAV_CURRENT = { type: 'modal', stateAbbr: prev.stateAbbr, expandedCity: prev.expandedCity || null };
+    }
+  } else {
+    // Tab view — close any open modal and restore tab + selection
+    closeDoctorModal();
+    APP.selectedDoctorId = prev.doctorId;
+    APP.selectedProduct = prev.product;
+    if (prev.tab === 'docdetail' || prev.tab === 'proddetail') APP.rendered[prev.tab] = false;
+    switchTab(prev.tab);
+  }
+  NAV_GOING_BACK = false;
+  updateBackButton();
+}
+
 function switchTab(tab) {
+  // Leaving the current view (tab or modal) — record it so Back can return.
+  navPush({ ...NAV_CURRENT });
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + tab));
   renderTab(tab);
+  NAV_CURRENT = { type: 'tab', tab, doctorId: APP.selectedDoctorId, product: APP.selectedProduct };
+  updateBackButton();
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
@@ -5486,8 +5575,16 @@ function drawCityMap() {
    that state's cities (with office + doctor + case counts), each expandable to
    reveal the individual offices (practices) and the doctors at each. Built off
    the active filters (Group, State, date) so it matches what the map shows. */
-function openStateCityModal(sd) {
+function openStateCityModal(sd, opts) {
+  opts = opts || {};
   ensureModalWired();
+  // Record navigation: opening the drill-down is a step (unless we're restoring
+  // it via Back, signaled by NAV_GOING_BACK).
+  if (!NAV_GOING_BACK) {
+    navPush({ ...NAV_CURRENT });
+    NAV_CURRENT = { type: 'modal', stateAbbr: sd.abbr || sd.name, expandedCity: null };
+    updateBackButton();
+  }
   // Gather this state's records, grouped city → office(practice) → doctors.
   // Read from APP.filtered so the Dental Group / State / date filters apply —
   // otherwise the drill-down would show offices outside the selected group.
@@ -5531,7 +5628,7 @@ function openStateCityModal(sd) {
   // Body: expandable city rows
   const body = document.getElementById('dmBody');
   body.innerHTML = cities.map((c, ci) => `
-    <div class="city-block" data-ci="${ci}">
+    <div class="city-block" data-ci="${ci}" data-city="${esc(c.city)}">
       <div class="city-row" role="button" tabindex="0">
         <div class="city-row-main">
           <span class="city-caret">▸</span>
@@ -5565,26 +5662,43 @@ function openStateCityModal(sd) {
     </div>
   `).join('');
 
-  // Expand / collapse city rows
+  // Expand / collapse city rows. Expanding is a navigation step (so Back returns
+  // from the offices view to the city list); collapsing just collapses.
   body.querySelectorAll('.city-block').forEach(block => {
     const row = block.querySelector('.city-row');
     const panel = block.querySelector('.city-offices');
     const caret = block.querySelector('.city-caret');
+    const cityName = block.dataset.city || '';
+    const expand = () => { panel.removeAttribute('hidden'); caret.textContent = '▾'; block.classList.add('open'); };
+    const collapse = () => { panel.setAttribute('hidden', ''); caret.textContent = '▸'; block.classList.remove('open'); };
     const toggle = () => {
-      const open = panel.hasAttribute('hidden');
-      if (open) { panel.removeAttribute('hidden'); caret.textContent = '▾'; block.classList.add('open'); }
-      else { panel.setAttribute('hidden', ''); caret.textContent = '▸'; block.classList.remove('open'); }
+      const opening = panel.hasAttribute('hidden');
+      if (opening) {
+        expand();
+        if (!NAV_GOING_BACK) {
+          navPush({ ...NAV_CURRENT });
+          NAV_CURRENT = { type: 'modal', stateAbbr: sd.abbr || sd.name, expandedCity: cityName };
+          updateBackButton();
+        }
+      } else {
+        collapse();
+        if (!NAV_GOING_BACK) { NAV_CURRENT = { type: 'modal', stateAbbr: sd.abbr || sd.name, expandedCity: null }; }
+      }
     };
     row.addEventListener('click', toggle);
     row.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } });
+    // Restore an expanded city when reopening via Back
+    if (opts.expandCity && cityName === opts.expandCity) expand();
   });
-  // Clicking a doctor chip jumps to their detail page
+  // Clicking a doctor chip jumps to their detail page (switchTab records history)
   body.querySelectorAll('.office-doc').forEach(el => {
     el.addEventListener('click', (e) => {
       e.stopPropagation();
       const id = el.dataset.drid;
       if (!id) return;
-      closeDoctorModal();
+      // Hide the modal visually but keep NAV_CURRENT as the modal view so the
+      // doctor-detail switchTab records THIS drill-down position in history.
+      document.getElementById('dmOverlay').classList.remove('show');
       APP.selectedDoctorId = id;
       switchTab('docdetail');
     });
