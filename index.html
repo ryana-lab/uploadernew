@@ -307,6 +307,19 @@ html, body {
 .status-asof { font-size: 12.5px; color: var(--dim); display: flex; align-items: center; gap: 8px; padding: 2px 0; }
 .status-asof b { color: var(--ink); font-weight: 700; }
 .status-asof .icon { font-size: 16px; }
+.sync-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; margin: 14px 0 18px; }
+.sync-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.sync-title { font-weight: 700; font-size: 13.5px; color: var(--ink); }
+.sync-toggle-link { background: none; border: none; color: var(--accent); font-size: 11.5px; cursor: pointer; font-family: inherit; text-decoration: underline; padding: 0; }
+.sync-help { font-size: 11.5px; color: var(--mut); line-height: 1.55; margin-bottom: 10px; background: var(--card-2); border-radius: 8px; padding: 8px 10px; }
+.sync-help code { background: var(--bg); padding: 0 4px; border-radius: 4px; }
+.sync-row { margin: 6px 0; }
+.sync-input { width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--ink); font-family: inherit; font-size: 12.5px; }
+.sync-controls { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.sync-chk { font-size: 12px; color: var(--ink); display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
+.sync-auto { color: var(--mut); }
+.sync-spacer { flex: 1; }
+.sync-status { font-size: 11.5px; color: var(--mut); margin-top: 8px; min-height: 14px; }
 
 /* Winback window control */
 .winback-ctl { display: inline-flex; align-items: center; gap: 10px; padding: 10px 16px; background: var(--purple-soft); border: 1px solid rgba(124,58,237,.3); border-radius: 10px; font-size: 13px; color: var(--ink); width: max-content; }
@@ -719,7 +732,7 @@ html, body {
         <div class="brand-mark">L</div>
         <div class="brand-text">
           Lab Sales Dashboard
-          <span class="brand-sub">Sales · Production · Practice Operations <span style="opacity:.6;font-size:9px;margin-left:6px">v2026.06.19-NAVBACK3</span></span>
+          <span class="brand-sub">Sales · Production · Practice Operations <span style="opacity:.6;font-size:9px;margin-left:6px">v2026.06.19-SYNC3-NAVFWD</span></span>
         </div>
       </div>
       <div class="brand-divider"></div>
@@ -762,6 +775,7 @@ html, body {
 
     <div class="tabs" id="tabsBar">
       <button class="nav-back" id="navBack" title="Back" disabled aria-label="Go back">←</button>
+      <button class="nav-back" id="navFwd" title="Forward" disabled aria-label="Go forward">→</button>
       <button class="tab-btn active" data-tab="overview">📊 Sales Overview</button>
       <button class="tab-btn" data-tab="sales">💼 Sales Hub</button>
       <button class="tab-btn" data-tab="docgrid">👨‍⚕️ Doctor Grid</button>
@@ -797,6 +811,7 @@ html, body {
   <div class="dm" role="dialog" aria-labelledby="dmTitle" aria-modal="true">
     <div class="dm-head">
       <button class="dm-back" id="dmBack" aria-label="Back" title="Back">←</button>
+      <button class="dm-back" id="dmFwd" aria-label="Forward" title="Forward">→</button>
       <div style="min-width:0;flex:1">
         <div class="dm-title" id="dmTitle">Doctors</div>
         <div class="dm-sub" id="dmSub"></div>
@@ -1941,6 +1956,7 @@ function ensureModalWired() {
   MODAL_WIRED = true;
   document.getElementById('dmClose').addEventListener('click', userCloseModal);
   document.getElementById('dmBack').addEventListener('click', modalBack);
+  document.getElementById('dmFwd').addEventListener('click', navForward);
   document.getElementById('dmOverlay').addEventListener('click', (e) => {
     if (e.target.id === 'dmOverlay') userCloseModal();
   });
@@ -2091,9 +2107,12 @@ function initDashboard() {
   });
   const backBtn = document.getElementById('navBack');
   if (backBtn) backBtn.addEventListener('click', navBack);
-  // Alt+Left as a keyboard shortcut for Back
+  const fwdBtn = document.getElementById('navFwd');
+  if (fwdBtn) fwdBtn.addEventListener('click', navForward);
+  // Alt+Left / Alt+Right as keyboard shortcuts for Back / Forward
   document.addEventListener('keydown', e => {
-    if (e.altKey && e.key === 'ArrowLeft') { e.preventDefault(); navBack(); }
+    if (e.altKey && e.key === 'ArrowLeft')  { e.preventDefault(); navBack(); }
+    if (e.altKey && e.key === 'ArrowRight') { e.preventDefault(); navForward(); }
   });
 
   // Bind topbar actions
@@ -2248,8 +2267,9 @@ function refreshAllTabs() {
      { type:'modal', stateAbbr, expandedCity|null }   (State→City→Offices drill-down)
    The drill-down modal is part of the history, so Back walks: doctor detail →
    the city (offices expanded) → the state's city list → the map. ───────────── */
-const NAV_HISTORY = [];
-let NAV_GOING_BACK = false;
+const NAV_HISTORY = [];   // back stack
+const NAV_FUTURE = [];    // forward stack
+let NAV_SUPPRESS = false;  // true while restoring (back/forward) so we don't re-record
 let NAV_CURRENT = { type: 'tab', tab: 'overview', doctorId: null, product: null };
 
 function sameView(a, b) {
@@ -2259,38 +2279,57 @@ function sameView(a, b) {
 }
 
 function navPush(prevView) {
-  if (NAV_GOING_BACK) return;
+  if (NAV_SUPPRESS) return;
   if (sameView(prevView, NAV_HISTORY[NAV_HISTORY.length - 1])) return;
   NAV_HISTORY.push(prevView);
   if (NAV_HISTORY.length > 60) NAV_HISTORY.shift();
+  // A genuine new navigation invalidates the forward history (browser behavior).
+  NAV_FUTURE.length = 0;
 }
 
-function updateBackButton() {
-  const btn = document.getElementById('navBack');
-  if (btn) btn.disabled = NAV_HISTORY.length === 0;
+function updateNavButtons() {
+  const back = document.getElementById('navBack');
+  if (back) back.disabled = NAV_HISTORY.length === 0;
+  const fwd = document.getElementById('navFwd');
+  if (fwd) fwd.disabled = NAV_FUTURE.length === 0;
+  // Mirror onto the in-modal buttons if present
+  const mBack = document.getElementById('dmBack');
+  const mFwd = document.getElementById('dmFwd');
+  if (mBack) mBack.disabled = NAV_HISTORY.length === 0;
+  if (mFwd) mFwd.disabled = NAV_FUTURE.length === 0;
+}
+// Back-compat alias (older callers)
+function updateBackButton() { updateNavButtons(); }
+
+/* Render a stored view without recording history (used by back + forward). */
+function restoreView(v) {
+  NAV_SUPPRESS = true;
+  if (v.type === 'modal') {
+    const sd = aggByState().find(x => x.abbr === v.stateAbbr || x.name === v.stateAbbr);
+    if (sd) openStateCityModal(sd, { expandCity: v.expandedCity || null });
+  } else {
+    closeDoctorModal();
+    APP.selectedDoctorId = v.doctorId;
+    APP.selectedProduct = v.product;
+    if (v.tab === 'docdetail' || v.tab === 'proddetail') APP.rendered[v.tab] = false;
+    switchTab(v.tab);
+  }
+  NAV_CURRENT = { ...v };
+  NAV_SUPPRESS = false;
 }
 
 function navBack() {
   if (!NAV_HISTORY.length) return;
-  const prev = NAV_HISTORY.pop();
-  NAV_GOING_BACK = true;
-  if (prev.type === 'modal') {
-    // Reopen the drill-down for that state, expanding the right city if any
-    const sd = aggByState().find(x => x.abbr === prev.stateAbbr || x.name === prev.stateAbbr);
-    if (sd) {
-      openStateCityModal(sd, { expandCity: prev.expandedCity || null });
-      NAV_CURRENT = { type: 'modal', stateAbbr: prev.stateAbbr, expandedCity: prev.expandedCity || null };
-    }
-  } else {
-    // Tab view — close any open modal and restore tab + selection
-    closeDoctorModal();
-    APP.selectedDoctorId = prev.doctorId;
-    APP.selectedProduct = prev.product;
-    if (prev.tab === 'docdetail' || prev.tab === 'proddetail') APP.rendered[prev.tab] = false;
-    switchTab(prev.tab);
-  }
-  NAV_GOING_BACK = false;
-  updateBackButton();
+  NAV_FUTURE.push({ ...NAV_CURRENT });   // so Forward can return here
+  restoreView(NAV_HISTORY.pop());
+  updateNavButtons();
+}
+
+function navForward() {
+  if (!NAV_FUTURE.length) return;
+  NAV_HISTORY.push({ ...NAV_CURRENT });  // so Back can return here
+  restoreView(NAV_FUTURE.pop());
+  updateNavButtons();
 }
 
 function switchTab(tab) {
@@ -4137,6 +4176,188 @@ function computeDoctorStatus() {
   return docs;
 }
 
+/* ──────────────────────────────────────────
+   ONBOARDING SYNC → Google Sheet (Apps Script Web App)
+   Pushes doctors who land in the chosen engagement segments (default Current +
+   Winback) to the "Send" tab of the Vitality email-agent sheet, so each new
+   active/returning client is queued for an intro/re-intro email. Posts to a
+   user-supplied Apps Script Web App URL. Config + a record of already-synced
+   doctors are kept in localStorage so auto-sync only sends NEW entrants.
+
+   The Web App is called with Content-Type text/plain (avoids the CORS preflight
+   that Apps Script can't answer) and mode:'no-cors' (reliable from a local
+   file). We can't read the response, so we dedupe locally AND the doPost dedupes
+   by email server-side — double-sends are harmless. ─────────────────────────── */
+const SYNC_KEYS = { url: 'vda_sync_url', segs: 'vda_sync_segs', auto: 'vda_sync_auto', done: 'vda_sync_done', last: 'vda_sync_last', baseline: 'vda_sync_baseline' };
+function syncGet(k, dflt) { try { const v = localStorage.getItem(k); return v == null ? dflt : JSON.parse(v); } catch (e) { return dflt; } }
+function syncSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+
+function syncCfg() {
+  return {
+    url: syncGet(SYNC_KEYS.url, ''),
+    segments: syncGet(SYNC_KEYS.segs, ['new', 'winback']),
+    auto: syncGet(SYNC_KEYS.auto, false)
+  };
+}
+function syncedSet() { return new Set(syncGet(SYNC_KEYS.done, [])); }
+function markSynced(ids) {
+  const s = syncedSet(); ids.forEach(id => s.add(id));
+  syncSet(SYNC_KEYS.done, Array.from(s));
+}
+function hasBaseline() { return !!syncGet(SYNC_KEYS.baseline, null); }
+
+/* Whether a doctor belongs to a sync segment, using the SAME definitions as the
+   Status tab cards: New = status 'new'; Winback = isWinbackSegment (returned
+   after a 45+ day gap); Current = status 'current'. */
+function inSyncSegment(d, segs) {
+  if (segs.has('new')     && d.status === 'new') return true;
+  if (segs.has('winback') && d.isWinbackSegment) return true;
+  if (segs.has('current') && d.status === 'current') return true;
+  return false;
+}
+
+/* Return the drIds of every doctor currently in the selected segments. */
+function currentSegmentIds() {
+  const segs = new Set(syncCfg().segments);
+  const ids = [];
+  for (const d of computeDoctorStatus()) {
+    if (inSyncSegment(d, segs)) ids.push(d.drId);
+  }
+  return ids;
+}
+
+/* Establish a baseline: mark the existing clients as "already handled" WITHOUT
+   sending them, so the first load doesn't dump the whole book into the sheet.
+   IMPORTANT: we only baseline clients that actually have an email — i.e. the
+   ones that *could* have been sent. A doctor with no email yet is left pending,
+   so when you go back and add their email later, they'll sync then. Returns the
+   count baselined. */
+function establishBaseline() {
+  const { newIds } = buildSyncRows(true); // all EMAILED doctors in the segments
+  markSynced(newIds);
+  syncSet(SYNC_KEYS.baseline, Date.now());
+  return newIds.length;
+}
+
+/* Map a Dental Group to a price-list-group value the Send sheet understands.
+   Heartland is auto-routed by email domain in the script, so it gets the
+   "(auto by domain)" sentinel; groups we can't confidently map are left blank
+   for the user to pick before sending. */
+function priceGroupFor(group) {
+  switch (group) {
+    case 'Heartland': return '(auto by domain)';
+    case 'MB2':       return 'mb2';
+    case 'DCA':       return 'dca';
+    case 'Elite':     return 'elite';
+    default:          return ''; // Midwest / Independent / unknown → user picks
+  }
+}
+
+/* Build the rows to send for the chosen segments. When force is false, skips
+   doctors already synced (so auto-sync only pushes new entrants). Returns
+   { rows, skippedNoEmail, newIds }. */
+function buildSyncRows(force) {
+  const cfg = syncCfg();
+  const segs = new Set(cfg.segments);
+  const done = syncedSet();
+  const docs = computeDoctorStatus();
+  const rows = [], newIds = [];
+  let skippedNoEmail = 0;
+  for (const d of docs) {
+    if (!inSyncSegment(d, segs)) continue;
+    if (!force && done.has(d.drId)) continue;
+    const email = (d.email || '').trim();
+    if (!email) { skippedNoEmail++; continue; }
+    const grp = dentalGroupOf(d.practice || '');
+    const isWin = d.isWinbackSegment;
+    rows.push({
+      email,
+      type: isWin ? 'reintro' : 'intro',
+      group: priceGroupFor(grp),
+      name: d.name || '',
+      practice: d.practice || '',
+      dentalGroup: grp,
+      status: d.status,
+      city: d.city || '',
+      state: d.state || ''
+    });
+    newIds.push(d.drId);
+  }
+  return { rows, skippedNoEmail, newIds };
+}
+
+function pushSyncRows(rows) {
+  const cfg = syncCfg();
+  if (!cfg.url) return Promise.reject(new Error('No Web App URL set'));
+  return fetch(cfg.url, {
+    method: 'POST',
+    mode: 'no-cors',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ source: 'LabDashboard', rows })
+  });
+}
+
+/* Manual sync.
+   - force = false ("Sync now"): if no baseline yet, establish it (no send) so
+     the existing book isn't dumped; otherwise send only NEW clients since the
+     baseline.
+   - force = true ("Resend all"): send everyone in the segments regardless. */
+function syncNow(force) {
+  const cfg = syncCfg();
+  const statusEl = document.getElementById('syncStatus');
+  if (!cfg.url) { if (statusEl) statusEl.textContent = 'Add your Web App URL first.'; return; }
+
+  if (!force && !hasBaseline()) {
+    const n = establishBaseline();
+    if (statusEl) statusEl.textContent =
+      `Baseline set — ${n} existing client${n===1?'':'s'} marked as already handled (not sent). From now on, only new clients will sync. (Use “Resend all” if you actually want to send the existing list.)`;
+    return;
+  }
+
+  const { rows, skippedNoEmail, newIds } = buildSyncRows(force);
+  if (!rows.length) {
+    if (statusEl) statusEl.textContent = force
+      ? `Nothing to send (no doctors with an email in the selected segments).`
+      : `Up to date — no new clients to queue${skippedNoEmail ? ` (${skippedNoEmail} skipped, no email)` : ''}.`;
+    return;
+  }
+  if (statusEl) statusEl.textContent = `Sending ${rows.length}…`;
+  pushSyncRows(rows).then(() => {
+    markSynced(newIds);
+    if (!hasBaseline()) syncSet(SYNC_KEYS.baseline, Date.now());
+    const stamp = new Date();
+    syncSet(SYNC_KEYS.last, { n: rows.length, t: stamp.getTime() });
+    if (statusEl) statusEl.textContent =
+      `Queued ${rows.length} client${rows.length===1?'':'s'} to your sheet at ${stamp.toLocaleTimeString()}${skippedNoEmail ? ` · ${skippedNoEmail} skipped (no email)` : ''}. Check the Send tab.`;
+  }).catch(err => {
+    if (statusEl) statusEl.textContent = 'Send failed: ' + err.message;
+  });
+}
+
+/* Auto-sync hook — runs after the Status tab renders. On the very first run (no
+   baseline) it establishes the baseline silently and sends nothing, so loading
+   your data doesn't dump the existing book. After that it sends only clients
+   that newly appear in the selected segments. */
+function maybeAutoSync() {
+  const cfg = syncCfg();
+  if (!cfg.auto || !cfg.url) return;
+  if (!hasBaseline()) {
+    const n = establishBaseline();
+    const statusEl = document.getElementById('syncStatus');
+    if (statusEl) statusEl.textContent =
+      `Baseline set — ${n} existing client${n===1?'':'s'} marked as already handled. New clients will auto-sync from here.`;
+    return;
+  }
+  const { rows, newIds } = buildSyncRows(false);
+  if (!rows.length) return;
+  pushSyncRows(rows).then(() => {
+    markSynced(newIds);
+    syncSet(SYNC_KEYS.last, { n: rows.length, t: Date.now() });
+    const statusEl = document.getElementById('syncStatus');
+    if (statusEl) statusEl.textContent = `Auto-synced ${rows.length} new client${rows.length===1?'':'s'} to your sheet.`;
+  }).catch(() => {});
+}
+
 function renderStatus() {
   const docs = computeDoctorStatus();
   // Use the engagement-status field for Current / New / Falloff / Inactive segments.
@@ -4190,6 +4411,38 @@ function renderStatus() {
         if (pct === 0) return `<b style="color:var(--red)">No practice names in this dataset.</b> Your loaded CSV has no <code>pracname</code> column — re-upload the newest export (the one ending 06_17_2026) via <b>↑ New Data</b>.`;
         return `<b style="color:var(--grn)">${pct}% of doctors have a practice name</b> (${withP.toLocaleString()} of ${docs.length.toLocaleString()}).`;
       })()}</span>
+    </div>
+
+    <div class="sync-card" id="syncCard">
+      <div class="sync-head">
+        <span class="sync-title">📤 Onboarding Sync → Google Sheet</span>
+        <button class="sync-toggle-link" id="syncToggleHelp" type="button">setup help</button>
+      </div>
+      <div class="sync-help" id="syncHelp" hidden>
+        Paste the <b>Web App URL</b> from your Apps Script deployment below. <b>New</b> and
+        <b>Winback</b> clients get appended to your <b>Send</b> tab — New as <b>intro</b>, Winback as
+        <b>reintro</b> — with the price-list group filled in (Heartland routes by domain; MB2 / DCA /
+        Elite map automatically; other groups left blank for you to pick). It only ever <b>adds</b>
+        rows and dedupes by email, so rows you add by hand in the sheet are never touched or
+        duplicated.<br><br>
+        <b>First time:</b> your existing new/winback clients are <b>not</b> sent — they're recorded as
+        a baseline (“already handled”), so only clients who appear <b>after</b> that will sync.
+        A client with <b>no email yet</b> is left pending — once you add their email and reload, they
+        sync then. Use <b>Resend all</b> only if you really want to push the entire existing list.
+      </div>
+      <div class="sync-row">
+        <input type="text" id="syncUrl" class="sync-input" placeholder="https://script.google.com/macros/s/…/exec" />
+      </div>
+      <div class="sync-row sync-controls">
+        <label class="sync-chk"><input type="checkbox" id="segNew"> New (intro)</label>
+        <label class="sync-chk"><input type="checkbox" id="segWinback"> Winback (reintro)</label>
+        <label class="sync-chk"><input type="checkbox" id="segCurrent"> Current</label>
+        <label class="sync-chk sync-auto"><input type="checkbox" id="syncAuto"> Auto-sync new clients on data load</label>
+        <span class="sync-spacer"></span>
+        <button class="btn-text" id="syncNowBtn">⤴ Sync now</button>
+        <button class="btn-text" id="syncAllBtn" title="Send everyone in the selected segments, even if already synced">Resend all</button>
+      </div>
+      <div class="sync-status" id="syncStatus"></div>
     </div>
 
     <div class="sub-tabs" id="stSegBar">
@@ -4269,7 +4522,39 @@ function renderStatus() {
     })));
   });
 
+  // ── Onboarding Sync card wiring
+  (function wireSync() {
+    const cfg = syncCfg();
+    const urlEl = document.getElementById('syncUrl');
+    if (!urlEl) return;
+    urlEl.value = cfg.url || '';
+    document.getElementById('segCurrent').checked = cfg.segments.includes('current');
+    document.getElementById('segWinback').checked = cfg.segments.includes('winback');
+    document.getElementById('segNew').checked = cfg.segments.includes('new');
+    document.getElementById('syncAuto').checked = !!cfg.auto;
+    const last = syncGet(SYNC_KEYS.last, null);
+    const statusEl = document.getElementById('syncStatus');
+    if (last && statusEl) statusEl.textContent = `Last sync: ${last.n} client${last.n===1?'':'s'} on ${new Date(last.t).toLocaleString()}.`;
+
+    const readSegs = () => {
+      const s = [];
+      if (document.getElementById('segCurrent').checked) s.push('current');
+      if (document.getElementById('segWinback').checked) s.push('winback');
+      if (document.getElementById('segNew').checked) s.push('new');
+      syncSet(SYNC_KEYS.segs, s);
+    };
+    urlEl.addEventListener('change', () => syncSet(SYNC_KEYS.url, urlEl.value.trim()));
+    ['segCurrent','segWinback','segNew'].forEach(id => document.getElementById(id).addEventListener('change', readSegs));
+    document.getElementById('syncAuto').addEventListener('change', e => syncSet(SYNC_KEYS.auto, e.target.checked));
+    document.getElementById('syncNowBtn').addEventListener('click', () => { syncSet(SYNC_KEYS.url, urlEl.value.trim()); readSegs(); syncNow(false); });
+    document.getElementById('syncAllBtn').addEventListener('click', () => { syncSet(SYNC_KEYS.url, urlEl.value.trim()); readSegs(); syncNow(true); });
+    document.getElementById('syncToggleHelp').addEventListener('click', () => {
+      const h = document.getElementById('syncHelp'); h.hidden = !h.hidden;
+    });
+  })();
+
   drawStatusBody(docs, segs);
+  maybeAutoSync();
 }
 
 function filterStatusSegment(docs) {
@@ -5579,8 +5864,8 @@ function openStateCityModal(sd, opts) {
   opts = opts || {};
   ensureModalWired();
   // Record navigation: opening the drill-down is a step (unless we're restoring
-  // it via Back, signaled by NAV_GOING_BACK).
-  if (!NAV_GOING_BACK) {
+  // it via Back, signaled by NAV_SUPPRESS).
+  if (!NAV_SUPPRESS) {
     navPush({ ...NAV_CURRENT });
     NAV_CURRENT = { type: 'modal', stateAbbr: sd.abbr || sd.name, expandedCity: null };
     updateBackButton();
@@ -5675,14 +5960,14 @@ function openStateCityModal(sd, opts) {
       const opening = panel.hasAttribute('hidden');
       if (opening) {
         expand();
-        if (!NAV_GOING_BACK) {
+        if (!NAV_SUPPRESS) {
           navPush({ ...NAV_CURRENT });
           NAV_CURRENT = { type: 'modal', stateAbbr: sd.abbr || sd.name, expandedCity: cityName };
           updateBackButton();
         }
       } else {
         collapse();
-        if (!NAV_GOING_BACK) { NAV_CURRENT = { type: 'modal', stateAbbr: sd.abbr || sd.name, expandedCity: null }; }
+        if (!NAV_SUPPRESS) { NAV_CURRENT = { type: 'modal', stateAbbr: sd.abbr || sd.name, expandedCity: null }; }
       }
     };
     row.addEventListener('click', toggle);
