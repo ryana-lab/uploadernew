@@ -732,7 +732,7 @@ html, body {
         <div class="brand-mark">L</div>
         <div class="brand-text">
           Lab Sales Dashboard
-          <span class="brand-sub">Sales · Production · Practice Operations <span style="opacity:.6;font-size:9px;margin-left:6px">v2026.06.19-SYNC3-NAVFWD</span></span>
+          <span class="brand-sub">Sales · Production · Practice Operations <span style="opacity:.6;font-size:9px;margin-left:6px">v2026.06.19-SYNC4-REPLY</span></span>
         </div>
       </div>
       <div class="brand-divider"></div>
@@ -4289,11 +4289,29 @@ function buildSyncRows(force) {
 function pushSyncRows(rows) {
   const cfg = syncCfg();
   if (!cfg.url) return Promise.reject(new Error('No Web App URL set'));
+  const body = JSON.stringify({ source: 'LabDashboard', rows });
+  // Try a readable request first so we can show the script's actual reply
+  // ({ ok, added, skipped } or { ok:false, error }). If that throws (some
+  // browsers block reading cross-origin from a local file), fall back to a
+  // fire-and-forget no-cors send so the write still happens.
   return fetch(cfg.url, {
     method: 'POST',
-    mode: 'no-cors',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({ source: 'LabDashboard', rows })
+    body,
+    redirect: 'follow'
+  }).then(async (res) => {
+    let txt = '';
+    try { txt = await res.text(); } catch (e) {}
+    let data = null;
+    try { data = JSON.parse(txt); } catch (e) {}
+    return { confirmed: true, data };
+  }).catch(() => {
+    return fetch(cfg.url, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body
+    }).then(() => ({ confirmed: false, data: null }));
   });
 }
 
@@ -4322,15 +4340,30 @@ function syncNow(force) {
     return;
   }
   if (statusEl) statusEl.textContent = `Sending ${rows.length}…`;
-  pushSyncRows(rows).then(() => {
-    markSynced(newIds);
-    if (!hasBaseline()) syncSet(SYNC_KEYS.baseline, Date.now());
-    const stamp = new Date();
-    syncSet(SYNC_KEYS.last, { n: rows.length, t: stamp.getTime() });
-    if (statusEl) statusEl.textContent =
-      `Queued ${rows.length} client${rows.length===1?'':'s'} to your sheet at ${stamp.toLocaleTimeString()}${skippedNoEmail ? ` · ${skippedNoEmail} skipped (no email)` : ''}. Check the Send tab.`;
+  pushSyncRows(rows).then((result) => {
+    if (result.confirmed && result.data) {
+      if (result.data.ok) {
+        markSynced(newIds);
+        if (!hasBaseline()) syncSet(SYNC_KEYS.baseline, Date.now());
+        const stamp = new Date();
+        syncSet(SYNC_KEYS.last, { n: result.data.added, t: stamp.getTime() });
+        if (statusEl) statusEl.textContent =
+          `✅ Sheet confirmed: added ${result.data.added}, skipped ${result.data.skipped} at ${stamp.toLocaleTimeString()}.`;
+      } else {
+        // The script ran but reported a problem — show it verbatim so it's fixable.
+        if (statusEl) statusEl.textContent =
+          `⚠️ The script returned an error: “${result.data.error}”. Fix it in Apps Script, then Deploy ▸ Manage deployments ▸ New version.`;
+      }
+    } else {
+      // Sent, but the reply couldn't be read (local-file restriction).
+      markSynced(newIds);
+      if (!hasBaseline()) syncSet(SYNC_KEYS.baseline, Date.now());
+      syncSet(SYNC_KEYS.last, { n: rows.length, t: Date.now() });
+      if (statusEl) statusEl.textContent =
+        `Sent ${rows.length} (couldn’t read the script’s reply). If the Send tab is still empty, open Apps Script ▸ Executions to see the error.`;
+    }
   }).catch(err => {
-    if (statusEl) statusEl.textContent = 'Send failed: ' + err.message;
+    if (statusEl) statusEl.textContent = '❌ Could not reach the script: ' + err.message;
   });
 }
 
@@ -4350,7 +4383,8 @@ function maybeAutoSync() {
   }
   const { rows, newIds } = buildSyncRows(false);
   if (!rows.length) return;
-  pushSyncRows(rows).then(() => {
+  pushSyncRows(rows).then((result) => {
+    if (result.confirmed && result.data && !result.data.ok) return; // script error — leave for manual
     markSynced(newIds);
     syncSet(SYNC_KEYS.last, { n: rows.length, t: Date.now() });
     const statusEl = document.getElementById('syncStatus');
