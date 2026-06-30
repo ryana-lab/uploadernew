@@ -488,6 +488,9 @@ html, body {
 
 /* Sales Hub — narrative redesign */
 .sh-narrative-section { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 24px 28px; box-shadow: var(--shadow-sm); }
+.sh-churn-controls { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.sh-churn-ctl { font-size: 12px; color: var(--mut); display: inline-flex; align-items: center; gap: 6px; }
+.sh-churn-ctl select { font-family: inherit; font-size: 12px; font-weight: 600; color: var(--ink); background: var(--bg); border: 1px solid var(--border); border-radius: 7px; padding: 4px 6px; cursor: pointer; }
 .sh-narrative-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 6px; flex-wrap: wrap; }
 .sh-narrative-title { font-size: 17px; font-weight: 800; letter-spacing: -.02em; color: var(--ink); }
 .sh-narrative-sub { font-size: 13px; color: var(--mut); margin-bottom: 20px; max-width: 720px; }
@@ -732,7 +735,7 @@ html, body {
         <div class="brand-mark">L</div>
         <div class="brand-text">
           Lab Sales Dashboard
-          <span class="brand-sub">Sales · Production · Practice Operations <span style="opacity:.6;font-size:9px;margin-left:6px">v2026.06.19-SYNC4-REPLY</span></span>
+          <span class="brand-sub">Sales · Production · Practice Operations <span style="opacity:.6;font-size:9px;margin-left:6px">v2026.06.19-CHURNDIAL</span></span>
         </div>
       </div>
       <div class="brand-divider"></div>
@@ -2940,7 +2943,7 @@ function renderSalesHub() {
   //   WINBACK     — had a prior 45+ day silence gap before their final activity
   //                 (i.e. we won them back, then lost them again)
   //   ESTABLISHED — tenure ≥ 180 days AND no major prior gap — loyal doctors who drifted away
-  const SILENT_DAYS = 60;
+  const SILENT_DAYS = (SH_STATE && SH_STATE.churnDays) || 30;
   const NEW_TENURE  = 180;   // active for less than 6 months total
   const ESTABLISHED_TENURE = 180; // at least 6 months
   const WINBACK_GAP = 45;
@@ -3123,7 +3126,18 @@ function renderSalesHub() {
           <div class="sh-narrative-title">Churn Story: New, Winback, &amp; Established</div>
           <div class="sh-narrative-sub">Same loss looks very different depending on the relationship. Click any category to see the doctors.</div>
         </div>
-        <span class="sh-narrative-tag">${allChurned.length} CHURNED</span>
+        <div class="sh-churn-controls">
+          <label class="sh-churn-ctl">Churn after
+            <select id="shChurnDays">
+              <option value="30"${SILENT_DAYS===30?' selected':''}>30 days</option>
+              <option value="45"${SILENT_DAYS===45?' selected':''}>45 days</option>
+              <option value="60"${SILENT_DAYS===60?' selected':''}>60 days</option>
+              <option value="90"${SILENT_DAYS===90?' selected':''}>90 days</option>
+            </select>
+            of inactivity
+          </label>
+          <span class="sh-narrative-tag">${allChurned.length} CHURNED</span>
+        </div>
       </div>
       <div class="sh-story-grid">
         ${storyCard('new',         '🌱 New &amp; Lost',           newLost.length,         churnPctOf(newLost.length),         newLostRev,
@@ -3232,7 +3246,7 @@ function renderSalesHub() {
           </tr>`;
         }).join('')}</tbody>
       </table>
-      <div class="sh-monthly-note">Note: The most recent 1–2 months may show artificially low churn because not enough time has elapsed for doctors to cross the 60-day silent threshold. The dataset's earliest month often shows inflated acquisitions because every doctor's first-ever case lands there.</div>
+      <div class="sh-monthly-note">Note: The most recent 1–2 months may show artificially low churn because not enough time has elapsed for doctors to cross the ${SILENT_DAYS}-day silent threshold. The dataset's earliest month often shows inflated acquisitions because every doctor's first-ever case lands there.</div>
     </div>
 
     <!-- AT-RISK -->
@@ -3637,6 +3651,14 @@ function renderSalesHub() {
       if (!bucket.length) { toast('No doctors in this category'); return; }
       openDoctorModal(meta.title, meta.sub + ' · ' + bucket.length.toLocaleString() + ' doctor' + (bucket.length===1?'':'s'), bucket, meta.file);
     });
+  });
+  // Churn-threshold selector — re-renders the whole Sales Hub with the new
+  // inactivity cutoff so every metric, chart, and the breakdown update together.
+  const churnSel = document.getElementById('shChurnDays');
+  if (churnSel) churnSel.addEventListener('change', (e) => {
+    SH_STATE.churnDays = parseInt(e.target.value, 10) || 30;
+    APP.derived = {};
+    renderSalesHub();
   });
 }
 
@@ -4078,6 +4100,9 @@ function renderDoctorDetail() {
    ═══════════════════════════════════════════════════════════════ */
 
 const STATUS = { seg: 'current', query: '', winbackWindow: 30, sortKey: null, sortDir: 'desc' };
+// Sales Hub: churnDays is the inactivity threshold (days since last case) that
+// marks a doctor as churned. Adjustable from the Sales Hub header.
+const SH_STATE = { churnDays: 30 };
 
 function computeDoctorStatus() {
   // Engagement status respects the Group and State filters but uses FULL history
