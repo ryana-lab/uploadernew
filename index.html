@@ -777,7 +777,7 @@ html, body {
         <div class="brand-mark">L</div>
         <div class="brand-text">
           Lab Sales Dashboard
-          <span class="brand-sub">Sales · Production · Practice Operations <span style="opacity:.6;font-size:9px;margin-left:6px">v2026.07.11-BIZDAYS</span></span>
+          <span class="brand-sub">Sales · Production · Practice Operations <span style="opacity:.6;font-size:9px;margin-left:6px">v2026.07.12-GEOCODIO</span></span>
         </div>
       </div>
       <div class="brand-divider"></div>
@@ -6129,8 +6129,37 @@ function renderBridge() {
       ${sorted.length > CAP ? '<div class="sb-hint" style="margin:8px 0 0">Showing the top ' + CAP + ' of ' + fmtN(sorted.length) + ' doctors (sorted by status, then 90-day revenue). The sync and the CSV always include all of them.</div>' : ''}
     </div>
 
+
+
     <div class="card">
-      <div class="sb-card-title"><span class="sb-stepnum">3</span> Sync to Salesly</div>
+      <div class="sb-card-title"><span class="sb-stepnum">3</span> Import Geocodio locations</div>
+      <div class="sb-hint">Upload a <b>Geocodio-processed CSV</b> (like <code>NEWUPLOADS-IL1_geocodio…csv</code>).
+        Geocodio is the <b>authoritative source for locations</b>: matched offices get their address, city, ZIP and
+        map pin <b>overwritten</b> with the Geocodio values, and the practice name is updated from the upload
+        (it can still be renamed manually afterwards). Locations in the file that aren't in Salesly yet are
+        <b>added as new offices</b>. OpenRouteService/OSM geocoding stays reserved for brand-new offices that come
+        through this uploader without a Geocodio row. Recommended first-time order: <b>Import → Dedupe → Sync</b>.</div>
+      <input type="file" id="sbGeoFile" accept=".csv,text/csv" style="font-size:12.5px">
+      <button class="sb-btn-primary" id="sbGeoApply" style="display:none;margin-left:8px">Apply to Salesly</button>
+      <div class="sb-hint" id="sbGeoInfo" style="margin:8px 0 0"></div>
+    </div>
+
+    <div class="card">
+      <div class="sb-card-title"><span class="sb-stepnum">4</span> Dedupe the Salesly sheet</div>
+      <div class="sb-hint">Finds offices that appear more than once — the same practice under slightly different
+        names or cities (e.g. <b>"Smile Dental, PC"</b> vs <b>"Smile Dental"</b>, a geocoder county name like
+        <b>"Larimer County"</b> vs the real city), offices sharing the <b>same street address</b>, or offices sitting on the
+        <b>exact same coordinates</b>. Same-name offices in <i>different</i> locations (franchises) are never
+        grouped unless their map pins are within a mile. Review the groups, then merge: the row with the most visit
+        history is kept, contact fields fill in from the others, visit history and rep notes are combined, and the extra
+        rows are removed through the app's normal delete protocol. Best run when reps aren't actively editing.</div>
+      <button class="btn-text" id="sbDupeScan">🧹 Scan for duplicates</button>
+      <button class="sb-btn-primary" id="sbDupeGo" style="display:none;margin-left:8px">Merge selected groups</button>
+      <div id="sbDupeList" style="margin-top:10px"></div>
+    </div>
+
+    <div class="card">
+      <div class="sb-card-title"><span class="sb-stepnum">5</span> Sync to Salesly</div>
       <div class="sb-hint">Groups the selected doctors into their practice offices, reads the Sheet, geocodes offices Salesly
         hasn't seen (cached — already-pinned offices are never re-geocoded), then merges: existing offices get fresh
         <b>${SB_LAB_MARK}</b> status lines — one per doctor — prepended to their notes (rep notes are kept), blanks are filled in,
@@ -6174,6 +6203,10 @@ function renderBridge() {
   };
   document.getElementById('sbGo').onclick = sbSync;
   document.getElementById('sbStop').onclick = () => { BRIDGE.stop = true; };
+  document.getElementById('sbDupeScan').onclick = sbScanDupes;
+  document.getElementById('sbDupeGo').onclick = sbMergeDupes;
+  document.getElementById('sbGeoFile').onchange = sbGeoHandleFile;
+  document.getElementById('sbGeoApply').onclick = sbGeoApply;
 }
 
 async function sbSheetGet() {
@@ -6222,6 +6255,314 @@ function sbMergeNotes(existing, lines) {
   return lines.join('\n') + (keep ? ('\n' + keep) : '');
 }
 
+/* ── Duplicate prevention + cleanup ─────────────────────────────
+   sbStrict() is the forgiving name key used for matching: lowercase,
+   punctuation stripped, "&"→"and", and trailing business suffixes
+   (PC, LLC, DDS, …) dropped — so "Smile Dental, PC" and "Smile Dental"
+   are the same office. The dedupe scanner groups sheet rows that are
+   the same office under different spellings/cities; franchises with
+   the same name in different places are never grouped unless their
+   pins are within a mile. */
+const SB_SUFFIXES = { llc: 1, pllc: 1, pc: 1, sc: 1, pa: 1, ltd: 1, inc: 1, llp: 1, dds: 1, dmd: 1, md: 1, pl: 1, corp: 1, co: 1 };
+function sbStrict(s) {
+  let t = String(s == null ? '' : s).toLowerCase().replace(/&/g, ' and ')
+    .replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!t) return '';
+  const parts = t.split(' ');
+  while (parts.length > 1 && SB_SUFFIXES[parts[parts.length - 1]]) parts.pop();
+  return parts.join(' ');
+}
+const SB_ADDR_MAP = { street:'st', avenue:'ave', av:'ave', road:'rd', drive:'dr', boulevard:'blvd', lane:'ln', court:'ct', place:'pl', circle:'cir', highway:'hwy', hw:'hwy', parkway:'pkwy', trail:'trl', terrace:'ter', square:'sq', suite:'ste', unit:'ste', north:'n', south:'s', east:'e', west:'w', first:'1st', second:'2nd', third:'3rd', fourth:'4th', fifth:'5th' };
+function sbStrictAddr(s) {
+  const base = String(s == null ? '' : s).toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!base) return '';
+  return base.split(' ').map(t => SB_ADDR_MAP[t] || t).join(' ');
+}
+function sbDistMi(a, b, c, d) {
+  const R = 3958.8, dLa = (c - a) * Math.PI / 180, dLo = (d - b) * Math.PI / 180;
+  const x = Math.sin(dLa / 2) ** 2 + Math.cos(a * Math.PI / 180) * Math.cos(c * Math.PI / 180) * Math.sin(dLo / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(x));
+}
+const sbCountyish = c => /county$/i.test(sbNorm(c));
+function sbVisitCount(v) { return String(v || '').split('|').map(s => s.trim()).filter(Boolean).length; }
+
+/* ── Geocodio import ────────────────────────────────────────────
+   Geocodio output is the authoritative source for office locations.
+   The "Full Address" column is the practice name with the address
+   appended (twice), so the name is recovered by cutting at the first
+   occurrence of the street. Matched offices get address/city/zip/pin
+   OVERWRITTEN and the name updated; unmatched rows become new offices. */
+let SB_GEO_ROWS = null;
+
+function sbGeoParseRow(r) {
+  const full = String(r['Full Address'] || '').trim();
+  const street = String(r['Geocodio Street'] || '').trim();
+  const house = String(r['Geocodio House Number'] || '').trim();
+  const line1 = String(r['Geocodio Address Line 1'] || '').trim();
+  const lat = parseFloat(r['Geocodio Latitude']), lng = parseFloat(r['Geocodio Longitude']);
+  if (!full || !street || !lat || !lng) return null;
+  let idx = -1;
+  if (house) idx = full.indexOf(house + ' ' + street);
+  if (idx < 0) idx = full.indexOf(street);
+  if (idx <= 0) return null;
+  let pre = full.slice(0, idx).trim();
+  let lead = '';
+  const m = pre.match(/\s(\d+[A-Za-z]?)$/);   // house number that sits before the street in the text
+  if (m) { lead = m[1]; pre = pre.slice(0, m.index).trim(); }
+  if (!pre) return null;
+  const addr = line1 && /\d/.test(line1) ? line1 : ((house || lead) ? ((house || lead) + ' ' + street) : line1 || street);
+  return {
+    name: pre, addr,
+    city: String(r['Geocodio City'] || '').trim(),
+    st: String(r['Geocodio State'] || '').trim().toUpperCase(),
+    zip: String(r['Geocodio Postal Code'] || '').trim(),
+    lat: +lat.toFixed(6), lng: +lng.toFixed(6)
+  };
+}
+
+function sbGeoHandleFile() {
+  const inp = document.getElementById('sbGeoFile');
+  const info = document.getElementById('sbGeoInfo');
+  const btn = document.getElementById('sbGeoApply');
+  const file = inp.files && inp.files[0];
+  if (!file) return;
+  info.textContent = 'Reading ' + file.name + '…';
+  btn.style.display = 'none';
+  Papa.parse(file, {
+    header: true, skipEmptyLines: true,
+    complete: res => {
+      const out = []; let skipped = 0;
+      (res.data || []).forEach(r => { const g = sbGeoParseRow(r); if (g) out.push(g); else skipped++; });
+      SB_GEO_ROWS = out;
+      if (!out.length) { info.innerHTML = '<span class="text-red">Couldn\'t read any locations from that file — is it a Geocodio export?</span>'; return; }
+      info.innerHTML = 'Parsed <b>' + fmtN(out.length) + '</b> Geocodio locations' + (skipped ? ' (' + fmtN(skipped) + ' rows skipped — no readable name or pin)' : '') +
+        '. Click <b>Apply to Salesly</b> to update matched offices and add the rest.';
+      btn.style.display = '';
+    },
+    error: err => { info.innerHTML = '<span class="text-red">Parse error: ' + esc(err.message) + '</span>'; }
+  });
+}
+
+async function sbGeoApply() {
+  if (!SB_GEO_ROWS || !SB_GEO_ROWS.length) return;
+  const btn = document.getElementById('sbGeoApply');
+  const info = document.getElementById('sbGeoInfo');
+  btn.disabled = true;
+  sbSaveCfgFromInputs();
+  document.getElementById('sbLog').innerHTML = '';
+  try {
+    sbLog('Geocodio import: reading the Sheet…');
+    const doc = await sbSheetGet();
+    const cols = doc.cols.map(c => String(c).trim());
+    const ci = {}; cols.forEach((c, i) => ci[c] = i);
+    ['id', 'name', 'addr', 'city', 'zip', 'lat', 'lng', 'notes', 'visited'].forEach(c => {
+      if (ci[c] == null) throw new Error("Sheet is missing the '" + c + "' column");
+    });
+    const rows = doc.rows.map(r => { const o = r.slice(); while (o.length < cols.length) o.push(''); return o; });
+    const byNC = {}, byN = {}, byAC = {};
+    rows.forEach((r, i) => {
+      if (sbNorm(r[ci.visited]) === 'deleted') return;
+      if (String(r[ci.id]).trim() === '__reps__') return;
+      const n = sbStrict(r[ci.name]);
+      if (n) {
+        byNC[n + '|' + sbNorm(r[ci.city])] = i;
+        if (byN[n] == null) byN[n] = i; else byN[n] = -1;
+      }
+      const a = sbStrictAddr(r[ci.addr]);
+      if (a) byAC[a + '|' + sbNorm(r[ci.city])] = i;
+    });
+    const geo = sbLoadGeo();
+    let updated = 0, renamed = 0, added = 0;
+    SB_GEO_ROWS.forEach(g => {
+      const n = sbStrict(g.name);
+      let i = byNC[n + '|' + sbNorm(g.city)];
+      if (i == null && byN[n] >= 0) i = byN[n];
+      if (i == null) { const a = sbStrictAddr(g.addr); if (a && byAC[a + '|' + sbNorm(g.city)] != null) i = byAC[a + '|' + sbNorm(g.city)]; }
+      if (i != null && i >= 0) {
+        const r = rows[i];
+        if (g.name && sbStrict(r[ci.name]) !== n) { r[ci.name] = g.name; renamed++; }
+        else if (g.name && String(r[ci.name]) !== g.name) { r[ci.name] = g.name; }   // casing/punct refresh
+        r[ci.addr] = g.addr; r[ci.city] = g.city; r[ci.zip] = g.zip;
+        r[ci.lat] = g.lat; r[ci.lng] = g.lng;
+        updated++;
+      } else {
+        const r = new Array(cols.length).fill('');
+        r[ci.id] = 'g' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+        r[ci.name] = g.name; r[ci.addr] = g.addr; r[ci.city] = g.city; r[ci.zip] = g.zip;
+        r[ci.lat] = g.lat; r[ci.lng] = g.lng;
+        rows.push(r); added++;
+      }
+      geo[sbNorm(g.addr) + '|' + sbNorm(g.city) + '|' + (g.st || '')] = { lat: g.lat, lng: g.lng, zip: g.zip };
+    });
+    sbSaveGeo(geo);
+    sbLog(fmtN(updated) + ' offices matched → locations overwritten (' + fmtN(renamed) + ' names updated) · ' + fmtN(added) + ' new offices to add. Writing back…');
+    const cfg = sbCfg();
+    const url = (cfg.url || '').trim(), token = (cfg.token || '').trim();
+    const res = await fetch(url + (url.indexOf('?') < 0 ? '?' : '&') + 'k=' + encodeURIComponent(token), { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ cols, rows }) });
+    const reply = (await res.text()).trim();
+    if (!res.ok || reply !== 'ok') throw new Error('Sheet said: ' + reply);
+    sbLog('✓ Geocodio applied — every matched office now sits at its true pin. Next: 🧹 Dedupe (step 4), then 🔄 Sync (step 5).', 'ok');
+    info.textContent = '';
+    document.getElementById('sbGeoFile').value = '';
+    btn.style.display = 'none';
+    toast('Geocodio locations applied');
+    SB_GEO_ROWS = null;
+  } catch (e) {
+    sbLog('✗ ' + e.message, 'err');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function sbScanDupes() {
+  const listEl = document.getElementById('sbDupeList');
+  const goBtn = document.getElementById('sbDupeGo');
+  listEl.innerHTML = '<span class="text-mut" style="font-size:12.5px">Reading the Sheet…</span>';
+  goBtn.style.display = 'none';
+  sbSaveCfgFromInputs();
+  let doc;
+  try { doc = await sbSheetGet(); }
+  catch (e) { listEl.innerHTML = '<span class="text-red" style="font-size:12.5px">✗ ' + esc(e.message) + '</span>'; return; }
+  const cols = doc.cols.map(c => String(c).trim());
+  const ci = {}; cols.forEach((c, i) => ci[c] = i);
+  const rows = doc.rows.map(r => { const o = r.slice(); while (o.length < cols.length) o.push(''); return o; });
+  BRIDGE._sheet = { cols, ci, rows };
+
+  // Cluster duplicates with a union-find across three signals:
+  //   (1) same practice name (franchise-safe: only merged if same city, a
+  //       blank/county city, or pins within a mile)
+  //   (2) the SAME street address in the same city — same address = same office
+  //   (3) the SAME coordinates — identical pins = same office
+  const live = [];
+  rows.forEach((r, i) => {
+    if (sbNorm(r[ci.visited]) === 'deleted') return;
+    if (String(r[ci.id]).trim() === '__reps__') return;          // reserved roster row
+    if (!sbStrict(r[ci.name]) && !sbStrict(r[ci.addr])) return;
+    live.push(i);
+  });
+  const parent = {};
+  live.forEach(i => parent[i] = i);
+  const find = x => { while (parent[x] !== x) x = parent[x] = parent[parent[x]]; return x; };
+  const union = (a, b) => { a = find(a); b = find(b); if (a !== b) parent[b] = a; };
+  const sameOffice = (a, b) => {
+    const ca = sbNorm(rows[a][ci.city]), cb = sbNorm(rows[b][ci.city]);
+    if (ca && cb && ca === cb) return true;
+    if (!ca || !cb || sbCountyish(ca) || sbCountyish(cb)) return true;   // blank / geocoder-county city
+    const la = +rows[a][ci.lat], loa = +rows[a][ci.lng], lb = +rows[b][ci.lat], lob = +rows[b][ci.lng];
+    if (la && loa && lb && lob) return sbDistMi(la, loa, lb, lob) <= 1;  // pins within a mile
+    return false;
+  };
+  // (1) same name
+  const byName = new Map();
+  live.forEach(i => { const n = sbStrict(rows[i][ci.name]); if (!n) return; if (!byName.has(n)) byName.set(n, []); byName.get(n).push(i); });
+  byName.forEach(idxs => {
+    for (let i = 0; i < idxs.length; i++) for (let j = i + 1; j < idxs.length; j++)
+      if (find(idxs[i]) !== find(idxs[j]) && sameOffice(idxs[i], idxs[j])) union(idxs[i], idxs[j]);
+  });
+  // (2) same street address + city
+  const byAddr = new Map();
+  live.forEach(i => {
+    const a = sbStrictAddr(rows[i][ci.addr]); if (!a) return;
+    const k = a + '|' + sbNorm(rows[i][ci.city]);
+    if (byAddr.has(k)) union(byAddr.get(k), i); else byAddr.set(k, i);
+  });
+  // (3) identical coordinates
+  const byCoord = new Map();
+  live.forEach(i => {
+    const la = +rows[i][ci.lat], lo = +rows[i][ci.lng]; if (!la || !lo) return;
+    const k = la.toFixed(5) + ',' + lo.toFixed(5);
+    if (byCoord.has(k)) union(byCoord.get(k), i); else byCoord.set(k, i);
+  });
+  const clusters = new Map();
+  live.forEach(i => { const r0 = find(i); if (!clusters.has(r0)) clusters.set(r0, []); clusters.get(r0).push(i); });
+  const groups = [];
+  clusters.forEach(set => { if (set.length > 1) groups.push(set); });
+
+  if (!groups.length) {
+    listEl.innerHTML = '<span class="text-grn" style="font-size:12.5px;font-weight:600">✓ No duplicates found — every live office is unique.</span>';
+    BRIDGE.dupes = null;
+    return;
+  }
+  // pick a winner per group: most visit history, then most filled-in fields
+  const score = i => {
+    const r = rows[i];
+    let filled = 0;
+    ['addr', 'city', 'zip', 'lat', 'lng', 'phone', 'email', 'scanner', 'drs', 'hours', 'visitDay'].forEach(c => { if (String(r[ci[c]] || '').trim()) filled++; });
+    return sbVisitCount(r[ci.visits]) * 1000 + (sbNorm(r[ci.visited]) && sbNorm(r[ci.visited]) !== 'deleted' ? 50 : 0) + filled;
+  };
+  BRIDGE.dupes = groups.map(set => {
+    const sorted = set.slice().sort((a, b) => score(b) - score(a));
+    return { keep: sorted[0], merge: sorted.slice(1) };
+  });
+  listEl.innerHTML =
+    '<div class="sb-hint" style="margin:0 0 8px">Found <b>' + BRIDGE.dupes.length + ' duplicate group' + (BRIDGE.dupes.length > 1 ? 's' : '') + '</b>. ' +
+    'The bolded row is kept (most visit history / most complete); the others are merged into it — contact fields fill blanks, ' +
+    'visit history and rep notes are combined, and the extra rows are removed. Untick any group you\'re not sure about.</div>' +
+    '<div style="max-height:280px;overflow-y:auto;border:1px solid var(--border);border-radius:9px;padding:8px 10px">' +
+    BRIDGE.dupes.slice(0, 300).map((g, gi) => {
+      const label = r => esc(String(rows[r][ci.name])) + ' <span class="text-mut">(' + esc(String(rows[r][ci.city] || '—')) + (sbVisitCount(rows[r][ci.visits]) ? ' · ' + sbVisitCount(rows[r][ci.visits]) + ' visits' : '') + ')</span>';
+      return '<label style="display:block;font-size:12.5px;padding:4px 0;cursor:pointer"><input type="checkbox" data-dg="' + gi + '" checked> <b>' + label(g.keep) + '</b> ← ' + g.merge.map(label).join(' · ') + '</label>';
+    }).join('') +
+    (BRIDGE.dupes.length > 300 ? '<div class="text-mut" style="font-size:12px;padding:4px 0">…and ' + (BRIDGE.dupes.length - 300) + ' more (all included in the merge).</div>' : '') +
+    '</div>';
+  goBtn.style.display = '';
+  goBtn.textContent = 'Merge selected groups';
+}
+
+async function sbMergeDupes() {
+  if (!BRIDGE.dupes || !BRIDGE._sheet) return;
+  const { cols, ci, rows } = BRIDGE._sheet;
+  const checked = new Set();
+  document.querySelectorAll('#sbDupeList [data-dg]').forEach(cb => { if (cb.checked) checked.add(+cb.getAttribute('data-dg')); });
+  // groups beyond the display cap are always included
+  BRIDGE.dupes.forEach((g, gi) => { if (gi >= 300) checked.add(gi); });
+  const groups = BRIDGE.dupes.filter((g, gi) => checked.has(gi));
+  if (!groups.length) { toast('No groups selected'); return; }
+  const goBtn = document.getElementById('sbDupeGo');
+  goBtn.disabled = true;
+  document.getElementById('sbLog').innerHTML = '';
+  try {
+    const fillCols = ['addr', 'city', 'zip', 'lat', 'lng', 'phone', 'email', 'scanner', 'lab', 'drs', 'hours', 'visitDay', 'starterKit', 'welcomeEmail', 'pricelist'];
+    let merged = 0;
+    groups.forEach(g => {
+      const keep = rows[g.keep];
+      // prefer a real city over a geocoder county name when a loser has one
+      g.merge.forEach(li => {
+        const lose = rows[li];
+        if (sbCountyish(keep[ci.city]) && String(lose[ci.city] || '').trim() && !sbCountyish(lose[ci.city])) keep[ci.city] = lose[ci.city];
+        fillCols.forEach(c => { if (!String(keep[ci[c]] || '').trim() && String(lose[ci[c]] || '').trim()) keep[ci[c]] = lose[ci[c]]; });
+        // combine visit history (pipe-separated), dedup exact entries
+        const seen = new Set(String(keep[ci.visits] || '').split('|').map(s => s.trim()).filter(Boolean));
+        String(lose[ci.visits] || '').split('|').map(s => s.trim()).filter(Boolean).forEach(v => seen.add(v));
+        keep[ci.visits] = Array.from(seen).join('|');
+        if (!sbNorm(keep[ci.visited]) && sbNorm(lose[ci.visited]) && sbNorm(lose[ci.visited]) !== 'deleted') keep[ci.visited] = lose[ci.visited];
+        // rep notes: append any non-LAB lines the winner doesn't already have
+        const keepLines = String(keep[ci.notes] || '').split('\n');
+        const have = new Set(keepLines.map(l => l.trim()).filter(Boolean));
+        String(lose[ci.notes] || '').split('\n').map(l => l.trim()).filter(l => l && !l.startsWith(SB_LAB_MARK) && !have.has(l)).forEach(l => keepLines.push(l));
+        keep[ci.notes] = keepLines.filter((l, i2, arr) => l.trim() || (i2 > 0 && arr[i2 - 1].trim())).join('\n').trim();
+        lose[ci.visited] = 'deleted';   // removed via the app's normal delete protocol
+        merged++;
+      });
+    });
+    sbLog('Merging ' + merged + ' duplicate row' + (merged > 1 ? 's' : '') + ' into ' + groups.length + ' kept office' + (groups.length > 1 ? 's' : '') + '…');
+    const cfg = sbCfg();
+    const url = (cfg.url || '').trim(), token = (cfg.token || '').trim();
+    const res = await fetch(url + (url.indexOf('?') < 0 ? '?' : '&') + 'k=' + encodeURIComponent(token), { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ cols, rows }) });
+    const reply = (await res.text()).trim();
+    if (!res.ok || reply !== 'ok') throw new Error('Sheet said: ' + reply);
+    sbLog('✓ Deduped — ' + merged + ' duplicate rows merged away. Reps will see it within ~15 seconds. Tip: run 🔄 Sync now next so every kept office gets a fresh status line.', 'ok');
+    toast('Duplicates merged');
+    document.getElementById('sbDupeList').innerHTML = '';
+    document.getElementById('sbDupeGo').style.display = 'none';
+    BRIDGE.dupes = null; BRIDGE._sheet = null;
+  } catch (e) {
+    sbLog('✗ ' + e.message, 'err');
+  } finally {
+    goBtn.disabled = false;
+  }
+}
+
 async function sbSync() {
   if (!BRIDGE.data) { toast('No data loaded yet'); return; }
   sbSaveCfgFromInputs();
@@ -6262,18 +6603,25 @@ async function sbSync() {
     });
     const rows = doc.rows.map(r => { const o = r.slice(); while (o.length < cols.length) o.push(''); return o; });
     sbLog('Sheet has ' + rows.length + ' rows');
-    // index existing rows by name+city and by name
-    const byNC = {}, byN = {};
+    // index existing rows by strict name+city, strict name+address, and strict name
+    // (sbStrict ignores punctuation and business suffixes so "Smile Dental, PC"
+    //  matches "Smile Dental" instead of creating a duplicate)
+    const byNC = {}, byNA = {}, byN = {};
     rows.forEach((r, i) => {
       const isDel = sbNorm(r[ci.visited]) === 'deleted'; if (isDel) return;
-      const n = sbNorm(r[ci.name]); if (!n) return;
+      if (String(r[ci.id]).trim() === '__reps__') return;   // reserved roster row
+      const n = sbStrict(r[ci.name]); if (!n) return;
       byNC[n + '|' + sbNorm(r[ci.city])] = i;
+      const ad = sbStrictAddr(r[ci.addr]); if (ad) byNA[n + '|' + ad] = i;
       if (byN[n] == null) byN[n] = i; else byN[n] = -1; /* ambiguous */
     });
     // geocode plan: cache + already-pinned rows never geocode
     const geo = sbLoadGeo();
     push.forEach(o => {
-      const i = byNC[sbNorm(o.name) + '|' + sbNorm(o.city)] ?? ((byN[sbNorm(o.name)] >= 0) ? byN[sbNorm(o.name)] : undefined);
+      const n = sbStrict(o.name);
+      let i = byNC[n + '|' + sbNorm(o.city)];
+      if (i == null) { const ad = sbStrictAddr(o.addr); if (ad && byNA[n + '|' + ad] != null) i = byNA[n + '|' + ad]; }
+      if (i == null) i = (byN[n] >= 0) ? byN[n] : undefined;
       o._row = (i == null ? -1 : i);
       if (o._row >= 0) {
         const r = rows[o._row];
