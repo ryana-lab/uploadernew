@@ -648,6 +648,48 @@ html, body {
 .text-num { font-variant-numeric: tabular-nums; }
 .mb-16 { margin-bottom: 16px; }
 
+/* ── Salesly Lab Bridge + Nightly Reports tabs ───────────────────
+   Ported from the standalone Lab → Salesly Bridge tool, restyled to
+   the dashboard's design language. All classes are sb-/rp- prefixed
+   so nothing collides with existing styles. */
+.sb-stepnum { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 12px; font-weight: 700; flex: none; }
+.sb-card-title { font-size: 15px; font-weight: 700; color: var(--ink); display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.sb-hint { font-size: 12.5px; color: var(--mut); line-height: 1.55; margin-bottom: 12px; }
+.sb-hint b { color: var(--ink); }
+.sb-hint code { background: var(--bg); padding: 0 4px; border-radius: 4px; }
+.sb-label { display: block; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--mut); margin: 10px 0 4px; }
+.sb-row { display: flex; gap: 10px; flex-wrap: wrap; }
+.sb-row > div { flex: 1; min-width: 160px; }
+.sb-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin: 4px 0 12px; }
+.sb-stat { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; text-align: center; }
+.sb-stat b { display: block; font-size: 22px; font-weight: 800; letter-spacing: -.02em; color: var(--ink); font-variant-numeric: tabular-nums; }
+.sb-stat span { font-size: 10px; color: var(--mut); text-transform: uppercase; letter-spacing: .05em; font-weight: 700; }
+.sb-stat.s-new      { background: var(--accent-soft); border-color: rgba(37,99,235,.25); }  .sb-stat.s-new b      { color: var(--accent); }
+.sb-stat.s-winback  { background: var(--purple-soft); border-color: rgba(124,58,237,.25); } .sb-stat.s-winback b  { color: var(--purple); }
+.sb-stat.s-active   { background: var(--grn-soft);    border-color: rgba(5,150,105,.25); }  .sb-stat.s-active b   { color: var(--grn); }
+.sb-stat.s-falloff  { background: var(--amb-soft);    border-color: rgba(217,119,6,.25); }  .sb-stat.s-falloff b  { color: var(--amb); }
+.sb-stat.s-inactive { background: var(--red-soft);    border-color: rgba(220,38,38,.25); }  .sb-stat.s-inactive b { color: var(--red); }
+.sb-pill { display: inline-block; font-size: 10.5px; font-weight: 800; padding: 2px 8px; border-radius: 9px; letter-spacing: .03em; white-space: nowrap; }
+.sb-p-active   { background: var(--grn-soft);    color: var(--grn); }
+.sb-p-new      { background: var(--accent-soft); color: var(--accent); }
+.sb-p-winback  { background: var(--purple-soft); color: var(--purple); }
+.sb-p-falloff  { background: var(--amb-soft);    color: var(--amb); }
+.sb-p-inactive { background: var(--red-soft);    color: var(--red); }
+.sb-checkrow { display: flex; gap: 14px; flex-wrap: wrap; margin: 8px 0 12px; }
+.sb-checkrow label { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--ink); cursor: pointer; }
+.sb-btn-primary { font-family: inherit; font-size: 13px; font-weight: 700; padding: 10px 18px; border-radius: 8px; border: 1px solid var(--accent); background: var(--accent); color: #fff; cursor: pointer; transition: all .15s; }
+.sb-btn-primary:hover { background: var(--accent-hover); }
+.sb-btn-primary:disabled { opacity: .45; cursor: default; }
+.sb-bar { height: 8px; background: var(--bg); border-radius: 5px; overflow: hidden; margin-top: 10px; }
+.sb-bar > div { height: 100%; width: 0%; background: var(--accent); transition: width .25s; }
+.sb-log { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; color: var(--dim); background: var(--bg); border: 1px solid var(--border); border-radius: 9px; padding: 10px; margin-top: 10px; max-height: 220px; overflow-y: auto; white-space: pre-wrap; }
+.sb-log .ok { color: var(--grn); font-weight: 700; }
+.sb-log .warn { color: var(--amb); font-weight: 700; }
+.sb-log .err { color: var(--red); font-weight: 700; }
+.sb-conn-status { font-size: 13px; margin-left: 8px; }
+.rp-preview { border: 1px solid var(--border); border-radius: 10px; background: #fff; max-height: 520px; overflow-y: auto; padding: 14px; margin-top: 12px; }
+.rp-preview:empty { display: none; }
+
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: var(--bg); }
 ::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 4px; }
@@ -735,7 +777,7 @@ html, body {
         <div class="brand-mark">L</div>
         <div class="brand-text">
           Lab Sales Dashboard
-          <span class="brand-sub">Sales · Production · Practice Operations <span style="opacity:.6;font-size:9px;margin-left:6px">v2026.06.19-CHURNDIAL</span></span>
+          <span class="brand-sub">Sales · Production · Practice Operations <span style="opacity:.6;font-size:9px;margin-left:6px">v2026.07.10-BRIDGE+REPORTS</span></span>
         </div>
       </div>
       <div class="brand-divider"></div>
@@ -784,9 +826,10 @@ html, body {
       <button class="tab-btn" data-tab="docgrid">👨‍⚕️ Doctor Grid</button>
       <button class="tab-btn" data-tab="docdetail">🔍 Doctor Detail</button>
       <button class="tab-btn" data-tab="status">📋 Current / New / Winback / Falloff / Inactive</button>
+      <button class="tab-btn" data-tab="bridge">🔗 Salesly Bridge</button>
+      <button class="tab-btn" data-tab="reports">📧 Reports</button>
       <button class="tab-btn" data-tab="prodgrid">📦 Product Grid</button>
       <button class="tab-btn" data-tab="proddetail">📈 Product Detail</button>
-      <button class="tab-btn" data-tab="ops">⚙️ Operations</button>
       <button class="tab-btn" data-tab="timeline">🕐 Client Timeline</button>
       <button class="tab-btn" data-tab="map">🗺️ State Map</button>
     </div>
@@ -800,7 +843,8 @@ html, body {
     <div class="tab-panel" id="panel-status"></div>
     <div class="tab-panel" id="panel-prodgrid"></div>
     <div class="tab-panel" id="panel-proddetail"></div>
-    <div class="tab-panel" id="panel-ops"></div>
+    <div class="tab-panel" id="panel-bridge"></div>
+    <div class="tab-panel" id="panel-reports"></div>
     <div class="tab-panel" id="panel-timeline"></div>
     <div class="tab-panel" id="panel-map"></div>
   </div>
@@ -2348,7 +2392,7 @@ function switchTab(tab) {
 
 /* Detail tabs depend on the current selection, so they must re-render on every
    visit — never serve them from the rendered-cache. */
-const ALWAYS_RENDER = { docdetail: 1, proddetail: 1 };
+const ALWAYS_RENDER = { docdetail: 1, proddetail: 1, bridge: 1, reports: 1 };
 
 function renderTab(tab, force) {
   if (!force && !ALWAYS_RENDER[tab] && APP.rendered[tab]) return;
@@ -2361,7 +2405,8 @@ function renderTab(tab, force) {
     case 'status':    renderStatus(); break;
     case 'prodgrid':  renderProductGrid(); break;
     case 'proddetail':renderProductDetail(); break;
-    case 'ops':       renderOps(); break;
+    case 'bridge':    renderBridge(); break;
+    case 'reports':   renderReports(); break;
     case 'timeline':  renderTimeline(); break;
     case 'map':       renderMap(); break;
   }
@@ -3095,30 +3140,6 @@ function renderSalesHub() {
   const stateFilterNote = APP.filters.state ? `<span>Filtered: <b>${esc(APP.filters.state)}</b></span>` : '';
 
   el.innerHTML = `
-    <div class="sh-hero">
-      <div class="sh-hero-eyebrow">💼 Sales Command Center</div>
-      <div class="sh-hero-title">Sales Hub</div>
-      <div class="sh-hero-sub">
-        <span>Data as of <b>${esc(asOf)}</b></span>
-        ${stateFilterNote}
-        <span class="sh-hero-pulse">Live</span>
-      </div>
-    </div>
-
-    <div class="kpi-row">
-      <div class="kpi">
-        <div class="kpi-label">Total Revenue</div>
-        <div class="kpi-value">${fmtUSDFull(totalRev)}</div>
-        <div class="kpi-sub">
-          ${momPct != null ? `<span class="kpi-delta ${momPct>=0?'up':'down'}">${momPct>=0?'▲':'▼'} ${Math.abs(momPct).toFixed(1)}% MoM</span> ` : ''}
-          ${yoyPct != null ? `<span class="kpi-delta ${yoyPct>=0?'up':'down'}">${yoyPct>=0?'▲':'▼'} ${Math.abs(yoyPct).toFixed(1)}% YoY</span>` : ''}
-        </div>
-      </div>
-      <div class="kpi"><div class="kpi-label">Doctors in Book</div><div class="kpi-value">${fmtN(totalDrs)}</div><div class="kpi-sub">${fmtN(lcActive.length)} active right now</div></div>
-      <div class="kpi"><div class="kpi-label">Median Revenue / Doctor</div><div class="kpi-value">${fmtUSDFull(medianRev)}</div><div class="kpi-sub">whale-skewed mean: ${fmtUSDFull(totalDrs?totalRev/totalDrs:0)}</div></div>
-      <div class="kpi"><div class="kpi-label">Avg Order Value</div><div class="kpi-value">${fmtUSDFull(aov)}</div><div class="kpi-sub">across ${fmtN(totalCases)} cases</div></div>
-    </div>
-
     <!-- CHURN STORY -->
     <div class="sh-narrative-section">
       <div class="sh-narrative-head">
@@ -5084,250 +5105,6 @@ function renderProductDetail() {
    TAB 8: OPERATIONS — Hold / Remake / Turnaround
    ═══════════════════════════════════════════════════════════════ */
 
-function renderOps() {
-  const el = document.getElementById('panel-ops');
-  const data = APP.filtered;
-  const k = aggKPIs();
-  const holdReasons = aggHoldReasons();
-  const remakeReasons = aggRemakeReasons();
-
-  const tatBuckets = [
-    { label: '0–3 days', min: 0, max: 3, count: 0 },
-    { label: '4–7 days', min: 4, max: 7, count: 0 },
-    { label: '8–14 days', min: 8, max: 14, count: 0 },
-    { label: '15–30 days', min: 15, max: 30, count: 0 },
-    { label: '30+ days', min: 31, max: 9999, count: 0 }
-  ];
-  for (const r of data) {
-    if (r.tat == null || r.tat < 0) continue;
-    for (const b of tatBuckets) { if (r.tat >= b.min && r.tat <= b.max) { b.count++; break; } }
-  }
-  const tatTotal = tatBuckets.reduce((s,b) => s + b.count, 0);
-
-  const docsHi = aggByDoctor().filter(d => d.cases >= 10).sort((a,b) => b.remakeRate - a.remakeRate).slice(0, 10);
-  const prodsHi = aggByProduct().filter(p => p.cases >= 20).sort((a,b) => b.remakeRate - a.remakeRate).slice(0, 10);
-  const onHoldCases = data.filter(r => r.onHold).sort((a,b) => b.daysOnHold - a.daysOnHold);
-  const labCost = data.filter(r => r.remake).reduce((s,r) => s + r.remakeDiscount, 0);
-
-  // ─── EXPANDED OPS METRICS ───
-
-  // Weekly throughput (cases received vs shipped per week)
-  const weekKey = d => {
-    if (!d) return null;
-    const dt = new Date(d);
-    const day = dt.getDay();
-    const monday = new Date(dt);
-    monday.setDate(dt.getDate() - ((day + 6) % 7));
-    monday.setHours(0,0,0,0);
-    return monday.toISOString().slice(0,10);
-  };
-  const weeklyMap = new Map();
-  for (const r of data) {
-    const wkRec = weekKey(r.received), wkShip = weekKey(r.shipped);
-    if (wkRec) { const w = weeklyMap.get(wkRec) || { wk: wkRec, received: 0, shipped: 0 }; w.received++; weeklyMap.set(wkRec, w); }
-    if (wkShip) { const w = weeklyMap.get(wkShip) || { wk: wkShip, received: 0, shipped: 0 }; w.shipped++; weeklyMap.set(wkShip, w); }
-  }
-  const weeklyThroughput = Array.from(weeklyMap.values()).sort((a,b) => a.wk.localeCompare(b.wk)).slice(-26); // last 26 weeks
-
-  // Hold-aging — how long have currently-held cases been waiting?
-  const holdAgingBuckets = [
-    { label: '0–3 days',  min: 0,  max: 3,    count: 0, color: '#65a30d' },
-    { label: '4–7 days',  min: 4,  max: 7,    count: 0, color: '#d97706' },
-    { label: '8–14 days', min: 8,  max: 14,   count: 0, color: '#dc2626' },
-    { label: '15+ days',  min: 15, max: 9999, count: 0, color: '#991b1b' }
-  ];
-  for (const r of onHoldCases) {
-    for (const b of holdAgingBuckets) {
-      if (r.daysOnHold >= b.min && r.daysOnHold <= b.max) { b.count++; break; }
-    }
-  }
-
-  // Doctors whose cases get held the most (indicates upstream info issues)
-  const docHoldMap = new Map();
-  for (const r of data) {
-    let d = docHoldMap.get(r.drId);
-    if (!d) { d = { drId: r.drId, name: r.drName, state: r.state, total: 0, held: 0 }; docHoldMap.set(r.drId, d); }
-    d.total++;
-    if (r.onHold) d.held++;
-  }
-  const docsHeld = Array.from(docHoldMap.values())
-    .filter(d => d.total >= 15 && d.held >= 3)
-    .map(d => ({ ...d, rate: d.held / d.total }))
-    .sort((a,b) => b.rate - a.rate)
-    .slice(0, 10);
-
-  el.innerHTML = `
-    <div class="section-header">
-      <div>
-        <div class="section-title">Operations</div>
-        <div class="section-sub">Holds, remakes, and turnaround — production quality and throughput.</div>
-      </div>
-      <div class="section-actions">
-        <button class="btn-text" id="opsExport">⬇ Export Ops Detail</button>
-      </div>
-    </div>
-
-    <div class="kpi-row">
-      <div class="kpi"><div class="kpi-label">Remake Rate</div><div class="kpi-value">${fmtPct(k.remakeRate)}</div><div class="kpi-sub">${fmtN(k.remakeCount)} cases reworked</div></div>
-      <div class="kpi"><div class="kpi-label">On-Hold Rate</div><div class="kpi-value">${fmtPct(k.onHoldRate)}</div><div class="kpi-sub">${fmtN(k.onHoldCount)} held cases</div></div>
-      <div class="kpi"><div class="kpi-label">Avg Turnaround</div><div class="kpi-value">${k.avgTAT == null ? '—' : k.avgTAT.toFixed(1) + '<span class="sup">d</span>'}</div><div class="kpi-sub">received → shipped</div></div>
-      <div class="kpi"><div class="kpi-label">Same-Week Ship</div><div class="kpi-value">${fmtPct(tatTotal ? (tatBuckets[0].count + tatBuckets[1].count)/tatTotal : 0)}</div><div class="kpi-sub">≤ 7 day turnaround</div></div>
-      <div class="kpi"><div class="kpi-label">Lab-Absorbed Cost</div><div class="kpi-value">${fmtUSD(labCost)}</div><div class="kpi-sub">sum of remake discounts</div></div>
-    </div>
-
-    <div class="flex-row">
-      <div class="card flex-1">
-        <div class="chart-title">Hold Reasons</div>
-        ${holdReasons.length ? '<div id="opsHold" class="hbar-list"></div>' : '<div class="dt-empty">No holds in this period.</div>'}
-      </div>
-      <div class="card flex-1">
-        <div class="chart-title">Remake Reasons</div>
-        ${remakeReasons.length ? '<div id="opsRemake" class="hbar-list"></div>' : '<div class="dt-empty">No remakes in this period.</div>'}
-      </div>
-    </div>
-
-    <div class="flex-row">
-      <div class="card flex-1" style="padding:0">
-        <div class="card-head"><div><div class="card-title">Highest-Remake Doctors</div><div class="card-sub">≥10 cases · top 10</div></div></div>
-        <table class="dtable">
-          <thead><tr><th>Doctor</th><th class="num">Cases</th><th class="num">Remakes</th><th class="num">Rate</th></tr></thead>
-          <tbody>${docsHi.map(d => `
-            <tr class="clk" data-id="${esc(d.drId)}">
-              <td><b>${esc(d.name)}</b> <span class="text-mut" style="font-size:10px">${esc(d.state||'')}</span></td>
-              <td class="num">${fmtN(d.cases)}</td><td class="num">${fmtN(d.remakes)}</td>
-              <td class="num"><span class="tag ${d.remakeRate>0.1?'tag-red':'tag-amb'}">${fmtPct(d.remakeRate)}</span></td>
-            </tr>
-          `).join('') || '<tr><td colspan="4" class="dt-empty">No qualifying doctors</td></tr>'}</tbody>
-        </table>
-      </div>
-      <div class="card flex-1" style="padding:0">
-        <div class="card-head"><div><div class="card-title">Highest-Remake Products</div><div class="card-sub">≥20 cases · top 10</div></div></div>
-        <table class="dtable">
-          <thead><tr><th>Product</th><th class="num">Cases</th><th class="num">Remakes</th><th class="num">Rate</th></tr></thead>
-          <tbody>${prodsHi.map(p => `
-            <tr class="clk" data-product="${esc(p.name)}">
-              <td><b>${esc(p.name)}</b></td>
-              <td class="num">${fmtN(p.cases)}</td><td class="num">${fmtN(p.remakes)}</td>
-              <td class="num"><span class="tag ${p.remakeRate>0.1?'tag-red':'tag-amb'}">${fmtPct(p.remakeRate)}</span></td>
-            </tr>
-          `).join('') || '<tr><td colspan="4" class="dt-empty">No qualifying products</td></tr>'}</tbody>
-        </table>
-      </div>
-    </div>
-
-    <div class="card mb20">
-      <div class="chart-title">Weekly Throughput — Cases Received vs Shipped</div>
-      <div class="card-sub" style="margin:-10px 0 10px;font-size:11px;color:var(--mut)">Last 26 weeks. A gap where received &gt; shipped means a growing backlog.</div>
-      <div class="chart-wrap"><canvas id="opsWeekly"></canvas></div>
-    </div>
-
-    <div class="card mb20">
-      <div class="chart-title">Hold Aging — Currently-Held Cases</div>
-      <div class="card-sub" style="margin:-10px 0 10px;font-size:11px;color:var(--mut)">How long the cases sitting on hold right now have been waiting.</div>
-      <div class="chart-wrap short"><canvas id="opsHoldAging"></canvas></div>
-    </div>
-
-    <div class="flex-row">
-      <div class="card flex-1" style="padding:0">
-        <div class="card-head"><div><div class="card-title">Doctors Whose Cases Get Held Most</div><div class="card-sub">≥15 cases & ≥3 holds · top 10</div></div></div>
-        <table class="dtable">
-          <thead><tr><th>Doctor</th><th class="num">Cases</th><th class="num">Held</th><th class="num">Rate</th></tr></thead>
-          <tbody>${docsHeld.map(d => `
-            <tr class="clk" data-id="${esc(d.drId)}">
-              <td><b>${esc(d.name)}</b> <span class="text-mut" style="font-size:10px">${esc(d.state||'')}</span></td>
-              <td class="num">${fmtN(d.total)}</td><td class="num">${fmtN(d.held)}</td>
-              <td class="num"><span class="tag ${d.rate>0.2?'tag-red':d.rate>0.1?'tag-amb':'tag-grn'}">${fmtPct(d.rate)}</span></td>
-            </tr>
-          `).join('') || '<tr><td colspan="4" class="dt-empty">No qualifying doctors</td></tr>'}</tbody>
-        </table>
-      </div>
-      <div class="card flex-1">
-        <div class="chart-title">TAT Distribution by Bucket</div>
-        <div class="card-sub" style="margin:-10px 0 10px;font-size:11px;color:var(--mut)">All cases with a recorded turnaround.</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:12px">
-          ${tatBuckets.map(b => `
-            <div style="background:var(--bg);border-radius:8px;padding:14px 16px">
-              <div style="font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.05em;font-weight:700;margin-bottom:4px">${esc(b.label)}</div>
-              <div style="font-size:22px;font-weight:800;font-variant-numeric:tabular-nums">${fmtN(b.count)}</div>
-              <div style="font-size:11px;color:var(--dim);margin-top:2px">${tatTotal?(b.count/tatTotal*100).toFixed(1):'0'}% of cases</div>
-            </div>
-          `).join('')}
-        </div>
-      </div>
-    </div>
-
-    <div class="card flush">
-      <div class="card-head"><div><div class="card-title">Cases on Hold</div><div class="card-sub">${onHoldCases.length.toLocaleString()} cases · sorted by days held</div></div></div>
-      <div class="table-scroll">
-        <table class="dtable">
-          <thead><tr><th>Case #</th><th>Doctor</th><th>Product</th><th>Reason</th><th class="num">Days Held</th><th>Received</th></tr></thead>
-          <tbody>${onHoldCases.slice(0, 250).map(r => `
-            <tr class="clk" data-id="${esc(r.drId)}">
-              <td class="text-mut" style="font-size:11px">${esc(r.caseNo)}</td>
-              <td><b>${esc(r.drName)}</b></td>
-              <td>${esc(r.product)}</td>
-              <td>${esc(r.onHoldReason)}</td>
-              <td class="num">${r.daysOnHold > 7 ? `<span class="tag tag-red">${r.daysOnHold}d</span>` : r.daysOnHold > 2 ? `<span class="tag tag-amb">${r.daysOnHold}d</span>` : r.daysOnHold + 'd'}</td>
-              <td>${fmtDate(r.received)}</td>
-            </tr>
-          `).join('') || '<tr><td colspan="6" class="dt-empty">No cases currently on hold.</td></tr>'}</tbody>
-        </table>
-      </div>
-      ${onHoldCases.length > 250 ? `<div style="padding:12px 20px;text-align:center;font-size:11px;color:var(--mut);border-top:1px solid var(--border)">Showing 250 of ${onHoldCases.length.toLocaleString()} — export for the full list</div>` : ''}
-    </div>
-  `;
-
-  document.getElementById('opsExport').addEventListener('click', () => {
-    downloadCSV('operations_holds_remakes.csv', [
-      ...data.filter(r => r.onHold).map(r => ({ type: 'hold', case_no: r.caseNo, doctor: r.drName, product: r.product, reason: r.onHoldReason, days: r.daysOnHold, date: isoDate(r.received) })),
-      ...data.filter(r => r.remake).map(r => ({ type: 'remake', case_no: r.caseNo, doctor: r.drName, product: r.product, reason: r.remakeReason, lab_discount: r.remakeDiscount, date: isoDate(r.anchorDate) }))
-    ]);
-  });
-  el.querySelectorAll('tr.clk[data-id]').forEach(tr => tr.addEventListener('click', () => { APP.selectedDoctorId = tr.dataset.id; switchTab('docdetail'); }));
-  el.querySelectorAll('tr.clk[data-product]').forEach(tr => tr.addEventListener('click', () => { APP.selectedProduct = tr.dataset.product; switchTab('proddetail'); }));
-
-  if (holdReasons.length) renderHBars('opsHold', holdReasons.slice(0, 8).map(h => [h.name, h.count]), 'count',
-    (reason) => openDoctorModal(
-      'Hold Reason: ' + reason,
-      'Doctors with cases held for this reason',
-      aggDoctorsWhere(r => r.onHold && (r.onHoldReason || 'Unspecified') === reason),
-      'hold_' + reason.toLowerCase().replace(/[^a-z0-9]+/g,'_') + '.csv'
-    ));
-  if (remakeReasons.length) renderHBars('opsRemake', remakeReasons.slice(0, 8).map(h => [h.name, h.count]), 'count',
-    (reason) => openDoctorModal(
-      'Remake Reason: ' + reason,
-      'Doctors with remakes for this reason',
-      aggDoctorsWhere(r => r.remake && (r.remakeReason || 'Unspecified') === reason),
-      'remake_' + reason.toLowerCase().replace(/[^a-z0-9]+/g,'_') + '.csv'
-    ));
-
-  const co = commonChartOpts();
-  // Weekly throughput — dual line
-  makeChart('opsWeekly', {
-    type: 'line',
-    data: {
-      labels: weeklyThroughput.map(w => {
-        const d = new Date(w.wk); return (d.getMonth()+1) + '/' + d.getDate();
-      }),
-      datasets: [
-        { label: 'Received', data: weeklyThroughput.map(w => w.received), borderColor: '#2563eb', backgroundColor: 'rgba(37,99,235,.1)', borderWidth: 2.5, tension: .3, fill: false, pointRadius: 2 },
-        { label: 'Shipped',  data: weeklyThroughput.map(w => w.shipped),  borderColor: '#059669', backgroundColor: 'rgba(5,150,105,.1)', borderWidth: 2.5, tension: .3, fill: false, pointRadius: 2 }
-      ]
-    },
-    options: { ...co, plugins: { ...co.plugins, legend: { ...co.plugins.legend, position: 'bottom' } } }
-  });
-
-  // Hold aging — horizontal bar
-  makeChart('opsHoldAging', {
-    type: 'bar',
-    data: {
-      labels: holdAgingBuckets.map(b => b.label),
-      datasets: [{ label: 'Cases on hold', data: holdAgingBuckets.map(b => b.count), backgroundColor: holdAgingBuckets.map(b => b.color), borderRadius: 4 }]
-    },
-    options: { ...co, indexAxis: 'y', plugins: { ...co.plugins, legend: { display: false } }, scales: { x: { ...co.scales.x, beginAtZero: true }, y: co.scales.y } }
-  });
-}
-
 /* ═══════════════════════════════════════════════════════════════
    TAB 9: CLIENT TIMELINE — card grid with gap detection
    (rebuilt to match the original layout)
@@ -6113,6 +5890,812 @@ function drawMapTable(stateData) {
     rowClick: s => openStateCityModal(s)
   });
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   TAB: SALESLY LAB BRIDGE
+   Ported from the standalone Lab → Salesly Bridge tool. Instead of its
+   own CSV upload, this tab feeds LIVE from the same engine as the
+   Current / New / Winback / Falloff / Inactive tab: every practice's
+   status is rolled up from its doctors' engagement statuses
+   (computeDoctorStatus), using the same thresholds and the same
+   winback window, scoped by the same Group + State filters.
+   Config + geocode cache reuse the standalone bridge's localStorage
+   keys, so an existing setup carries over automatically.
+   ═══════════════════════════════════════════════════════════════ */
+
+const SB_CFG_KEY = 'labbridge_cfg';
+const SB_GEO_KEY = 'labbridge_geo';
+const SB_STATUSES = ['New Doctor', 'Winback', 'Active', 'Falloff', 'Inactive'];
+const SB_PILL = { 'Active': 'sb-p-active', 'New Doctor': 'sb-p-new', 'Winback': 'sb-p-winback', 'Falloff': 'sb-p-falloff', 'Inactive': 'sb-p-inactive' };
+const SB_LAB_MARK = '📊 LAB:';
+const BRIDGE = { pracs: null, stop: false, wanted: null };
+
+const sbNorm = s => String(s == null ? '' : s).toLowerCase().replace(/\s+/g, ' ').trim();
+const sbUS = d => (!d || !(d instanceof Date) || isNaN(d)) ? '—'
+  : String(d.getMonth() + 1).padStart(2, '0') + '/' + String(d.getDate()).padStart(2, '0') + '/' + d.getFullYear();
+const sbMoney = n => '$' + Math.round(n || 0).toLocaleString();
+
+function sbPhone(v) {
+  let s = String(v || '').trim();
+  if (!s || s === 'nan') return '';
+  if (/e\+?\d+/i.test(s)) { const n = Number(s); if (isFinite(n)) s = String(Math.round(n)); }
+  s = s.replace(/\D/g, '');
+  if (s.length === 11 && s[0] === '1') s = s.slice(1);
+  if (s.length === 10) return '(' + s.slice(0, 3) + ') ' + s.slice(3, 6) + '-' + s.slice(6);
+  return s.length ? s : '';
+}
+
+/* Map the dashboard's normalized scanner names onto the short set Salesly uses */
+function sbScanner(v) {
+  const s = sbNorm(v);
+  if (!s || s === 'unknown' || s === 'not applicable') return '';
+  if (s.includes('itero')) return 'iTero';
+  if (s.includes('3shape') || s.includes('trios')) return 'Trios';
+  if (s.includes('medit')) return 'Medit';
+  if (s.includes('dscore')) return 'Dscore';
+  if (s.includes('impression') || s.includes('model') || s.includes('bite')) return 'None';
+  return 'Other';
+}
+
+function sbCfg() { try { return JSON.parse(localStorage.getItem(SB_CFG_KEY) || '{}'); } catch (e) { return {}; } }
+function sbSaveCfgObj(patch) {
+  const c = sbCfg();
+  Object.assign(c, patch);
+  try { localStorage.setItem(SB_CFG_KEY, JSON.stringify(c)); } catch (e) {}
+  return c;
+}
+function sbSaveCfgFromInputs() {
+  const g = id => { const el = document.getElementById(id); return el ? el.value.trim() : undefined; };
+  const patch = {};
+  if (g('sbUrl') != null) patch.url = g('sbUrl');
+  if (g('sbToken') != null) patch.token = g('sbToken');
+  if (g('sbOrs') != null) patch.ors = g('sbOrs');
+  sbSaveCfgObj(patch);
+}
+function sbLoadGeo() { try { return JSON.parse(localStorage.getItem(SB_GEO_KEY) || '{}'); } catch (e) { return {}; } }
+function sbSaveGeo(g) { try { localStorage.setItem(SB_GEO_KEY, JSON.stringify(g)); } catch (e) {} }
+function sbGeoKey(p) { return sbNorm(p.addr) + '|' + sbNorm(p.city) + '|' + (p.stAb || ''); }
+function sbGeoQuery(p) {
+  let city = p.city;
+  if (/county$/i.test(sbNorm(city))) city = '';   // "Larimer County" confuses geocoders
+  return [p.addr, city, p.stAb].filter(Boolean).join(', ');
+}
+
+function sbLog(msg, cls) {
+  const el = document.getElementById('sbLog');
+  if (!el) return;
+  el.style.display = '';
+  el.innerHTML += (cls ? '<span class="' + cls + '">' + esc(msg) + '</span>' : esc(msg)) + '\n';
+  el.scrollTop = el.scrollHeight;
+}
+
+/* Practice roll-up: aggregate every record (Group+State scope, full history —
+   same scoping as the Status tab) into practices, then take each practice's
+   status from its doctors' Status-tab classifications, strongest first:
+   New Doctor → Winback → Active → Falloff → Inactive. */
+function buildBridgePracs() {
+  const docs = computeDoctorStatus();          // SAME engine as the Status tab
+  const statusById = {};
+  for (const d of docs) statusById[d.drId] = d;
+  const maxDate = getMaxDate() || new Date();
+  const cutoff90 = new Date(maxDate.getTime() - 90 * 864e5);
+
+  const map = new Map();
+  for (const r of rawByGroupState()) {
+    const nameRaw = (r.practice || '').trim();
+    if (!nameRaw) continue;
+    const key = sbNorm(nameRaw);
+    let p = map.get(key);
+    if (!p) {
+      p = { name: nameRaw, addr: '', city: '', state: '', phone: '', email: '', scan: '',
+            drNames: new Set(), drIds: new Set(), cases: new Set(),
+            first: null, last: null, rev: 0, rev90: 0 };
+      map.set(key, p);
+    }
+    if (r.address) p.addr = r.address;
+    if (r.city) p.city = r.city;
+    if (r.stateAbbr || r.state) p.state = r.stateAbbr || r.state;
+    const ph = sbPhone(r.phone); if (ph) p.phone = ph;
+    if (r.email && r.email !== 'nan') p.email = r.email;
+    const sc = sbScanner(r.scanner);
+    if (sc && sc !== 'None') p.scan = sc; else if (sc === 'None' && !p.scan) p.scan = 'None';
+    if (r.drName) p.drNames.add(r.drName);
+    if (r.drId) p.drIds.add(r.drId);
+    if (r.caseNo) p.cases.add(r.caseNo);
+    p.rev += r.netCost;
+    if (r.anchorDate) {
+      if (!p.first || r.anchorDate < p.first) p.first = r.anchorDate;
+      if (!p.last || r.anchorDate > p.last) p.last = r.anchorDate;
+      if (r.anchorDate >= cutoff90) p.rev90 += r.netCost;
+    }
+  }
+
+  return Array.from(map.values()).map(p => {
+    let hasNew = false, hasWin = false, hasCur = false, hasFall = false;
+    for (const id of p.drIds) {
+      const d = statusById[id];
+      if (!d) continue;
+      if (d.status === 'new') hasNew = true;
+      if (d.isWinbackSegment) hasWin = true;
+      if (d.status === 'current' || d.status === 'winback') hasCur = true;
+      if (d.status === 'falloff') hasFall = true;
+    }
+    const status = hasNew ? 'New Doctor' : hasWin ? 'Winback' : hasCur ? 'Active' : hasFall ? 'Falloff' : 'Inactive';
+    const names = Array.from(p.drNames).filter(Boolean);
+    return {
+      name: p.name, addr: p.addr, city: p.city, state: p.state,
+      stAb: stateAbbr(p.state) || (String(p.state || '').length === 2 ? String(p.state).toUpperCase() : ''),
+      phone: p.phone, email: p.email, scan: p.scan,
+      drs: names.slice(0, 5).map(n => 'Dr. ' + n).join(', ') + (names.length > 5 ? ' +' + (names.length - 5) + ' more' : ''),
+      first: p.first, last: p.last, cases: p.cases.size, rev: p.rev, rev90: p.rev90, status
+    };
+  });
+}
+
+function renderBridge() {
+  const el = document.getElementById('panel-bridge');
+  if (!APP.raw || !APP.raw.length) {
+    el.innerHTML = '<div class="empty-state"><div class="empty-icon">🔗</div>Upload data first — the bridge feeds from the Status tracker.</div>';
+    return;
+  }
+  BRIDGE.pracs = buildBridgePracs();
+  const counts = {}; SB_STATUSES.forEach(s => counts[s] = 0);
+  BRIDGE.pracs.forEach(p => counts[p.status]++);
+  const maxDate = getMaxDate();
+  const cfg = sbCfg();
+  if (!BRIDGE.wanted) { BRIDGE.wanted = {}; SB_STATUSES.forEach(s => BRIDGE.wanted[s] = true); }
+
+  const scopeNote = [
+    APP.filters.group ? 'Group: <b>' + esc(APP.filters.group) + '</b>' : '',
+    APP.filters.state ? 'State: <b>' + esc(APP.filters.state) + '</b>' : ''
+  ].filter(Boolean).join(' · ');
+
+  const order = { 'New Doctor': 0, 'Winback': 1, 'Falloff': 2, 'Active': 3, 'Inactive': 4 };
+  const rows = BRIDGE.pracs.slice().sort((a, b) => (order[a.status] - order[b.status]) || (b.rev90 - a.rev90));
+  const CAP = 400;
+  const shown = rows.slice(0, CAP);
+
+  el.innerHTML = `
+    <div class="section-header">
+      <div>
+        <div class="section-title">🔗 Salesly Lab Bridge</div>
+        <div class="section-sub">Pushes each practice's engagement status into the reps' Salesly app via your Google Sheet.</div>
+      </div>
+      <div class="section-actions">
+        <button class="btn-text" id="sbDl">⬇ Download Master CSV</button>
+      </div>
+    </div>
+
+    <div class="info-bar ip"><b>Live feed — no upload needed.</b> Statuses come straight from the
+      <b>Current / New / Winback / Falloff / Inactive</b> tab as of <b>${esc(fmtDate(maxDate))}</b>${scopeNote ? ' (' + scopeNote + ')' : ''}.
+      A practice takes its strongest doctor status: New Doctor → Winback → Active → Falloff → Inactive.
+      Thresholds mirror the Status tab — new = first case ≤15d, active = last case ≤20d, falloff = 21–29d,
+      inactive = 30+d, winback = returned from a 45+ day gap within <b>${(STATUS && STATUS.winbackWindow) || 30} days</b>
+      (adjust that window on the Status tab and this tab updates on the next visit).</div>
+
+    <div class="card">
+      <div class="sb-card-title"><span class="sb-stepnum">1</span> Connect to Salesly</div>
+      <div class="sb-hint">Paste the <b>Apps Script Web App URL</b> and <b>sync token</b> from your Salesly Google Sheet
+        (same values the standalone bridge used — they're already filled in if you'd saved them before).
+        The optional OpenRouteService key makes geocoding ~3× faster; without it, OpenStreetMap is used at ~1 address/sec.</div>
+      <div class="sb-row">
+        <div><label class="sb-label">Apps Script Web App URL</label><input class="sync-input" id="sbUrl" placeholder="https://script.google.com/macros/s/…/exec" value="${esc(cfg.url || '')}"></div>
+        <div><label class="sb-label">Sync token</label><input class="sync-input" id="sbToken" placeholder="token" value="${esc(cfg.token || '')}"></div>
+        <div><label class="sb-label">OpenRouteService key (optional)</label><input class="sync-input" id="sbOrs" placeholder="for faster geocoding" value="${esc(cfg.ors || '')}"></div>
+      </div>
+      <div style="margin-top:12px"><button class="btn-text" id="sbTest">Test connection</button><span class="sb-conn-status" id="sbConnStatus"></span></div>
+    </div>
+
+    <div class="card">
+      <div class="sb-card-title"><span class="sb-stepnum">2</span> Review practices <span class="text-mut" style="font-weight:500;font-size:12px">(${fmtN(BRIDGE.pracs.length)} total)</span></div>
+      <div class="sb-stats">${SB_STATUSES.map(s => {
+        const cls = s === 'New Doctor' ? 's-new' : s === 'Winback' ? 's-winback' : s === 'Active' ? 's-active' : s === 'Falloff' ? 's-falloff' : 's-inactive';
+        return '<div class="sb-stat ' + cls + '"><b>' + fmtN(counts[s]) + '</b><span>' + esc(s) + '</span></div>';
+      }).join('')}</div>
+      <label class="sb-label">Statuses to push</label>
+      <div class="sb-checkrow" id="sbChecks">${SB_STATUSES.map(s =>
+        '<label><input type="checkbox" data-st="' + esc(s) + '"' + (BRIDGE.wanted[s] ? ' checked' : '') + '> ' + esc(s) + '</label>').join('')}</div>
+      <div class="card flush" style="border-radius:10px">
+        <div class="table-scroll" style="max-height:420px">
+          <table class="dtable">
+            <thead><tr><th>Status</th><th>Practice</th><th>City</th><th>ST</th><th>Last case</th><th class="num">90d</th><th class="num">Lifetime</th><th>Scanner</th></tr></thead>
+            <tbody>${shown.map(p =>
+              '<tr><td><span class="sb-pill ' + SB_PILL[p.status] + '">' + esc(p.status) + '</span></td><td>' + esc(p.name) + '</td><td>' + esc(p.city) + '</td><td>' + esc(p.stAb) + '</td><td class="text-num">' + sbUS(p.last) + '</td><td class="num">' + sbMoney(p.rev90) + '</td><td class="num">' + sbMoney(p.rev) + '</td><td>' + esc(p.scan) + '</td></tr>').join('')}</tbody>
+          </table>
+        </div>
+      </div>
+      ${rows.length > CAP ? '<div class="sb-hint" style="margin:8px 0 0">Showing the top ' + CAP + ' of ' + fmtN(rows.length) + ' practices (sorted by status, then 90-day revenue). The sync and the CSV always include all of them.</div>' : ''}
+    </div>
+
+    <div class="card">
+      <div class="sb-card-title"><span class="sb-stepnum">3</span> Sync to Salesly</div>
+      <div class="sb-hint">Reads the Sheet, geocodes offices Salesly hasn't seen (cached — already-pinned offices are never re-geocoded),
+        then merges: existing offices get a fresh <b>${SB_LAB_MARK}</b> status line prepended to their notes (rep notes are kept),
+        blanks are filled in, and unseen offices are added. Reps see changes within ~15 seconds.</div>
+      <button class="sb-btn-primary" id="sbGo">🔄 Sync now</button>
+      <button class="btn-text" id="sbStop" style="display:none;margin-left:8px">■ Stop</button>
+      <div class="sb-bar" id="sbBarWrap" style="display:none"><div id="sbBar"></div></div>
+      <div class="sb-log" id="sbLog" style="display:none"></div>
+    </div>`;
+
+  /* wiring */
+  ['sbUrl', 'sbToken', 'sbOrs'].forEach(id => document.getElementById(id).addEventListener('change', sbSaveCfgFromInputs));
+  document.getElementById('sbChecks').addEventListener('change', () => {
+    document.querySelectorAll('#sbChecks [data-st]').forEach(cb => BRIDGE.wanted[cb.getAttribute('data-st')] = cb.checked);
+  });
+  document.getElementById('sbTest').onclick = async () => {
+    sbSaveCfgFromInputs();
+    const st = document.getElementById('sbConnStatus');
+    st.textContent = 'Testing…'; st.style.color = 'var(--mut)';
+    try {
+      const doc = await sbSheetGet();
+      st.textContent = '✓ Connected — ' + doc.rows.length + ' offices currently in the Sheet';
+      st.style.color = 'var(--grn)';
+    } catch (e) { st.textContent = '✗ ' + e.message; st.style.color = 'var(--red)'; }
+  };
+  document.getElementById('sbDl').onclick = () => {
+    const geo = sbLoadGeo();
+    const q = v => { v = String(v == null ? '' : v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+    const head = ['Status', 'Practice', 'Address', 'City', 'State', 'ZIP', 'Latitude', 'Longitude', 'Doctors', 'Phone', 'Email', 'Scanner', 'First case', 'Last case', 'Cases', 'Rev 90d', 'Rev lifetime'];
+    const lines = [head.join(',')];
+    BRIDGE.pracs.forEach(p => {
+      const g = geo[sbGeoKey(p)] || {};
+      lines.push([p.status, p.name, p.addr, p.city, p.stAb, g.zip || '', g.lat || '', g.lng || '', p.drs, p.phone, p.email, p.scan, sbUS(p.first), sbUS(p.last), p.cases, Math.round(p.rev90), Math.round(p.rev)].map(q).join(','));
+    });
+    const blob = new Blob([lines.join('\r\n')], { type: 'text/csv' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'lab-salesly-master-' + new Date().toISOString().slice(0, 10) + '.csv';
+    a.click();
+    toast('Master CSV downloaded');
+  };
+  document.getElementById('sbGo').onclick = sbSync;
+  document.getElementById('sbStop').onclick = () => { BRIDGE.stop = true; };
+}
+
+async function sbSheetGet() {
+  const cfg = sbCfg();
+  const url = (cfg.url || '').trim(), token = (cfg.token || '').trim();
+  if (!url) throw new Error('Enter the Apps Script URL');
+  const res = await fetch(url + (url.indexOf('?') < 0 ? '?' : '&') + 'k=' + encodeURIComponent(token) + '&t=' + Date.now());
+  const text = await res.text();
+  if (text.trim().toLowerCase() === 'forbidden') throw new Error("Token rejected — must match the script's TOKEN");
+  const doc = JSON.parse(text);
+  if (!doc || !doc.cols || !Array.isArray(doc.rows)) throw new Error('Unexpected reply — is that the right URL?');
+  return doc;
+}
+
+async function sbGeocodeOne(p) {
+  const orsEl = document.getElementById('sbOrs');
+  const ors = orsEl ? orsEl.value.trim() : '';
+  const qy = sbGeoQuery(p); if (!qy) return null;
+  if (ors) {
+    try {
+      const res = await fetch('https://api.openrouteservice.org/geocode/search?api_key=' + encodeURIComponent(ors) + '&text=' + encodeURIComponent(qy) + '&boundary.country=US&size=1');
+      if (res.ok) {
+        const d = await res.json(); const f = d && d.features && d.features[0];
+        if (f && f.geometry) { return { lat: +f.geometry.coordinates[1].toFixed(6), lng: +f.geometry.coordinates[0].toFixed(6), zip: (f.properties && f.properties.postalcode) || '' }; }
+      } else if (res.status === 403 || res.status === 401) {
+        sbLog('ORS key rejected — falling back to OpenStreetMap', 'warn');
+        if (orsEl) orsEl.value = '';
+      }
+    } catch (e) {}
+  }
+  try {
+    const res = await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&addressdetails=1&countrycodes=us&q=' + encodeURIComponent(qy), { headers: { 'Accept': 'application/json' } });
+    if (res.ok) {
+      const d = await res.json();
+      if (d && d[0]) { return { lat: +(+d[0].lat).toFixed(6), lng: +(+d[0].lon).toFixed(6), zip: (d[0].address && d[0].address.postcode) || '' }; }
+    }
+  } catch (e) {}
+  return null;
+}
+
+function sbStatusLine(p) {
+  return SB_LAB_MARK + ' ' + p.status.toUpperCase() + ' · last case ' + sbUS(p.last) + ' · ' + p.cases + ' cases · ' + sbMoney(p.rev90) + ' last 90d · ' + sbMoney(p.rev) + ' lifetime';
+}
+function sbMergeNotes(existing, p) {
+  const keep = String(existing || '').split('\n').filter(l => !l.trim().startsWith(SB_LAB_MARK)).join('\n').trim();
+  return sbStatusLine(p) + (keep ? ('\n' + keep) : '');
+}
+
+async function sbSync() {
+  if (!BRIDGE.pracs) { toast('No data loaded yet'); return; }
+  sbSaveCfgFromInputs();
+  const wanted = {};
+  document.querySelectorAll('#sbChecks [data-st]').forEach(cb => wanted[cb.getAttribute('data-st')] = cb.checked);
+  const push = BRIDGE.pracs.filter(p => wanted[p.status]);
+  const goBtn = document.getElementById('sbGo'), stopBtn = document.getElementById('sbStop');
+  const barWrap = document.getElementById('sbBarWrap'), bar = document.getElementById('sbBar');
+  goBtn.disabled = true;
+  document.getElementById('sbLog').innerHTML = '';
+  BRIDGE.stop = false;
+  try {
+    sbLog('Reading the Sheet…');
+    const doc = await sbSheetGet();
+    const cols = doc.cols.map(c => String(c).trim());
+    const ci = {}; cols.forEach((c, i) => ci[c] = i);
+    ['id', 'name', 'addr', 'city', 'zip', 'lat', 'lng', 'phone', 'email', 'scanner', 'drs', 'visited', 'notes'].forEach(c => {
+      if (ci[c] == null) throw new Error("Sheet is missing the '" + c + "' column — connect a Salesly sheet");
+    });
+    const rows = doc.rows.map(r => { const o = r.slice(); while (o.length < cols.length) o.push(''); return o; });
+    sbLog('Sheet has ' + rows.length + ' rows');
+    // index existing rows by name+city and by name
+    const byNC = {}, byN = {};
+    rows.forEach((r, i) => {
+      const isDel = sbNorm(r[ci.visited]) === 'deleted'; if (isDel) return;
+      const n = sbNorm(r[ci.name]); if (!n) return;
+      byNC[n + '|' + sbNorm(r[ci.city])] = i;
+      if (byN[n] == null) byN[n] = i; else byN[n] = -1; /* ambiguous */
+    });
+    // geocode plan: cache + already-pinned rows never geocode
+    const geo = sbLoadGeo();
+    push.forEach(p => {
+      const i = byNC[sbNorm(p.name) + '|' + sbNorm(p.city)] ?? ((byN[sbNorm(p.name)] >= 0) ? byN[sbNorm(p.name)] : undefined);
+      p._row = (i == null ? -1 : i);
+      if (p._row >= 0) {
+        const r = rows[p._row];
+        if (r[ci.lat] && r[ci.lng]) { geo[sbGeoKey(p)] = { lat: r[ci.lat], lng: r[ci.lng], zip: r[ci.zip] || '' }; }
+      }
+    });
+    const need = push.filter(p => !geo[sbGeoKey(p)] && (p.addr || p.city));
+    sbLog(push.length + ' offices to sync · ' + push.filter(p => p._row >= 0).length + ' already in the Sheet · ' + need.length + ' need geocoding');
+    if (need.length) {
+      const ors = !!document.getElementById('sbOrs').value.trim();
+      const delay = ors ? 350 : 1100;
+      sbLog('Geocoding via ' + (ors ? 'OpenRouteService' : "OpenStreetMap (~1/sec — you can Stop anytime and finish; the rest just won't have pins yet)"));
+      stopBtn.style.display = ''; barWrap.style.display = '';
+      let done = 0, found = 0;
+      for (const p of need) {
+        if (BRIDGE.stop) break;
+        const g = await sbGeocodeOne(p);
+        if (g) { geo[sbGeoKey(p)] = g; found++; if (found % 25 === 0) sbSaveGeo(geo); }
+        done++;
+        bar.style.width = ((done / need.length) * 100).toFixed(1) + '%';
+        if (done % 25 === 0) sbLog('  …' + done + '/' + need.length + ' (' + found + ' pinned)');
+        await new Promise(r => setTimeout(r, delay));
+      }
+      sbSaveGeo(geo);
+      sbLog('Geocoded ' + need.filter(p => geo[sbGeoKey(p)]).length + '/' + need.length + (BRIDGE.stop ? ' (stopped early)' : ''), 'ok');
+      stopBtn.style.display = 'none';
+    }
+    // merge
+    let updated = 0, added = 0;
+    const setIfBlank = (r, c, v) => { if (v && (!r[ci[c]] || String(r[ci[c]]).trim() === '')) r[ci[c]] = v; };
+    push.forEach(p => {
+      const g = geo[sbGeoKey(p)] || {};
+      if (p._row >= 0) {
+        const r = rows[p._row];
+        r[ci.notes] = sbMergeNotes(r[ci.notes], p);
+        setIfBlank(r, 'addr', p.addr); setIfBlank(r, 'city', p.city); setIfBlank(r, 'zip', g.zip);
+        setIfBlank(r, 'lat', g.lat); setIfBlank(r, 'lng', g.lng);
+        setIfBlank(r, 'phone', p.phone); setIfBlank(r, 'email', p.email);
+        setIfBlank(r, 'scanner', p.scan); setIfBlank(r, 'drs', p.drs);
+        updated++;
+      } else {
+        const r = new Array(cols.length).fill('');
+        r[ci.id] = 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+        r[ci.name] = p.name; r[ci.addr] = p.addr; r[ci.city] = p.city; r[ci.zip] = g.zip || '';
+        r[ci.lat] = g.lat || ''; r[ci.lng] = g.lng || '';
+        r[ci.phone] = p.phone; r[ci.email] = p.email; r[ci.scanner] = p.scan; r[ci.drs] = p.drs;
+        r[ci.notes] = sbStatusLine(p);
+        rows.push(r); added++;
+      }
+    });
+    sbLog('Writing back: ' + updated + ' updated, ' + added + ' new…');
+    const cfg = sbCfg();
+    const url = (cfg.url || '').trim(), token = (cfg.token || '').trim();
+    const res = await fetch(url + (url.indexOf('?') < 0 ? '?' : '&') + 'k=' + encodeURIComponent(token), { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ cols: cols, rows: rows }) });
+    const reply = await res.text();
+    if (!res.ok || reply.trim() !== 'ok') throw new Error('Sheet said: ' + reply);
+    const noPin = push.filter(p => !geo[sbGeoKey(p)]).length;
+    sbLog('✓ Done — ' + updated + ' offices updated, ' + added + ' added. Reps will see it within ~15 seconds.' + (noPin ? (' ' + noPin + " still have no pin (run Sync again later to retry, or pin them in the app).") : ''), 'ok');
+  } catch (e) {
+    sbLog('✗ ' + e.message, 'err');
+  } finally {
+    goBtn.disabled = false;
+    stopBtn.style.display = 'none';
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   TAB: NIGHTLY EMAIL REPORTS
+   Builds three email-ready HTML reports from the live dataset:
+     1. Customer (Doctor) Report — D/W/M/Q trends for revenue, units,
+        remake % and turnaround, overall and per client (Δ amount + Δ%)
+     2. Product Report — the same trends per product
+     3. Status Changes — doctors ADDED today to New / Winback /
+        Falloff / Inactive (diffed against yesterday's snapshot)
+   Reports are pushed to the same Apps Script the Salesly Bridge uses;
+   the script stores them and a nightly trigger emails them to the
+   saved recipients. "Send now" emails immediately.
+   ═══════════════════════════════════════════════════════════════ */
+
+const RP_SNAP_KEY = 'labreports_status_snap';
+const RP_PERIODS = [
+  { key: 'daily',     label: 'Daily',     cur: [0, 0],   prev: [1, 1],     cap: 40 },
+  { key: 'weekly',    label: 'Weekly',    cur: [0, 6],   prev: [7, 13],    cap: 50 },
+  { key: 'monthly',   label: 'Monthly',   cur: [0, 29],  prev: [30, 59],   cap: 60 },
+  { key: 'quarterly', label: 'Quarterly', cur: [0, 90],  prev: [91, 181],  cap: 60 }
+];
+
+function rpNewBucket() { return { rev: 0, units: 0, rows: 0, remakes: 0, tatSum: 0, tatN: 0 }; }
+function rpAdd(b, r) {
+  b.rev += r.netCost;
+  b.units += r.qty;
+  b.rows++;
+  if (r.remake) b.remakes++;
+  if (r.tat != null && r.tat >= 0 && r.tat < 200) { b.tatSum += r.tat; b.tatN++; }
+}
+function rpMetrics(b) {
+  return {
+    rev: b.rev,
+    units: b.units,
+    remake: b.rows ? (b.remakes / b.rows) * 100 : null,
+    tat: b.tatN ? b.tatSum / b.tatN : null
+  };
+}
+
+/* Bucket the Group/State-scoped records by day-offset from the dataset's max
+   date, overall and per entity (doctor or product). Returns
+   { overall: {period:{cur,prev}}, entities: Map(key → {label, sub, periods}) }. */
+function rpAggregate(entityOf) {
+  const maxDate = getMaxDate() || new Date();
+  const maxDay = Date.UTC(maxDate.getFullYear(), maxDate.getMonth(), maxDate.getDate());
+  const mk = () => { const o = {}; RP_PERIODS.forEach(p => o[p.key] = { cur: rpNewBucket(), prev: rpNewBucket() }); return o; };
+  const overall = mk();
+  const entities = new Map();
+  for (const r of rawByGroupState()) {
+    if (!r.anchorDate) continue;
+    const day = Date.UTC(r.anchorDate.getFullYear(), r.anchorDate.getMonth(), r.anchorDate.getDate());
+    const off = Math.round((maxDay - day) / 864e5);
+    if (off < 0 || off > 181) continue;
+    let ent = null;
+    const e = entityOf(r);
+    if (e && e.key) {
+      ent = entities.get(e.key);
+      if (!ent) { ent = { label: e.label, sub: e.sub || '', periods: mk() }; entities.set(e.key, ent); }
+    }
+    for (const p of RP_PERIODS) {
+      if (off >= p.cur[0] && off <= p.cur[1]) { rpAdd(overall[p.key].cur, r); if (ent) rpAdd(ent.periods[p.key].cur, r); }
+      if (off >= p.prev[0] && off <= p.prev[1]) { rpAdd(overall[p.key].prev, r); if (ent) rpAdd(ent.periods[p.key].prev, r); }
+    }
+  }
+  return { overall, entities, maxDate };
+}
+
+/* ── email-HTML helpers (inline styles only — email-client safe) ── */
+const RP_F = "font-family:'Segoe UI',Arial,sans-serif;";
+function rpMoneyF(n) { return (n < 0 ? '-$' : '$') + Math.round(Math.abs(n || 0)).toLocaleString(); }
+function rpNumF(n) { return Math.round(n || 0).toLocaleString(); }
+function rpDeltaHTML(cur, prev, fmt, goodDown, unit) {
+  if (cur == null && prev == null) return '<span style="color:#94a3b8">—</span>';
+  const c = cur || 0, p = prev || 0;
+  const d = c - p;
+  const up = d > 0.0001, down = d < -0.0001;
+  const good = goodDown ? down : up;
+  const bad  = goodDown ? up : down;
+  const color = good ? '#059669' : bad ? '#dc2626' : '#64748b';
+  const arrow = up ? '▲' : down ? '▼' : '＝';
+  const amt = fmt(Math.abs(d)) + (unit || '');
+  let pct = '';
+  if (Math.abs(p) > 0.0001) pct = ' (' + (d >= 0 ? '+' : '−') + Math.abs(d / p * 100).toFixed(1) + '%)';
+  else if (Math.abs(c) > 0.0001) pct = ' (new)';
+  return '<span style="color:' + color + ';font-weight:700;white-space:nowrap">' + arrow + ' ' + (d >= 0 ? '+' : '−') + amt + pct + '</span>';
+}
+function rpCell(curM, prevM, metric) {
+  const fmts = {
+    rev:    { v: v => v == null ? '—' : rpMoneyF(v), f: rpMoneyF, gd: false, u: '' },
+    units:  { v: v => v == null ? '—' : rpNumF(v),   f: rpNumF,   gd: false, u: '' },
+    remake: { v: v => v == null ? '—' : v.toFixed(1) + '%', f: v => v.toFixed(1), gd: true, u: ' pts' },
+    tat:    { v: v => v == null ? '—' : v.toFixed(1) + 'd',  f: v => v.toFixed(1), gd: true, u: 'd' }
+  };
+  const s = fmts[metric];
+  const cur = curM[metric], prev = prevM[metric];
+  return '<div style="font-weight:700;color:#0f172a">' + s.v(cur) + '</div>' +
+         '<div style="font-size:11px">' + rpDeltaHTML(cur, prev, s.f, s.gd, s.u) + '</div>';
+}
+function rpHead(title, sub, maxDate) {
+  const scope = [
+    APP.filters.group ? 'Group: ' + APP.filters.group : '',
+    APP.filters.state ? 'State: ' + APP.filters.state : ''
+  ].filter(Boolean).join(' · ');
+  return '<div style="' + RP_F + 'background:#0f172a;color:#fff;border-radius:12px;padding:20px 24px;margin-bottom:16px">' +
+    '<div style="font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#93c5fd;font-weight:700">Lab Sales Dashboard — Nightly Report</div>' +
+    '<div style="font-size:22px;font-weight:800;margin:4px 0 2px">' + title + '</div>' +
+    '<div style="font-size:12px;color:#cbd5e1">' + sub + ' · Data through <b style="color:#fff">' + esc(fmtDate(maxDate)) + '</b>' +
+    (scope ? ' · ' + esc(scope) : '') + ' · Generated ' + esc(new Date().toLocaleString()) + '</div></div>';
+}
+function rpSummaryTable(overall) {
+  const rows = [
+    { m: 'rev',    label: 'Revenue' },
+    { m: 'units',  label: 'Units' },
+    { m: 'remake', label: 'Remake %' },
+    { m: 'tat',    label: 'Avg Turnaround' }
+  ];
+  let h = '<table cellpadding="0" cellspacing="0" style="' + RP_F + 'width:100%;border-collapse:collapse;background:#fff;border:1px solid #e2e8f0;border-radius:10px;margin-bottom:18px">' +
+    '<tr><th style="text-align:left;padding:10px 12px;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#64748b;border-bottom:1px solid #e2e8f0">Metric</th>' +
+    RP_PERIODS.map(p => '<th style="text-align:left;padding:10px 12px;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#64748b;border-bottom:1px solid #e2e8f0">' + p.label + '<div style="font-weight:500;text-transform:none;letter-spacing:0">' + rpWindowNote(p) + '</div></th>').join('') + '</tr>';
+  rows.forEach(r => {
+    h += '<tr><td style="padding:10px 12px;font-weight:700;color:#0f172a;border-bottom:1px solid #f1f5f9;font-size:13px">' + r.label + '</td>' +
+      RP_PERIODS.map(p => '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;font-size:13px">' + rpCell(rpMetrics(overall[p.key].cur), rpMetrics(overall[p.key].prev), r.m) + '</td>').join('') + '</tr>';
+  });
+  return h + '</table>';
+}
+function rpWindowNote(p) {
+  const d = n => n === 0 ? 'today' : n + 'd';
+  if (p.key === 'daily') return 'vs prior day';
+  return 'last ' + (p.cur[1] + 1) + 'd vs prior ' + (p.cur[1] + 1) + 'd';
+}
+function rpEntitySection(p, entities, entityNoun) {
+  const list = [];
+  entities.forEach((ent, key) => {
+    const cur = ent.periods[p.key].cur, prev = ent.periods[p.key].prev;
+    if (!cur.rows && !prev.rows) return;
+    list.push({ ent, curM: rpMetrics(cur), prevM: rpMetrics(prev), dRev: rpMetrics(cur).rev - rpMetrics(prev).rev });
+  });
+  list.sort((a, b) => Math.abs(b.dRev) - Math.abs(a.dRev));
+  const shown = list.slice(0, p.cap);
+  let h = '<div style="' + RP_F + 'font-size:15px;font-weight:800;color:#0f172a;margin:20px 0 8px">' + p.label + ' — per ' + entityNoun +
+    ' <span style="font-weight:500;font-size:11px;color:#64748b">(' + rpWindowNote(p) + (list.length > p.cap ? ' · top ' + p.cap + ' of ' + list.length + ' by |Δ revenue|' : '') + ')</span></div>';
+  if (!shown.length) return h + '<div style="' + RP_F + 'font-size:12px;color:#64748b;font-style:italic;margin-bottom:6px">No activity in this window.</div>';
+  h += '<table cellpadding="0" cellspacing="0" style="' + RP_F + 'width:100%;border-collapse:collapse;background:#fff;border:1px solid #e2e8f0;border-radius:10px">' +
+    '<tr>' + ['<th style="text-align:left', '<th style="text-align:left', '<th style="text-align:left', '<th style="text-align:left', '<th style="text-align:left'].map((s, i) =>
+      s + ';padding:8px 12px;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:#64748b;border-bottom:1px solid #e2e8f0">' + [entityNoun, 'Revenue', 'Units', 'Remake %', 'Avg TAT'][i] + '</th>').join('') + '</tr>';
+  shown.forEach(x => {
+    h += '<tr><td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;font-size:12.5px"><b style="color:#0f172a">' + esc(x.ent.label) + '</b>' +
+      (x.ent.sub ? '<div style="font-size:11px;color:#64748b">' + esc(x.ent.sub) + '</div>' : '') + '</td>' +
+      ['rev', 'units', 'remake', 'tat'].map(m => '<td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;font-size:12.5px">' + rpCell(x.curM, x.prevM, m) + '</td>').join('') + '</tr>';
+  });
+  return h + '</table>';
+}
+
+function rpBuildDoctorReport() {
+  const agg = rpAggregate(r => r.drId ? { key: r.drId, label: r.drName || '(unnamed)', sub: r.practice || '' } : null);
+  let h = rpHead('📋 Daily Customer Report', 'Doctor-level trends — revenue, units, remake %, turnaround', agg.maxDate);
+  h += rpSummaryTable(agg.overall);
+  RP_PERIODS.forEach(p => { h += rpEntitySection(p, agg.entities, 'Client'); });
+  return h;
+}
+
+function rpBuildProductReport() {
+  const agg = rpAggregate(r => r.product ? { key: r.product, label: r.product, sub: r.productCat || '' } : null);
+  let h = rpHead('📦 Daily Product Report', 'Product-level trends — revenue, units, remake %, turnaround', agg.maxDate);
+  h += rpSummaryTable(agg.overall);
+  RP_PERIODS.forEach(p => { h += rpEntitySection(p, agg.entities, 'Product'); });
+  return h;
+}
+
+/* ── Status Changes report — daily ADDITIONS to each category ── */
+const RP_CATS = [
+  { key: 'n', label: '🌱 New Doctors',  color: '#2563eb', test: d => d.status === 'new' },
+  { key: 'w', label: '🔄 Winbacks',     color: '#7c3aed', test: d => d.isWinbackSegment },
+  { key: 'f', label: '⚠️ Falloffs',     color: '#d97706', test: d => d.status === 'falloff' },
+  { key: 'i', label: '💤 Inactives',    color: '#dc2626', test: d => d.status === 'inactive' }
+];
+function rpCatCode(d) { return RP_CATS.filter(c => c.test(d)).map(c => c.key).join(''); }
+function rpLoadSnap() { try { return JSON.parse(localStorage.getItem(RP_SNAP_KEY) || 'null'); } catch (e) { return null; } }
+function rpSaveSnap(s) { try { localStorage.setItem(RP_SNAP_KEY, JSON.stringify(s)); } catch (e) {} }
+
+function rpBuildStatusReport() {
+  const docs = computeDoctorStatus();
+  const maxDate = getMaxDate() || new Date();
+  const asOf = isoDate(maxDate);
+
+  // 90-day revenue per doctor for context in the listings
+  const cutoff90 = new Date(maxDate.getTime() - 90 * 864e5);
+  const rev90 = {};
+  for (const r of rawByGroupState()) {
+    if (r.anchorDate && r.anchorDate >= cutoff90) rev90[r.drId] = (rev90[r.drId] || 0) + r.netCost;
+  }
+
+  const curMap = {};
+  docs.forEach(d => { const c = rpCatCode(d); if (c) curMap[d.drId] = c; });
+
+  // Roll the snapshot: keep a previous copy so re-generating on the same data
+  // date stays stable, and only advance when the dataset's max date advances.
+  let snap = rpLoadSnap();
+  let baseMap = null, baseAsOf = null, baseline = false;
+  if (!snap) {
+    baseline = true;
+    rpSaveSnap({ asOf, map: curMap, prevAsOf: null, prevMap: null });
+  } else if (snap.asOf === asOf) {
+    baseMap = snap.prevMap; baseAsOf = snap.prevAsOf;
+    if (!baseMap) baseline = true;
+  } else {
+    baseMap = snap.map; baseAsOf = snap.asOf;
+    rpSaveSnap({ asOf, map: curMap, prevAsOf: snap.asOf, prevMap: snap.map });
+  }
+
+  let h = rpHead('🔔 Status Changes Report', 'Doctors added today to New / Winback / Falloff / Inactive', maxDate);
+
+  if (baseline) {
+    h += '<div style="' + RP_F + 'background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:12px 16px;font-size:13px;color:#92400e;margin-bottom:16px">' +
+      '<b>Baseline established.</b> This is the first snapshot of every doctor\'s status (data through ' + esc(fmtDate(maxDate)) + '). ' +
+      'From the next data update on, this report lists only the doctors newly added to each category. Current totals are below.</div>';
+  } else {
+    h += '<div style="' + RP_F + 'font-size:12px;color:#64748b;margin-bottom:14px">Additions since the previous snapshot (data through <b>' + esc(baseAsOf) + '</b>).</div>';
+  }
+
+  const byId = {}; docs.forEach(d => byId[d.drId] = d);
+  RP_CATS.forEach(cat => {
+    const inCat = docs.filter(d => cat.test(d));
+    const adds = baseline ? [] : inCat.filter(d => {
+      const prev = baseMap[d.drId] || '';
+      return prev.indexOf(cat.key) < 0;
+    }).sort((a, b) => (rev90[b.drId] || 0) - (rev90[a.drId] || 0));
+
+    h += '<div style="' + RP_F + 'font-size:15px;font-weight:800;color:' + cat.color + ';margin:20px 0 8px">' + cat.label +
+      ' <span style="color:#0f172a">— ' + (baseline ? '' : '<b>' + adds.length + ' added today</b> · ') + inCat.length + ' total</span></div>';
+
+    if (baseline || !adds.length) {
+      h += '<div style="' + RP_F + 'font-size:12px;color:#64748b;font-style:italic">' + (baseline ? 'Baseline day — additions start tomorrow.' : 'No new additions today.') + '</div>';
+      return;
+    }
+    h += '<table cellpadding="0" cellspacing="0" style="' + RP_F + 'width:100%;border-collapse:collapse;background:#fff;border:1px solid #e2e8f0;border-radius:10px">' +
+      '<tr>' + ['Doctor', 'Practice', 'Location', 'Last case', 'Days since', 'Rev (90d)'].map(t =>
+        '<th style="text-align:left;padding:8px 12px;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:#64748b;border-bottom:1px solid #e2e8f0">' + t + '</th>').join('') + '</tr>';
+    adds.forEach(d => {
+      h += '<tr>' +
+        '<td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;font-size:12.5px;font-weight:700;color:#0f172a">' + esc(d.name) + '</td>' +
+        '<td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;font-size:12.5px">' + esc(d.practice || '—') + '</td>' +
+        '<td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;font-size:12.5px">' + esc([d.city, d.stateAbbr || d.state].filter(Boolean).join(', ') || '—') + '</td>' +
+        '<td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;font-size:12.5px">' + esc(fmtDate(d.lastDate)) + '</td>' +
+        '<td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;font-size:12.5px">' + (d.daysSinceLast != null && isFinite(d.daysSinceLast) ? d.daysSinceLast + 'd' : '—') + '</td>' +
+        '<td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;font-size:12.5px;font-weight:700;color:#2563eb">' + rpMoneyF(rev90[d.drId] || 0) + '</td></tr>';
+    });
+    h += '</table>';
+  });
+  return h;
+}
+
+function rpBuildAll() {
+  const asOf = isoDate(getMaxDate() || new Date());
+  return {
+    asOf,
+    reports: [
+      { key: 'doctors',  subject: '📋 Daily Customer Report',   html: rpBuildDoctorReport() },
+      { key: 'products', subject: '📦 Daily Product Report',    html: rpBuildProductReport() },
+      { key: 'status',   subject: '🔔 Status Changes Report',   html: rpBuildStatusReport() }
+    ]
+  };
+}
+
+function rpLog(msg, cls) {
+  const el = document.getElementById('rpLog');
+  if (!el) return;
+  el.style.display = '';
+  el.innerHTML += (cls ? '<span class="' + cls + '">' + esc(msg) + '</span>' : esc(msg)) + '\n';
+  el.scrollTop = el.scrollHeight;
+}
+
+async function rpPost(action) {
+  const cfg = sbCfg();
+  const url = (document.getElementById('rpUrl').value || '').trim();
+  const token = (document.getElementById('rpToken').value || '').trim();
+  const recipients = (document.getElementById('rpRcpt').value || '').trim();
+  sbSaveCfgObj({ url, token, rcpt: recipients });
+  if (!url) { rpLog('✗ Enter the Apps Script URL first', 'err'); return; }
+  if (!recipients) { rpLog('✗ Enter at least one recipient email', 'err'); return; }
+  const goA = document.getElementById('rpPush'), goB = document.getElementById('rpSend');
+  goA.disabled = goB.disabled = true;
+  try {
+    rpLog(action === 'sendNow' ? 'Building reports and sending now…' : 'Building and pushing tonight\'s reports…');
+    const built = rpBuildAll();
+    const body = JSON.stringify({ action, k: token, recipients, asOf: built.asOf, reports: built.reports });
+    rpLog('  3 reports · ' + Math.round(body.length / 1024) + ' KB payload');
+    const res = await fetch(url + (url.indexOf('?') < 0 ? '?' : '&') + 'k=' + encodeURIComponent(token), {
+      method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body
+    });
+    const reply = (await res.text()).trim();
+    if (!res.ok || reply !== 'ok') throw new Error('Script said: ' + reply);
+    if (action === 'sendNow') {
+      rpLog('✓ Sent to ' + recipients + ' — check the inbox (and spam, the first time).', 'ok');
+      toast('Reports emailed');
+    } else {
+      rpLog('✓ Stored. The nightly trigger will email these to ' + recipients + '. Re-push after each data refresh to keep them current.', 'ok');
+      toast('Reports pushed for tonight');
+    }
+  } catch (e) {
+    rpLog('✗ ' + e.message, 'err');
+    rpLog('  If this is the first run: redeploy the Apps Script with the new code (see the setup notes above), then try again.', 'warn');
+  } finally {
+    goA.disabled = goB.disabled = false;
+  }
+}
+
+function rpPreview(which) {
+  const box = document.getElementById('rpPreview');
+  const html = which === 'doctors' ? rpBuildDoctorReport() : which === 'products' ? rpBuildProductReport() : rpBuildStatusReport();
+  box.innerHTML = html;
+  box.scrollTop = 0;
+}
+
+function rpDownloadAll() {
+  const built = rpBuildAll();
+  const html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Lab Reports ' + built.asOf + '</title></head><body style="background:#f8f9fb;padding:20px">' +
+    built.reports.map(r => r.html).join('<div style="height:34px"></div>') + '</body></html>';
+  const blob = new Blob([html], { type: 'text/html' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'lab-reports-' + built.asOf + '.html';
+  a.click();
+  toast('Reports downloaded as HTML');
+}
+
+function renderReports() {
+  const el = document.getElementById('panel-reports');
+  if (!APP.raw || !APP.raw.length) {
+    el.innerHTML = '<div class="empty-state"><div class="empty-icon">📧</div>Upload data first — reports are built from the live dataset.</div>';
+    return;
+  }
+  const cfg = sbCfg();
+  const maxDate = getMaxDate();
+
+  el.innerHTML = `
+    <div class="section-header">
+      <div>
+        <div class="section-title">📧 Nightly Email Reports</div>
+        <div class="section-sub">Daily Customer, Product, and Status-Changes reports — emailed automatically every night.</div>
+      </div>
+      <div class="section-actions">
+        <button class="btn-text" id="rpDl">⬇ Download reports as HTML</button>
+      </div>
+    </div>
+
+    <div class="info-bar ib"><b>How it works.</b> This tab builds three email-ready reports from the data currently loaded
+      (through <b>${esc(fmtDate(maxDate))}</b>, honoring your Group/State filters): the <b>Customer report</b> and
+      <b>Product report</b> each show daily, weekly, monthly &amp; quarterly trends for revenue, units, remake % and
+      turnaround — total change and % change, overall and per client / per product — and the <b>Status Changes report</b>
+      lists the doctors added that day to New, Winback, Falloff and Inactive. Click <b>Push tonight's reports</b> to store
+      them on your Google Sheet's Apps Script; a nightly trigger emails them to your recipients. Use <b>Send now</b> to
+      email immediately. Push again whenever you load fresh data so the nightly email stays current.</div>
+
+    <div class="card">
+      <div class="sb-card-title"><span class="sb-stepnum">1</span> Delivery setup</div>
+      <div class="sb-hint">Connection is <b>shared with the Salesly Bridge tab</b> — same Apps Script URL and token.
+        <b>One-time redeploy needed:</b> open your Salesly Sheet → Extensions → Apps Script, replace the code with the
+        <code>apps-script-bridge-and-reports.gs</code> file I've provided (it keeps the bridge protocol 100% intact and adds
+        report emailing), set your <code>TOKEN</code>, then Deploy → Manage deployments → Edit → New version → Deploy.
+        Finally run <code>setupNightlyTrigger</code> once from the script editor to schedule the nightly send
+        (default 6 AM — change <code>SEND_HOUR</code> in the script to adjust).</div>
+      <div class="sb-row">
+        <div><label class="sb-label">Apps Script Web App URL</label><input class="sync-input" id="rpUrl" placeholder="https://script.google.com/macros/s/…/exec" value="${esc(cfg.url || '')}"></div>
+        <div><label class="sb-label">Sync token</label><input class="sync-input" id="rpToken" placeholder="token" value="${esc(cfg.token || '')}"></div>
+      </div>
+      <label class="sb-label">Recipients (comma-separated — adjustable any time)</label>
+      <input class="sync-input" id="rpRcpt" placeholder="owner@lab.com, sales@lab.com" value="${esc(cfg.rcpt || '')}">
+    </div>
+
+    <div class="card">
+      <div class="sb-card-title"><span class="sb-stepnum">2</span> Preview</div>
+      <div class="sb-hint">Exactly what lands in the inbox. Per-entity tables are sorted by biggest revenue swing; long lists are capped per period (the caps are noted in each section).</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn-text" id="rpPrevDoc">📋 Customer report</button>
+        <button class="btn-text" id="rpPrevProd">📦 Product report</button>
+        <button class="btn-text" id="rpPrevStat">🔔 Status changes</button>
+      </div>
+      <div class="rp-preview" id="rpPreview"></div>
+    </div>
+
+    <div class="card">
+      <div class="sb-card-title"><span class="sb-stepnum">3</span> Push &amp; send</div>
+      <button class="sb-btn-primary" id="rpPush">🌙 Push tonight's reports</button>
+      <button class="btn-text" id="rpSend" style="margin-left:8px">✉️ Send now</button>
+      <div class="sb-log" id="rpLog" style="display:none"></div>
+    </div>`;
+
+  document.getElementById('rpDl').onclick = rpDownloadAll;
+  document.getElementById('rpPrevDoc').onclick = () => rpPreview('doctors');
+  document.getElementById('rpPrevProd').onclick = () => rpPreview('products');
+  document.getElementById('rpPrevStat').onclick = () => rpPreview('status');
+  document.getElementById('rpPush').onclick = () => rpPost('saveReports');
+  document.getElementById('rpSend').onclick = () => rpPost('sendNow');
+  ['rpUrl', 'rpToken', 'rpRcpt'].forEach(id => document.getElementById(id).addEventListener('change', () => {
+    sbSaveCfgObj({ url: document.getElementById('rpUrl').value.trim(), token: document.getElementById('rpToken').value.trim(), rcpt: document.getElementById('rpRcpt').value.trim() });
+  }));
+}
+
 
 const STATE_PATHS = {"AK":"M93,575L96,573L97,573L99,571L103,571L103,574L105,573L103,575L99,578L98,579L96,580L97,579L97,577L95,580L93,575ZM44,547L46,548L50,547L51,549L51,551L48,552L44,549L44,547ZM51,505L59,501L64,500L66,500L65,503L65,504L69,504L71,505L73,503L74,504L72,501L70,498L71,498L71,500L73,502L73,502L72,500L73,498L70,497L67,496L66,492L63,488L61,487L59,484L61,483L62,481L64,481L67,481L70,479L72,475L75,471L78,471L82,468L83,468L84,469L87,468L89,465L93,466L91,468L92,469L94,466L95,469L99,468L101,469L101,470L103,471L102,472L104,472L109,471L114,473L119,473L120,473L123,474L126,472L132,474L133,474L147,547L149,547L151,547L152,546L155,545L155,547L157,548L157,549L162,552L164,555L166,552L167,552L167,548L169,546L172,547L173,549L174,549L176,552L178,552L181,554L182,556L190,562L190,564L191,564L192,566L193,565L197,566L199,567L200,567L201,569L203,573L202,576L201,578L200,578L198,575L199,574L198,572L198,575L195,575L194,574L193,574L192,571L191,572L189,570L190,568L188,565L186,564L183,563L182,560L178,557L176,557L171,551L173,555L175,558L173,557L171,557L169,554L169,555L170,557L168,559L162,556L160,554L153,552L154,551L153,549L151,551L149,551L146,550L141,550L135,552L135,550L132,550L132,548L131,550L129,549L125,551L126,549L128,548L127,547L126,547L124,545L122,546L121,547L119,547L120,545L119,545L118,547L119,548L120,550L120,552L121,553L119,554L114,554L114,557L113,557L111,559L110,557L109,560L107,560L106,561L105,560L105,559L107,558L109,556L107,557L105,556L107,552L107,550L107,549L111,546L112,547L113,546L112,544L109,544L108,546L106,546L103,550L104,551L102,553L102,554L100,557L98,558L96,560L96,562L98,562L100,564L98,566L96,567L96,569L92,571L91,573L90,572L89,574L88,574L86,576L87,577L86,578L84,578L83,580L82,579L80,582L78,582L77,583L79,584L77,586L71,586L67,589L66,588L64,590L63,589L64,588L63,588L61,591L60,591L56,592L53,594L50,594L49,595L47,595L46,593L49,592L52,591L53,591L54,592L55,590L57,590L60,587L62,585L66,585L67,586L69,586L67,585L69,583L71,581L75,579L76,579L76,578L78,576L81,573L82,566L84,564L84,563L80,565L78,563L78,562L77,564L77,566L76,566L75,563L73,562L72,563L71,562L71,561L67,563L65,564L64,563L65,561L64,558L66,557L64,551L63,552L58,553L57,553L57,551L55,549L53,547L54,545L54,541L53,542L52,540L53,539L51,538L53,537L52,536L53,536L54,534L57,530L59,527L61,526L63,528L64,528L67,525L70,525L71,525L73,523L73,519L72,517L73,517L74,516L73,514L68,517L61,515L59,516L55,514L55,512L54,509L56,509L52,507L51,505ZM34,518L36,517L38,518L39,518L40,520L42,521L45,522L44,523L42,523L41,524L39,521L37,519L35,520L34,518ZM185,573L186,571L185,570L187,570L189,571L190,572L193,575L194,576L196,580L193,580L194,579L192,579L190,578L191,580L193,580L192,581L190,580L189,578L188,577L189,576L186,574L185,573ZM180,567L182,566L182,565L185,564L189,567L186,569L184,569L184,569L184,572L183,572L180,567ZM175,556L176,557L178,557L180,559L179,560L181,563L180,566L178,565L179,563L175,556ZM174,565L175,563L177,563L180,568L181,573L176,568L175,565L174,565ZM169,561L169,560L172,558L175,559L177,563L176,563L174,562L174,565L171,564L169,561Z","AL":"M642,384L642,384L666,382L689,380L702,427L704,429L705,432L707,434L708,436L707,439L710,440L707,443L707,446L706,450L707,453L708,455L709,457L708,463L708,465L710,466L711,469L694,471L682,472L661,474L660,477L662,480L665,481L665,482L665,485L666,486L665,487L664,490L658,492L655,492L659,491L659,490L656,488L656,485L655,482L653,482L652,486L652,490L649,489L646,489L642,455L642,444L643,413L644,386L642,384Z","AR":"M523,355L550,355L565,354L586,353L604,352L604,354L605,354L605,357L603,359L600,364L612,363L614,365L611,366L613,367L611,369L608,369L609,371L610,372L608,373L609,374L607,374L608,376L606,376L605,378L607,378L605,381L607,382L607,383L605,384L605,386L603,386L603,387L604,389L601,391L600,389L601,392L599,393L599,391L598,393L600,394L598,396L599,397L598,399L599,400L595,402L596,403L594,404L594,407L593,406L592,408L594,408L593,409L590,411L591,412L590,413L592,415L589,415L590,418L589,417L587,418L589,420L588,420L588,422L588,423L589,425L591,423L589,425L591,430L589,431L590,432L589,433L569,434L535,435L535,423L532,422L531,423L530,422L529,423L526,421L527,393L527,381L523,355Z","AZ":"M145,407L149,407L151,404L150,401L147,400L147,399L148,395L147,394L148,392L150,391L152,389L153,386L154,386L154,380L156,379L157,377L160,376L163,374L160,370L158,363L157,362L156,359L157,354L159,353L159,349L158,345L159,342L159,341L159,338L160,336L159,335L160,331L163,331L167,331L168,335L170,335L173,331L176,313L203,318L223,322L239,324L239,324L265,328L259,365L251,424L247,456L229,454L208,450L172,429L142,412L143,409L145,407Z","CA":"M33,160L46,164L62,168L84,175L100,179L89,224L85,241L83,246L132,319L157,356L156,359L157,362L158,363L160,370L163,374L160,376L157,377L156,379L154,380L154,386L153,386L152,389L150,391L148,392L147,394L148,395L147,399L147,400L150,401L151,404L149,407L145,407L99,402L100,400L99,398L98,398L99,394L99,388L97,382L95,379L93,379L92,376L90,374L88,371L86,370L85,371L82,369L83,367L82,362L78,361L76,362L70,357L69,354L67,351L65,349L62,349L59,348L57,346L55,345L49,344L49,342L46,340L48,338L48,337L49,335L48,333L50,330L50,328L48,327L46,325L47,321L47,320L45,319L43,315L42,313L41,311L40,308L40,305L39,304L37,300L36,298L35,296L35,292L36,289L37,290L38,289L40,286L39,283L38,281L35,281L34,279L31,274L33,271L32,268L32,267L33,263L33,261L35,261L35,266L36,267L38,270L39,265L38,263L36,262L37,259L36,257L39,256L39,255L38,253L36,254L35,256L36,257L34,258L34,260L33,260L32,257L31,257L29,255L28,253L26,253L28,250L28,248L27,247L27,243L24,240L23,236L21,232L20,229L22,227L21,222L21,219L24,216L24,209L22,202L20,201L18,197L19,196L19,193L21,190L27,184L28,182L28,179L29,177L31,173L32,170L32,166L30,164L32,162L33,160Z","CO":"M277,237L286,238L301,240L333,244L348,245L371,247L395,249L394,272L391,327L390,341L349,338L315,334L303,333L303,333L279,330L265,328L268,302L268,299L271,280L277,237Z","CT":"M871,184L882,182L899,178L901,186L902,191L902,193L900,193L893,197L891,198L887,198L885,199L885,198L883,201L882,203L878,205L878,206L875,208L874,208L872,206L876,203L874,201L871,184Z","DC":"M826,267L827,265L830,267L828,270L828,269L826,267Z","DE":"M845,245L847,242L848,241L851,241L848,247L849,247L849,249L852,252L853,252L854,255L855,258L856,259L857,261L860,263L861,263L864,270L853,273L846,248L845,245Z","FL":"M794,604L795,602L800,598L804,599L805,600L802,602L802,601L796,604L794,604ZM711,469L712,471L713,474L714,475L748,473L766,471L766,475L767,476L770,476L770,471L769,469L769,466L770,465L775,466L781,466L781,468L782,471L783,476L787,486L790,491L795,500L801,508L805,511L806,514L805,515L805,517L807,522L812,529L815,537L820,544L822,549L823,554L823,565L824,571L824,575L823,573L822,574L821,580L822,581L821,583L822,583L824,578L824,580L822,587L818,592L816,593L819,589L820,586L818,586L814,588L812,587L811,589L807,590L805,588L805,585L804,582L801,578L799,578L798,576L797,576L793,574L792,575L789,571L788,566L785,563L782,561L781,563L780,559L781,559L781,555L780,554L780,552L779,553L780,556L778,557L773,551L769,546L766,543L767,541L771,533L771,532L769,532L770,534L768,533L768,531L765,530L764,532L766,532L767,534L767,537L765,537L762,533L762,530L761,526L762,527L763,526L764,521L764,517L763,515L761,512L762,510L760,508L759,505L755,505L754,506L753,503L751,503L750,500L746,498L745,495L743,494L740,491L739,490L734,488L732,487L730,488L727,487L726,490L726,492L724,492L723,492L716,497L716,496L714,498L712,498L714,500L718,498L719,498L714,501L710,499L707,500L706,496L706,495L707,499L708,498L708,497L706,494L704,493L702,491L700,491L696,488L689,486L686,486L681,486L675,487L671,488L668,489L664,490L665,487L666,486L665,485L665,482L665,481L662,480L660,477L661,474L682,472L694,471L711,469Z","GA":"M689,380L726,375L735,374L735,375L733,377L732,379L732,382L735,383L737,385L738,385L741,385L742,387L744,389L744,391L747,394L748,396L753,398L755,400L756,402L759,403L762,406L762,408L764,409L764,410L765,411L766,412L769,413L771,414L771,416L773,418L774,423L777,424L779,426L779,426L781,430L780,431L781,433L784,433L787,435L787,436L784,440L783,442L783,445L782,447L781,451L781,454L780,456L780,459L778,460L780,461L780,465L778,466L775,466L770,465L769,466L769,469L770,471L770,476L767,476L766,475L766,471L748,473L714,475L713,474L712,471L711,470L710,466L708,465L708,463L709,457L708,455L707,453L706,450L707,446L707,443L710,440L707,439L708,436L707,434L705,432L704,429L702,427L689,380Z","HI":"M305,584L306,584L308,582L310,579L310,578L309,575L309,573L310,573L315,576L318,576L322,578L326,582L326,584L328,584L328,587L332,589L332,590L329,593L325,595L322,595L320,597L317,598L316,599L315,602L314,603L313,602L309,600L308,599L309,594L308,590L308,590L307,588L305,584ZM292,558L292,556L294,555L296,559L300,557L306,561L307,562L305,564L299,566L297,565L297,561L295,561L293,560L292,558ZM279,554L280,551L288,552L291,553L289,555L288,555L283,554L279,554ZM258,543L261,543L264,540L265,540L267,544L267,546L270,547L271,549L270,550L268,550L266,549L262,549L261,548L258,543ZM226,533L227,530L231,528L235,529L237,530L236,532L236,534L233,536L230,536L229,534L227,534L226,533Z","IA":"M491,195L516,195L534,195L549,194L576,193L577,196L579,199L577,202L578,207L579,207L580,211L582,212L586,212L587,214L587,216L590,218L592,222L596,224L596,226L596,231L594,233L593,236L591,238L589,238L588,239L585,240L582,241L581,245L584,248L584,252L581,255L581,258L577,259L577,261L577,262L577,264L575,265L575,263L572,261L571,260L565,260L545,261L531,262L521,262L502,262L502,260L500,259L501,255L500,252L500,250L499,245L499,242L498,242L498,240L496,240L496,236L497,234L495,232L496,230L494,230L494,227L492,226L493,224L491,221L491,218L490,218L489,215L488,213L488,212L489,210L490,208L490,206L491,204L490,202L489,202L488,200L489,198L488,197L488,195L491,195Z","ID":"M171,102L170,100L171,98L171,96L170,94L171,92L178,59L184,36L198,39L193,62L196,67L197,69L197,71L196,72L197,74L195,74L198,77L198,78L201,80L202,82L203,85L204,87L205,88L205,90L207,92L207,94L208,93L209,94L209,96L213,96L212,101L211,102L209,106L208,106L209,108L208,109L209,111L209,114L207,113L206,115L206,117L205,118L205,120L207,120L208,123L210,121L212,121L215,118L217,121L216,123L217,123L217,124L217,127L218,131L219,132L220,134L220,136L219,137L219,139L221,141L222,140L224,142L225,147L225,149L227,152L228,149L233,150L235,151L235,149L237,148L239,150L243,150L244,151L246,150L250,151L249,150L250,148L252,147L253,148L254,151L255,153L256,154L250,193L247,210L229,207L228,206L200,202L181,198L160,193L149,191L158,150L160,146L160,144L162,143L161,141L159,140L158,140L157,137L158,135L160,134L162,130L164,129L167,126L167,124L169,122L171,118L176,112L175,109L172,107L171,102Z","IL":"M576,265L577,264L577,262L577,261L577,259L581,258L581,255L584,252L584,248L581,245L582,241L585,240L588,239L589,238L591,238L593,236L594,233L596,231L596,226L596,224L592,222L590,218L587,216L587,215L618,214L634,212L634,217L635,219L637,222L639,227L640,230L643,258L644,273L645,284L644,286L645,287L643,288L645,290L645,292L646,293L646,295L647,297L647,298L645,300L645,303L643,305L642,309L640,308L639,310L640,312L639,314L639,316L638,317L639,320L637,323L638,325L639,326L639,327L636,328L634,329L632,330L632,332L634,335L633,337L632,337L624,334L623,334L621,338L620,340L619,338L619,340L617,339L617,338L614,333L615,332L615,330L613,328L614,326L613,324L612,324L609,321L607,320L606,321L602,316L600,315L598,313L597,312L598,309L600,303L599,301L601,298L598,297L595,296L593,298L591,297L590,294L591,294L590,290L588,288L584,286L583,284L578,280L578,278L577,276L577,275L576,273L575,268L576,265Z","IN":"M640,230L642,231L645,231L647,231L652,228L669,226L686,224L688,247L693,284L691,286L693,287L692,289L694,289L694,292L691,292L688,295L685,294L683,294L683,295L684,298L682,300L681,301L680,304L679,305L677,305L676,308L676,312L674,313L673,312L672,312L670,311L669,309L666,312L666,314L662,315L661,313L657,316L656,318L655,319L651,316L648,317L647,315L647,318L646,319L645,317L643,318L641,317L642,319L639,320L638,317L639,316L639,314L640,312L639,310L640,308L642,309L643,305L645,303L645,300L647,298L647,297L646,295L646,293L645,292L645,290L643,288L645,287L644,286L645,284L644,273L643,258L640,230Z","KS":"M394,272L405,273L422,273L443,274L465,275L480,275L495,275L510,275L512,277L515,278L516,278L517,279L517,281L516,281L514,286L517,289L517,289L517,291L519,293L520,294L523,294L522,295L523,326L523,344L507,344L489,344L472,344L459,344L433,343L402,341L390,341L391,327L394,272Z","KY":"M621,340L620,339L621,338L623,334L624,334L632,337L633,337L634,335L632,332L632,330L634,329L636,328L639,327L639,326L638,325L637,323L639,320L642,319L641,317L643,318L645,317L646,319L647,318L647,315L648,317L651,316L655,319L656,318L657,316L661,313L662,315L666,314L666,312L669,309L670,311L672,312L673,312L674,313L676,312L676,308L677,305L679,305L680,304L681,301L682,300L684,298L683,295L683,294L685,294L688,295L691,292L694,292L694,289L692,289L693,287L691,286L694,283L696,285L699,283L699,285L701,285L703,288L704,290L706,290L708,290L710,290L712,292L714,293L715,291L716,291L719,291L721,292L723,292L725,289L727,288L728,292L731,292L733,294L734,298L734,299L734,302L736,304L736,306L738,307L740,309L741,311L744,312L744,313L747,313L741,320L738,322L735,325L735,326L733,328L733,330L730,332L729,334L724,337L722,337L720,339L704,341L692,341L687,342L681,343L672,343L667,344L658,345L645,346L645,345L641,345L642,348L641,350L619,351L617,351L617,349L618,348L620,349L621,347L620,346L622,345L621,344L622,340L621,340Z","LA":"M535,435L569,434L589,433L589,435L590,435L590,434L591,434L591,436L590,437L590,439L592,439L590,441L591,443L593,442L592,443L593,444L591,444L591,445L593,446L594,448L595,448L593,450L590,451L590,453L593,453L592,455L590,457L590,458L589,459L587,460L587,461L589,461L586,463L586,465L585,464L585,466L586,466L584,467L585,470L583,470L585,473L582,473L583,475L583,476L584,478L583,479L606,478L619,477L618,485L619,487L621,489L622,492L622,493L624,495L621,498L619,499L619,501L621,501L622,503L624,502L624,500L626,498L628,498L627,499L628,501L630,499L631,501L629,502L631,502L628,503L630,505L628,504L627,507L625,506L625,507L623,508L624,509L623,510L624,511L625,511L626,513L630,513L632,515L632,514L634,516L635,518L634,522L633,521L632,520L629,524L631,519L629,519L627,517L624,516L620,515L613,521L610,516L608,515L607,517L605,517L605,518L601,523L598,520L595,520L592,519L590,517L592,516L595,518L594,516L592,514L590,515L590,513L590,513L588,514L586,512L586,510L584,510L584,508L582,508L579,509L580,506L579,506L574,508L573,508L575,511L571,513L565,512L558,509L554,508L548,508L542,509L541,510L539,507L540,506L541,504L543,502L543,500L543,497L542,496L543,493L542,490L544,487L546,484L546,482L545,480L546,480L545,476L544,477L544,474L543,473L543,472L542,469L540,467L540,465L540,463L538,460L535,458L535,435Z","MA":"M871,168L892,163L903,161L904,159L904,158L906,157L906,156L909,155L911,159L913,159L914,158L913,160L911,162L911,163L909,166L910,169L912,167L914,168L917,171L917,174L919,174L920,177L922,178L925,177L929,175L928,172L927,173L926,170L928,171L930,174L931,177L926,180L925,180L923,182L920,183L919,180L918,179L918,182L915,183L915,185L913,186L912,183L911,183L908,181L907,178L906,179L905,176L899,178L899,178L882,182L871,184L871,183L871,168Z","MD":"M782,257L798,254L816,251L825,249L845,245L846,248L853,273L864,270L863,279L863,280L856,283L855,284L853,284L852,285L851,282L852,280L850,281L850,280L851,279L850,278L850,275L849,278L848,276L848,279L846,279L841,274L843,274L842,271L846,271L840,268L841,266L842,266L841,264L839,266L839,262L840,263L841,263L842,260L840,260L839,259L840,255L842,253L843,249L841,250L842,252L839,254L838,252L838,254L837,254L838,257L836,259L833,258L835,259L837,260L838,263L837,264L837,265L836,269L837,270L838,274L841,277L840,279L843,282L844,284L841,283L838,281L835,282L833,279L834,281L831,280L830,278L827,280L825,278L826,276L828,272L828,270L830,267L827,265L826,267L823,266L822,265L819,265L818,264L819,262L817,260L813,260L813,258L811,256L811,254L808,255L806,253L805,253L803,255L802,255L800,258L797,259L794,257L792,262L790,261L789,263L788,264L787,266L784,269L782,257Z","ME":"M910,150L908,149L907,147L905,145L904,144L903,140L901,135L895,114L891,102L892,101L893,102L895,103L895,101L894,99L895,98L897,99L895,96L897,92L899,90L898,89L900,86L900,85L898,83L899,80L898,80L898,76L900,74L899,67L906,48L909,48L910,51L912,52L917,49L920,48L920,46L923,46L926,48L928,49L930,50L937,74L937,75L939,80L940,79L942,81L945,80L946,82L945,83L946,84L946,87L948,89L949,90L950,88L952,88L955,92L956,93L957,95L955,99L954,100L953,99L951,100L952,101L951,103L950,103L951,104L950,106L949,104L947,105L947,104L946,107L944,108L944,110L943,109L941,110L941,113L940,114L939,114L937,112L939,110L937,110L935,111L937,115L936,117L937,118L937,120L936,118L934,116L935,115L933,114L932,114L931,110L930,112L929,113L930,114L929,116L929,120L930,123L929,123L928,125L926,126L926,124L924,128L923,127L923,129L921,129L921,131L920,132L918,131L917,133L915,134L915,137L913,138L913,140L913,142L911,143L911,146L910,150Z","MI":"M652,228L655,224L657,219L659,216L660,210L660,205L659,198L658,195L656,191L652,184L654,180L653,177L652,175L653,173L655,168L655,163L655,160L657,159L657,155L658,155L659,153L661,154L662,151L664,148L665,148L664,149L665,151L664,156L665,157L666,152L666,155L665,157L666,158L668,153L668,149L667,146L670,143L672,143L674,142L672,141L670,138L673,134L672,134L675,134L675,133L681,135L683,135L685,135L687,138L690,138L692,139L695,140L697,140L699,142L698,142L700,145L701,147L699,146L698,147L699,149L701,150L702,154L702,157L702,162L699,166L699,169L698,171L695,171L694,173L694,177L695,179L699,180L701,177L702,173L703,174L705,171L708,169L710,168L713,169L715,172L716,177L718,181L719,186L720,189L722,191L721,192L721,196L721,200L719,202L718,200L719,199L718,198L716,199L717,201L715,203L716,204L715,207L713,208L712,210L713,213L712,215L710,217L708,220L708,222L693,224L686,225L686,224L669,226L652,228ZM601,92L602,91L607,88L610,86L614,84L610,89L605,91L607,92L603,93L601,92ZM585,123L591,120L594,117L597,116L601,116L603,114L605,112L607,112L608,109L612,106L613,106L615,103L619,101L622,100L624,100L626,101L622,102L623,103L621,104L618,108L618,108L617,111L615,112L615,115L616,117L619,112L620,112L620,113L624,112L628,114L629,116L632,119L633,119L633,121L637,121L638,120L640,121L642,122L642,121L644,121L643,119L645,121L647,118L649,118L652,115L652,116L656,114L662,114L665,112L670,111L669,113L670,118L671,117L673,118L676,117L676,118L678,117L679,116L682,116L683,115L683,117L684,121L683,122L682,123L684,123L686,124L686,125L687,126L690,126L690,124L693,124L695,126L694,128L692,127L691,128L689,127L685,127L681,129L678,127L676,127L675,129L676,131L674,131L671,128L666,127L663,127L661,130L657,131L657,132L655,131L653,131L651,133L650,135L648,137L646,139L645,139L646,136L648,134L647,133L646,135L644,135L643,138L641,138L640,136L639,136L640,138L638,140L634,149L631,153L630,151L631,148L630,146L629,147L627,147L628,144L628,143L628,140L625,138L622,137L623,136L623,135L620,134L618,134L616,133L614,134L612,134L607,131L590,128L588,124L586,124L585,123Z","MN":"M479,71L492,71L511,71L511,62L512,63L514,62L516,64L518,73L518,76L520,77L524,77L525,78L531,79L532,81L536,80L536,79L540,78L544,79L548,80L549,80L548,82L551,82L552,84L553,87L555,87L555,84L558,84L559,86L561,87L563,87L565,90L566,89L566,91L571,90L575,86L577,86L578,89L581,88L581,89L588,88L589,88L590,90L592,91L594,90L596,90L596,91L590,94L582,98L579,99L575,103L573,106L570,109L567,112L565,114L559,119L558,121L557,122L556,122L556,136L556,137L551,139L549,141L549,143L548,144L548,147L549,147L551,150L551,151L550,154L550,158L549,158L550,162L549,166L553,169L554,170L557,170L559,173L562,173L564,175L565,178L568,180L570,182L572,182L575,185L576,187L575,191L576,193L549,194L534,195L516,195L491,195L491,154L490,153L487,152L484,147L485,146L488,144L489,142L489,137L489,131L487,128L486,123L486,118L485,117L485,108L485,106L485,102L483,98L482,92L481,89L481,87L481,85L481,81L481,78L479,71L479,71Z","MO":"M502,262L521,262L531,262L545,261L565,260L571,260L572,261L575,263L575,264L576,265L575,268L576,273L577,275L577,276L578,278L578,280L583,284L584,286L588,288L590,290L591,294L590,294L591,297L593,298L595,296L598,297L601,298L599,301L600,303L598,309L597,312L598,313L600,315L602,316L606,321L607,320L609,321L612,324L613,324L614,326L613,328L615,330L615,332L614,333L617,338L617,339L619,340L619,338L620,340L622,340L621,344L622,345L620,346L621,347L620,349L618,348L617,349L617,351L616,351L616,350L614,350L615,352L615,354L614,356L615,357L612,358L614,360L613,361L612,363L600,364L603,359L605,357L605,354L604,354L604,352L586,353L565,354L550,355L523,355L523,326L522,295L523,294L520,294L519,293L517,291L517,289L517,289L514,286L516,281L517,281L517,279L516,278L515,278L512,277L509,275L508,274L508,272L507,270L505,268L503,265L504,263L502,263L502,262Z","MS":"M589,433L590,432L589,431L591,430L589,425L591,423L589,425L588,423L588,422L588,420L589,420L587,418L589,417L590,418L589,415L592,415L590,413L591,412L590,411L593,409L594,408L592,408L593,406L594,407L594,404L596,403L595,402L599,400L598,399L599,397L598,396L600,394L598,393L599,391L599,393L601,392L600,389L601,391L604,389L603,387L619,386L642,384L644,386L643,413L642,444L642,455L646,489L644,491L642,490L640,491L636,490L633,491L627,494L626,495L624,495L622,493L622,492L621,489L619,487L618,485L619,477L606,478L583,479L584,478L583,476L583,475L582,473L585,473L583,470L585,470L584,467L586,466L585,466L585,464L586,465L586,463L589,461L587,461L587,460L589,459L590,458L590,457L592,455L593,453L590,453L590,451L593,450L595,448L594,448L593,446L591,445L591,444L593,444L592,443L593,442L591,443L590,441L592,439L590,439L590,437L591,436L591,434L590,434L590,435L589,435L589,433Z","MT":"M198,39L210,42L233,46L243,48L265,52L285,55L303,57L326,60L340,62L364,65L377,66L375,88L371,134L369,156L358,155L339,153L339,153L320,151L298,148L289,147L263,143L258,142L256,154L255,153L254,151L253,148L252,147L250,148L249,150L250,151L246,150L244,151L243,150L239,150L237,148L235,149L235,151L233,150L228,149L227,152L225,149L225,147L224,142L222,140L221,141L219,139L219,137L220,136L220,134L219,132L218,131L217,127L217,124L217,123L216,123L217,121L215,118L212,121L210,121L208,123L207,120L205,120L205,118L206,117L206,115L207,113L209,114L209,111L208,109L209,108L208,106L209,106L211,102L212,101L213,96L209,96L209,94L208,93L207,94L207,92L205,90L205,88L204,87L203,85L202,82L201,80L198,78L198,77L195,74L197,74L196,72L197,71L197,69L196,67L193,62L198,39Z","NC":"M756,334L771,332L780,331L794,329L812,326L840,320L842,319L859,316L861,320L864,325L868,332L866,328L864,328L863,324L860,319L859,318L856,317L859,320L862,325L861,325L859,323L858,325L855,323L854,323L857,326L855,327L850,326L853,328L851,329L851,330L849,331L847,330L846,328L845,325L845,328L847,333L850,332L852,331L853,331L856,330L858,329L859,330L859,332L860,337L860,336L860,331L860,330L862,329L863,329L865,332L866,335L865,337L863,338L861,342L860,344L853,345L851,342L853,341L853,341L850,342L852,345L848,345L843,343L844,345L846,345L850,346L853,346L854,347L853,352L850,355L846,353L846,355L850,356L852,354L855,353L855,351L857,353L858,353L857,352L859,352L859,354L857,356L856,360L853,360L856,361L857,358L862,350L863,350L858,357L856,362L856,361L853,361L851,361L847,363L844,365L838,370L836,374L834,377L833,384L832,384L829,383L825,384L823,386L798,368L778,371L777,369L774,365L772,367L772,365L749,367L746,368L742,371L735,374L726,375L713,377L713,371L716,370L717,369L717,366L721,363L726,362L727,361L729,359L730,358L733,356L735,356L736,353L736,352L737,352L738,350L740,348L741,351L742,351L743,349L744,347L747,345L749,346L751,346L752,341L754,340L756,340L755,338L756,337L756,334Z","ND":"M377,66L387,67L404,68L421,69L445,70L469,71L479,71L479,71L481,78L481,81L481,85L481,87L481,89L482,92L483,98L485,102L485,106L485,108L485,117L486,118L486,123L487,128L489,131L489,137L489,140L477,140L460,139L443,139L412,137L392,136L371,134L375,88L377,66Z","NE":"M365,201L391,203L404,204L422,205L434,205L457,206L457,207L463,210L464,212L466,212L467,210L470,210L476,210L478,210L479,212L482,212L487,215L486,216L488,218L491,218L491,221L493,224L492,226L494,227L494,230L496,230L495,232L497,234L496,236L496,240L498,240L498,242L499,242L499,245L500,250L500,252L501,255L500,259L502,261L502,263L504,263L503,265L505,268L507,270L508,272L508,274L510,275L495,275L480,275L465,275L443,274L422,273L405,273L394,272L395,249L382,248L361,247L365,201Z","NH":"M886,111L887,105L888,103L889,104L891,104L891,102L895,114L901,135L903,140L904,144L905,145L907,147L908,149L910,150L909,155L906,156L906,157L904,158L904,159L903,161L884,165L882,163L882,160L883,159L882,158L881,146L881,145L881,143L882,141L882,139L883,136L882,135L883,133L882,129L882,128L885,126L888,122L888,119L886,117L887,113L886,111Z","NJ":"M849,246L850,242L852,240L855,239L855,237L859,232L861,231L856,228L855,226L854,226L853,224L851,223L850,221L852,216L850,214L851,212L853,209L853,206L855,204L862,207L870,209L870,211L869,217L867,218L867,222L869,222L871,222L872,225L872,229L873,237L871,245L870,247L867,251L865,257L864,259L863,259L863,254L860,253L859,254L858,253L855,252L852,250L850,250L850,247L849,246Z","NM":"M265,328L279,330L303,333L303,333L315,334L349,338L372,339L372,351L371,351L370,361L367,408L365,430L363,453L339,451L318,449L295,447L294,449L296,452L279,450L264,448L263,458L247,456L251,424L259,365L265,328Z","NV":"M100,179L122,185L160,193L181,198L198,201L176,311L173,331L170,335L168,335L167,331L163,331L160,331L159,335L160,336L159,338L159,341L159,342L158,345L159,349L159,353L157,354L157,356L132,319L83,246L85,241L89,224L100,179Z","NY":"M768,200L772,196L773,194L776,192L778,189L780,186L778,182L777,182L777,180L776,180L776,179L775,176L782,173L784,172L792,170L796,170L800,172L802,171L806,169L809,169L813,167L814,165L817,162L819,161L819,158L818,155L817,154L819,152L818,151L815,150L815,146L817,145L817,144L820,141L822,138L825,132L829,128L832,124L834,123L837,123L845,121L858,118L858,122L859,122L859,127L861,129L861,132L862,134L861,136L861,140L864,145L864,149L866,148L867,150L870,166L871,168L871,183L871,184L874,201L876,203L872,206L874,208L873,210L873,213L874,211L877,209L877,208L882,208L883,207L889,205L891,204L893,202L895,200L896,199L896,201L897,201L898,201L900,202L903,199L903,199L896,206L890,210L886,213L883,214L881,215L878,217L874,218L872,219L870,219L869,216L870,211L870,209L862,207L855,204L854,203L851,203L850,202L848,200L847,197L845,194L843,195L842,193L841,192L825,196L800,201L783,204L769,206L768,200Z","OH":"M686,225L693,224L708,222L710,222L712,223L715,224L718,225L719,224L723,227L726,227L729,226L733,223L734,224L738,223L740,221L742,218L748,213L750,212L756,209L761,239L759,240L759,241L760,243L761,247L759,252L760,256L758,260L759,261L759,263L758,263L754,269L752,271L750,269L748,271L748,273L746,273L745,275L746,277L745,278L746,281L745,281L744,283L743,280L741,280L740,281L740,284L739,285L739,287L740,290L738,290L738,293L734,295L731,292L728,292L727,288L725,289L723,292L721,292L719,291L716,291L715,291L714,293L712,292L710,290L708,290L706,290L704,290L703,288L701,285L699,285L699,283L696,285L694,283L693,284L688,247L686,225Z","OK":"M372,339L390,341L402,341L433,343L459,344L472,344L489,344L507,344L523,344L523,355L527,381L527,393L526,421L525,420L522,420L521,418L520,418L517,416L516,416L514,414L512,413L511,415L507,415L506,414L501,416L499,415L498,416L495,417L494,418L493,418L492,420L490,418L489,418L488,417L486,416L487,415L485,415L485,416L484,417L483,416L482,416L481,414L479,414L480,415L478,417L477,419L476,419L475,417L476,416L475,414L475,416L473,415L472,417L471,416L471,415L468,414L468,413L467,413L463,416L461,415L462,413L459,412L458,409L458,410L454,409L453,410L452,411L450,409L449,408L447,409L443,407L441,407L439,407L438,404L435,401L435,403L432,402L431,403L429,403L426,399L424,398L426,354L416,353L396,352L372,351L372,339Z","OR":"M71,70L72,70L72,72L74,74L77,74L80,77L80,80L80,84L79,87L80,88L86,91L89,91L94,90L95,90L98,91L103,93L103,95L105,94L108,95L112,94L114,95L118,96L119,95L123,95L127,95L129,94L131,95L134,95L136,96L139,95L171,102L172,107L175,109L176,112L171,118L169,122L167,124L167,126L164,129L162,130L160,134L158,135L157,137L158,140L159,140L161,141L162,143L160,144L160,146L158,150L149,191L122,185L96,178L84,175L62,168L46,164L33,160L31,157L31,153L32,149L34,146L34,145L33,142L33,140L35,137L38,131L43,126L45,121L48,114L50,110L53,103L54,99L55,98L57,92L59,88L61,81L61,79L62,78L62,75L64,74L64,72L64,69L65,71L67,70L68,71L71,70Z","PA":"M756,209L759,207L768,200L769,206L783,204L800,201L825,196L841,192L842,193L843,195L845,194L847,197L848,200L850,202L851,203L854,203L855,204L853,206L853,209L851,212L850,214L852,216L850,221L851,223L853,224L854,226L855,226L856,228L861,231L859,232L855,237L855,239L852,240L851,241L848,241L847,242L845,245L825,249L816,251L798,254L782,257L765,260L756,209Z","RI":"M911,183L912,183L913,186L912,188L910,184L911,187L909,188L910,184L911,183ZM902,193L902,191L901,186L899,178L905,176L906,179L907,178L908,181L910,182L909,184L909,183L907,181L908,186L907,186L908,188L908,191L902,193Z","SC":"M735,374L742,371L746,368L749,367L772,365L772,367L774,365L777,369L778,371L798,368L823,386L820,388L816,392L814,396L813,399L814,404L811,406L811,408L809,408L808,408L806,410L807,411L805,414L803,415L803,417L801,419L797,421L795,423L792,424L793,425L793,427L790,429L788,427L787,428L790,430L789,431L786,433L785,435L784,433L781,433L780,431L781,430L779,426L779,426L777,424L774,423L773,418L771,416L771,414L769,413L766,412L765,411L764,410L764,409L762,408L762,406L759,403L756,402L755,400L753,398L748,396L747,394L744,391L744,389L742,387L741,385L738,385L737,385L735,383L732,382L732,379L733,377L735,375L735,374Z","SD":"M369,156L369,156L371,134L392,136L412,137L443,139L460,139L477,140L489,140L489,142L488,144L485,146L484,147L487,152L490,153L491,154L491,195L488,195L488,197L489,198L488,200L489,202L490,202L491,204L490,206L490,208L489,210L488,212L488,213L489,215L490,217L490,218L488,218L486,216L487,215L482,212L479,212L478,210L476,210L470,210L467,210L466,212L464,212L463,210L457,207L457,206L434,205L422,205L404,204L391,203L365,201L369,156Z","TN":"M612,363L613,361L614,360L612,358L615,357L614,356L615,354L615,353L616,351L619,351L641,350L642,348L641,345L645,345L645,346L658,345L667,344L672,343L681,343L687,342L692,341L704,341L720,339L720,339L727,338L751,335L751,334L756,333L755,335L755,338L756,340L754,340L752,341L751,346L749,346L747,345L744,347L743,349L742,351L741,351L740,348L738,350L737,352L736,352L736,353L735,356L733,356L730,358L729,359L727,361L726,362L721,363L717,366L717,369L716,370L713,371L713,377L693,379L666,382L642,384L642,384L619,386L603,387L603,386L605,386L605,384L607,383L607,382L605,381L607,378L605,378L606,376L608,376L607,374L609,374L608,373L610,372L609,371L608,369L611,369L613,367L611,366L614,365L612,363Z","TX":"M372,351L396,352L416,353L426,354L424,398L426,399L429,403L431,403L432,402L435,403L435,401L438,404L439,407L441,407L443,407L447,409L449,408L450,409L452,411L453,410L454,409L458,410L458,409L459,412L462,413L461,415L463,416L467,413L468,413L468,414L471,415L471,416L472,417L473,415L475,416L475,414L476,416L475,417L476,419L477,419L478,417L480,415L479,414L481,414L482,416L483,416L484,417L485,416L485,415L487,415L486,416L488,417L489,418L490,418L492,420L493,418L494,418L495,417L498,416L499,415L501,416L506,414L507,415L511,415L512,413L514,414L516,416L517,416L520,418L521,418L522,420L525,420L526,421L529,423L530,422L531,423L532,422L535,423L535,458L538,460L540,463L540,465L540,467L542,469L543,472L543,473L544,474L544,477L545,476L546,480L545,480L546,482L546,484L544,487L542,490L543,493L542,496L543,497L543,500L543,502L541,504L540,506L539,507L541,511L537,511L535,511L525,516L523,518L522,517L527,513L522,514L523,512L524,509L521,509L520,511L518,511L517,514L520,515L520,519L519,520L516,523L515,522L515,524L518,522L522,518L523,519L517,523L510,530L509,530L502,534L496,537L492,539L489,542L485,544L480,548L478,551L475,555L472,562L470,566L470,570L470,574L472,580L473,587L474,592L472,582L470,576L470,569L470,564L472,560L475,554L476,551L478,550L480,546L483,545L486,542L489,541L489,540L486,542L484,542L484,540L482,540L482,544L479,546L477,545L474,547L475,548L477,547L477,549L474,553L473,552L469,552L468,553L470,553L470,555L473,556L471,559L469,564L467,565L467,563L465,566L467,566L469,566L469,572L468,576L469,583L470,583L472,588L471,589L471,592L474,593L474,595L472,595L470,596L470,598L467,597L464,593L461,593L454,593L452,592L447,589L445,588L443,588L440,585L439,585L437,584L434,584L435,582L433,581L433,577L431,574L429,572L428,570L428,567L428,565L427,564L428,559L427,558L425,556L423,555L422,554L420,552L419,548L418,548L416,544L414,543L412,541L411,538L410,534L408,532L408,530L407,527L406,526L405,522L403,520L403,519L399,516L398,513L394,511L393,509L392,508L391,506L390,506L386,506L383,505L378,505L377,503L373,503L372,505L370,504L366,505L366,507L364,510L363,514L362,514L361,517L359,517L357,520L357,522L353,521L351,520L348,517L345,516L343,514L340,513L337,511L335,508L334,508L330,504L330,501L328,498L327,495L328,492L327,489L325,487L325,483L323,482L323,480L321,478L316,475L316,475L313,472L312,470L309,468L306,463L304,462L302,460L299,454L297,453L295,451L294,449L295,447L318,449L339,451L363,453L365,430L367,408L370,361L371,351L372,351Z","UT":"M198,201L200,202L228,206L229,207L247,210L244,232L253,234L277,237L271,280L268,299L268,302L265,328L239,324L239,324L223,322L203,318L176,313L176,311L198,201Z","VA":"M855,284L856,283L863,280L861,284L860,285L858,288L859,292L857,298L856,299L857,301L856,303L855,304L853,301L852,299L853,292L854,289L856,286L854,285L855,284ZM747,313L747,315L750,319L751,319L753,320L755,320L758,318L758,316L761,318L763,317L767,315L768,315L767,313L769,314L773,310L774,312L777,309L776,308L778,306L776,305L777,302L780,297L781,295L780,294L784,287L784,283L786,283L787,285L790,286L792,283L793,277L794,275L797,277L797,274L799,273L803,266L802,264L803,262L803,259L813,265L814,260L817,260L819,262L818,264L819,265L822,265L823,266L825,266L828,269L828,272L827,274L825,275L825,279L826,281L828,280L830,279L830,281L832,283L834,283L838,283L840,285L846,287L845,289L846,293L845,294L843,293L842,294L840,291L838,290L835,288L834,288L836,289L838,291L840,292L842,295L846,295L846,296L847,296L848,299L848,300L845,299L845,300L847,302L844,303L846,303L849,305L849,307L847,309L846,307L843,306L842,304L840,305L838,304L837,305L839,305L841,306L841,304L843,308L846,309L846,310L849,310L849,308L853,309L855,308L859,316L842,319L840,320L812,326L794,329L780,331L771,332L756,334L756,333L751,334L751,335L727,338L720,339L722,337L724,337L729,334L730,332L733,330L733,328L735,326L735,325L738,322L741,320L747,313Z","VT":"M858,118L865,116L874,114L886,111L887,113L886,117L888,119L888,122L885,126L882,128L882,129L883,133L882,135L883,136L882,139L882,141L881,143L881,145L881,146L882,158L883,159L882,160L882,163L884,165L871,168L870,166L867,150L866,148L864,149L864,145L861,140L861,136L862,134L861,132L861,129L859,127L859,122L858,122L858,118Z","WA":"M91,21L93,21L96,20L98,22L97,22L97,24L96,27L92,24L91,21ZM184,36L178,59L171,92L170,94L171,96L171,98L170,100L171,102L139,95L136,96L134,95L131,95L129,94L127,95L123,95L119,95L118,96L114,95L112,94L108,95L105,94L103,95L103,93L98,91L95,90L94,90L89,91L86,91L80,88L79,87L80,84L80,80L80,77L77,74L74,74L72,72L72,70L69,70L69,69L66,69L64,67L63,68L64,65L66,60L66,61L65,66L66,66L66,63L68,63L67,60L70,59L69,58L67,59L66,57L66,54L67,55L71,54L69,52L69,51L67,51L67,53L66,53L67,50L67,45L67,43L67,39L68,34L67,32L66,30L65,28L66,23L68,21L67,19L70,20L72,23L74,24L77,27L81,28L82,29L85,30L87,31L89,31L90,33L92,33L92,36L93,35L93,33L95,33L94,35L95,34L95,36L94,36L95,38L92,41L91,42L92,40L91,40L90,42L85,46L84,48L86,49L88,48L85,48L85,48L88,44L92,43L92,42L95,40L96,38L97,39L96,43L95,46L94,47L92,52L89,55L88,51L88,55L89,56L91,55L93,52L94,53L96,52L96,47L97,46L97,45L98,43L98,42L102,38L100,35L101,33L98,34L99,32L101,31L100,29L100,27L98,28L98,25L101,27L101,25L102,24L102,23L102,21L99,19L100,18L99,15L100,14L115,19L140,25L153,29L166,32L184,36Z","WI":"M560,121L563,121L568,120L573,117L573,117L576,115L578,115L580,116L578,119L578,120L577,123L578,123L580,122L580,120L583,122L585,123L586,124L588,124L590,128L607,131L612,134L614,134L616,133L618,134L620,134L623,135L623,136L622,137L625,138L628,140L628,143L628,144L627,147L629,147L630,146L631,148L630,151L632,153L632,156L629,157L629,158L627,162L626,166L628,166L628,165L631,163L633,159L636,157L638,153L638,151L640,150L640,149L642,148L641,149L641,152L640,153L639,155L639,157L638,159L637,162L635,165L635,170L635,174L633,176L632,181L633,185L632,188L632,190L631,192L631,195L632,199L632,201L633,205L634,206L634,210L634,212L618,214L587,215L586,212L582,212L580,211L579,207L578,207L577,202L579,199L577,196L576,191L575,191L576,187L575,185L572,182L570,182L568,180L565,178L564,175L562,173L559,173L557,170L554,170L553,169L549,166L550,162L549,158L550,158L550,154L551,151L551,150L549,147L548,147L548,144L549,143L549,141L551,139L556,137L556,136L556,122L557,122L558,121L559,120L560,121Z","WV":"M733,295L734,295L738,293L738,290L740,290L739,287L739,285L740,284L740,281L741,280L743,280L744,283L745,281L746,281L745,278L746,277L745,275L746,273L748,273L748,271L750,269L752,271L754,269L758,263L759,263L759,261L758,260L760,256L759,252L761,247L760,243L759,241L759,240L761,239L765,260L782,257L784,269L787,266L788,264L789,263L790,261L792,262L794,257L797,259L800,258L802,255L803,255L805,253L806,253L808,255L811,254L811,256L813,258L814,261L813,265L803,259L803,262L802,264L803,266L799,273L797,274L797,277L794,275L793,277L792,283L790,286L787,285L786,283L784,283L784,287L780,294L781,295L780,297L777,302L776,305L778,306L776,308L777,309L774,312L773,310L769,314L767,313L768,315L767,315L763,317L761,318L758,316L758,318L755,320L753,320L751,319L750,319L747,315L748,314L744,313L744,312L741,311L740,309L738,307L736,306L736,304L734,302L734,299L734,298L733,295Z","WY":"M369,156L367,175L361,247L348,245L333,244L301,240L286,238L269,236L253,234L244,232L249,198L250,193L256,154L258,142L263,143L289,147L298,148L320,151L339,153L339,153L358,155L369,156Z"};
 const STATE_LABEL_POS = {"AK":[152,540],"AL":[675,457],"AR":[590,396],"AZ":[169,370],"CA":[145,340],"CO":[324,289],"CT":[850,230],"DC":[810,325],"DE":[825,310],"FL":[745,510],"GA":[751,431],"HI":[261,567],"IA":[540,231],"ID":[285,260],"IL":[611,287],"IN":[659,297],"KS":[486,297],"KY":[681,316],"LA":[570,460],"MA":[862,210],"MD":[790,315],"ME":[925,103],"MI":[640,240],"MN":[540,114],"MO":[575,310],"MS":[600,440],"MT":[330,175],"NC":[819,346],"ND":[455,104],"NE":[477,237],"NH":[855,195],"NJ":[830,280],"NM":[309,396],"NV":[152,285],"NY":[800,215],"OH":[732,263],"OK":[469,401],"OR":[99,113],"PA":[832,218],"RI":[865,240],"SC":[776,404],"SD":[461,190],"TN":[668,360],"TX":[460,450],"UT":[232,266],"VA":[770,340],"VT":[838,185],"WA":[200,160],"WI":[600,158],"WV":[769,281],"WY":[304,186]};
