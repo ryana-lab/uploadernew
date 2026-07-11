@@ -777,7 +777,7 @@ html, body {
         <div class="brand-mark">L</div>
         <div class="brand-text">
           Lab Sales Dashboard
-          <span class="brand-sub">Sales · Production · Practice Operations <span style="opacity:.6;font-size:9px;margin-left:6px">v2026.07.10-BRIDGE+REPORTS</span></span>
+          <span class="brand-sub">Sales · Production · Practice Operations <span style="opacity:.6;font-size:9px;margin-left:6px">v2026.07.11-BIZDAYS</span></span>
         </div>
       </div>
       <div class="brand-divider"></div>
@@ -5893,22 +5893,27 @@ function drawMapTable(stateData) {
 
 /* ═══════════════════════════════════════════════════════════════
    TAB: SALESLY LAB BRIDGE
-   Ported from the standalone Lab → Salesly Bridge tool. Instead of its
-   own CSV upload, this tab feeds LIVE from the same engine as the
-   Current / New / Winback / Falloff / Inactive tab: every practice's
-   status is rolled up from its doctors' engagement statuses
-   (computeDoctorStatus), using the same thresholds and the same
-   winback window, scoped by the same Group + State filters.
+   Feeds LIVE from the Current / New / Winback / Falloff / Inactive
+   tab — the SAME doctors, the SAME segment rules, the SAME totals:
+     Active   = engagement status 'current'
+     New      = engagement status 'new'
+     Winback  = isWinbackSegment (45+ day gap, returned within the
+                winback window set on the Status tab)
+     Falloff  = engagement status 'falloff'
+     Inactive = engagement status 'inactive'
+   Rows are doctors; on sync they're grouped into their practice
+   offices for Salesly, with one 📊 LAB status line per doctor.
    Config + geocode cache reuse the standalone bridge's localStorage
    keys, so an existing setup carries over automatically.
    ═══════════════════════════════════════════════════════════════ */
 
 const SB_CFG_KEY = 'labbridge_cfg';
 const SB_GEO_KEY = 'labbridge_geo';
-const SB_STATUSES = ['New Doctor', 'Winback', 'Active', 'Falloff', 'Inactive'];
+const SB_STATUSES = ['Active', 'New Doctor', 'Winback', 'Falloff', 'Inactive'];
 const SB_PILL = { 'Active': 'sb-p-active', 'New Doctor': 'sb-p-new', 'Winback': 'sb-p-winback', 'Falloff': 'sb-p-falloff', 'Inactive': 'sb-p-inactive' };
 const SB_LAB_MARK = '📊 LAB:';
-const BRIDGE = { pracs: null, stop: false, wanted: null };
+const SB_BASE = { current: 'Active', new: 'New Doctor', falloff: 'Falloff', inactive: 'Inactive' };
+const BRIDGE = { data: null, stop: false, wanted: null };
 
 const sbNorm = s => String(s == null ? '' : s).toLowerCase().replace(/\s+/g, ' ').trim();
 const sbUS = d => (!d || !(d instanceof Date) || isNaN(d)) ? '—'
@@ -5954,11 +5959,11 @@ function sbSaveCfgFromInputs() {
 }
 function sbLoadGeo() { try { return JSON.parse(localStorage.getItem(SB_GEO_KEY) || '{}'); } catch (e) { return {}; } }
 function sbSaveGeo(g) { try { localStorage.setItem(SB_GEO_KEY, JSON.stringify(g)); } catch (e) {} }
-function sbGeoKey(p) { return sbNorm(p.addr) + '|' + sbNorm(p.city) + '|' + (p.stAb || ''); }
-function sbGeoQuery(p) {
-  let city = p.city;
+function sbGeoKey(o) { return sbNorm(o.addr) + '|' + sbNorm(o.city) + '|' + (o.stAb || ''); }
+function sbGeoQuery(o) {
+  let city = o.city;
   if (/county$/i.test(sbNorm(city))) city = '';   // "Larimer County" confuses geocoders
-  return [p.addr, city, p.stAb].filter(Boolean).join(', ');
+  return [o.addr, city, o.stAb].filter(Boolean).join(', ');
 }
 
 function sbLog(msg, cls) {
@@ -5969,67 +5974,80 @@ function sbLog(msg, cls) {
   el.scrollTop = el.scrollHeight;
 }
 
-/* Practice roll-up: aggregate every record (Group+State scope, full history —
-   same scoping as the Status tab) into practices, then take each practice's
-   status from its doctors' Status-tab classifications, strongest first:
-   New Doctor → Winback → Active → Falloff → Inactive. */
-function buildBridgePracs() {
+/* Segment membership — EXACTLY the Status tab's rules, so a doctor lands in
+   the same buckets here as there. (The one addition: a doctor whose comeback
+   from their biggest gap is older than the winback window but who is still
+   actively sending — the tab shows them in no segment — is treated as Active
+   here so active clients are never dropped from the CRM push.) */
+function sbSegsOf(d) {
+  const segs = [];
+  const base = SB_BASE[d.status];
+  if (base) segs.push(base);
+  if (d.isWinbackSegment && segs.indexOf('Winback') < 0) segs.push('Winback');
+  if (!segs.length) segs.push('Active');   // engagement 'winback' past the window → still an active client
+  return segs;
+}
+function sbLabelOf(d) {
+  if (d.isWinbackSegment) return 'Winback';
+  return SB_BASE[d.status] || 'Active';
+}
+
+/* Build the doctor rows + per-practice office info the sync needs. */
+function buildBridgeData() {
   const docs = computeDoctorStatus();          // SAME engine as the Status tab
-  const statusById = {};
-  for (const d of docs) statusById[d.drId] = d;
+  // Totals — the same five formulas renderStatus() uses, so the stat boxes
+  // here always equal the Status tab's segment counts exactly.
+  const counts = {
+    'Active':     docs.filter(d => d.status === 'current').length,
+    'New Doctor': docs.filter(d => d.status === 'new').length,
+    'Winback':    docs.filter(d => d.isWinbackSegment).length,
+    'Falloff':    docs.filter(d => d.status === 'falloff').length,
+    'Inactive':   docs.filter(d => d.status === 'inactive').length
+  };
+
   const maxDate = getMaxDate() || new Date();
   const cutoff90 = new Date(maxDate.getTime() - 90 * 864e5);
-
-  const map = new Map();
+  const rev90 = {};
+  const offices = new Map();   // practice contact + geo info for the sync
   for (const r of rawByGroupState()) {
+    if (r.anchorDate && r.anchorDate >= cutoff90) rev90[r.drId] = (rev90[r.drId] || 0) + r.netCost;
     const nameRaw = (r.practice || '').trim();
     if (!nameRaw) continue;
     const key = sbNorm(nameRaw);
-    let p = map.get(key);
-    if (!p) {
-      p = { name: nameRaw, addr: '', city: '', state: '', phone: '', email: '', scan: '',
-            drNames: new Set(), drIds: new Set(), cases: new Set(),
-            first: null, last: null, rev: 0, rev90: 0 };
-      map.set(key, p);
+    let o = offices.get(key);
+    if (!o) {
+      o = { name: nameRaw, addr: '', city: '', state: '', stAb: '', phone: '', email: '', scan: '', drNames: new Set() };
+      offices.set(key, o);
     }
-    if (r.address) p.addr = r.address;
-    if (r.city) p.city = r.city;
-    if (r.stateAbbr || r.state) p.state = r.stateAbbr || r.state;
-    const ph = sbPhone(r.phone); if (ph) p.phone = ph;
-    if (r.email && r.email !== 'nan') p.email = r.email;
+    if (r.address) o.addr = r.address;
+    if (r.city) o.city = r.city;
+    if (r.stateAbbr || r.state) { o.state = r.stateAbbr || r.state; o.stAb = stateAbbr(o.state) || (String(o.state).length === 2 ? String(o.state).toUpperCase() : ''); }
+    const ph = sbPhone(r.phone); if (ph) o.phone = ph;
+    if (r.email && r.email !== 'nan') o.email = r.email;
     const sc = sbScanner(r.scanner);
-    if (sc && sc !== 'None') p.scan = sc; else if (sc === 'None' && !p.scan) p.scan = 'None';
-    if (r.drName) p.drNames.add(r.drName);
-    if (r.drId) p.drIds.add(r.drId);
-    if (r.caseNo) p.cases.add(r.caseNo);
-    p.rev += r.netCost;
-    if (r.anchorDate) {
-      if (!p.first || r.anchorDate < p.first) p.first = r.anchorDate;
-      if (!p.last || r.anchorDate > p.last) p.last = r.anchorDate;
-      if (r.anchorDate >= cutoff90) p.rev90 += r.netCost;
-    }
+    if (sc && sc !== 'None') o.scan = sc; else if (sc === 'None' && !o.scan) o.scan = 'None';
+    if (r.drName) o.drNames.add(r.drName);
   }
+  offices.forEach(o => {
+    const names = Array.from(o.drNames).filter(Boolean);
+    o.drs = names.slice(0, 5).map(n => 'Dr. ' + n).join(', ') + (names.length > 5 ? ' +' + (names.length - 5) + ' more' : '');
+  });
 
-  return Array.from(map.values()).map(p => {
-    let hasNew = false, hasWin = false, hasCur = false, hasFall = false;
-    for (const id of p.drIds) {
-      const d = statusById[id];
-      if (!d) continue;
-      if (d.status === 'new') hasNew = true;
-      if (d.isWinbackSegment) hasWin = true;
-      if (d.status === 'current' || d.status === 'winback') hasCur = true;
-      if (d.status === 'falloff') hasFall = true;
-    }
-    const status = hasNew ? 'New Doctor' : hasWin ? 'Winback' : hasCur ? 'Active' : hasFall ? 'Falloff' : 'Inactive';
-    const names = Array.from(p.drNames).filter(Boolean);
+  const rows = docs.map(d => {
+    const o = offices.get(sbNorm(d.practice || '')) || null;
     return {
-      name: p.name, addr: p.addr, city: p.city, state: p.state,
-      stAb: stateAbbr(p.state) || (String(p.state || '').length === 2 ? String(p.state).toUpperCase() : ''),
-      phone: p.phone, email: p.email, scan: p.scan,
-      drs: names.slice(0, 5).map(n => 'Dr. ' + n).join(', ') + (names.length > 5 ? ' +' + (names.length - 5) + ' more' : ''),
-      first: p.first, last: p.last, cases: p.cases.size, rev: p.rev, rev90: p.rev90, status
+      drId: d.drId, name: d.name, practice: d.practice || '',
+      city: d.city || (o && o.city) || '', stAb: d.stateAbbr || stateAbbr(d.state) || (o && o.stAb) || '',
+      addr: (o && o.addr) || d.address || '', phone: sbPhone(d.phone) || (o && o.phone) || '',
+      email: (d.email && d.email !== 'nan' ? d.email : '') || (o && o.email) || '',
+      scan: (o && o.scan) || '',
+      first: d.firstDate, last: d.lastDate, cases: d.totalCases,
+      rev: d.totalRev, rev90: rev90[d.drId] || 0,
+      label: sbLabelOf(d), segs: sbSegsOf(d)
     };
   });
+
+  return { rows, counts, offices, maxDate };
 }
 
 function renderBridge() {
@@ -6038,10 +6056,8 @@ function renderBridge() {
     el.innerHTML = '<div class="empty-state"><div class="empty-icon">🔗</div>Upload data first — the bridge feeds from the Status tracker.</div>';
     return;
   }
-  BRIDGE.pracs = buildBridgePracs();
-  const counts = {}; SB_STATUSES.forEach(s => counts[s] = 0);
-  BRIDGE.pracs.forEach(p => counts[p.status]++);
-  const maxDate = getMaxDate();
+  BRIDGE.data = buildBridgeData();
+  const { rows, counts, maxDate } = BRIDGE.data;
   const cfg = sbCfg();
   if (!BRIDGE.wanted) { BRIDGE.wanted = {}; SB_STATUSES.forEach(s => BRIDGE.wanted[s] = true); }
 
@@ -6051,27 +6067,34 @@ function renderBridge() {
   ].filter(Boolean).join(' · ');
 
   const order = { 'New Doctor': 0, 'Winback': 1, 'Falloff': 2, 'Active': 3, 'Inactive': 4 };
-  const rows = BRIDGE.pracs.slice().sort((a, b) => (order[a.status] - order[b.status]) || (b.rev90 - a.rev90));
+  const sorted = rows.slice().sort((a, b) => (order[a.label] - order[b.label]) || (b.rev90 - a.rev90));
   const CAP = 400;
-  const shown = rows.slice(0, CAP);
+  const shown = sorted.slice(0, CAP);
+  const statMeta = [
+    { s: 'Active',     lbl: 'Active (Current)', cls: 's-active' },
+    { s: 'New Doctor', lbl: 'New Doctors',      cls: 's-new' },
+    { s: 'Winback',    lbl: 'Winbacks',         cls: 's-winback' },
+    { s: 'Falloff',    lbl: 'Falloff',          cls: 's-falloff' },
+    { s: 'Inactive',   lbl: 'Inactive',         cls: 's-inactive' }
+  ];
 
   el.innerHTML = `
     <div class="section-header">
       <div>
         <div class="section-title">🔗 Salesly Lab Bridge</div>
-        <div class="section-sub">Pushes each practice's engagement status into the reps' Salesly app via your Google Sheet.</div>
+        <div class="section-sub">Pushes each doctor's engagement status into the reps' Salesly app via your Google Sheet.</div>
       </div>
       <div class="section-actions">
         <button class="btn-text" id="sbDl">⬇ Download Master CSV</button>
       </div>
     </div>
 
-    <div class="info-bar ip"><b>Live feed — no upload needed.</b> Statuses come straight from the
-      <b>Current / New / Winback / Falloff / Inactive</b> tab as of <b>${esc(fmtDate(maxDate))}</b>${scopeNote ? ' (' + scopeNote + ')' : ''}.
-      A practice takes its strongest doctor status: New Doctor → Winback → Active → Falloff → Inactive.
-      Thresholds mirror the Status tab — new = first case ≤15d, active = last case ≤20d, falloff = 21–29d,
-      inactive = 30+d, winback = returned from a 45+ day gap within <b>${(STATUS && STATUS.winbackWindow) || 30} days</b>
-      (adjust that window on the Status tab and this tab updates on the next visit).</div>
+    <div class="info-bar ip"><b>Live feed — no upload needed.</b> These are the exact same doctors and segment rules as the
+      <b>Current / New / Winback / Falloff / Inactive</b> tab as of <b>${esc(fmtDate(maxDate))}</b>${scopeNote ? ' (' + scopeNote + ')' : ''} —
+      the five totals below always match that tab. Active = case in the last 20 days, New = first case within 15 days,
+      Falloff = 21–29 days silent, Inactive = 30+ days, Winback = returned from a 45+ day gap within
+      <b>${(STATUS && STATUS.winbackWindow) || 30} days</b> (adjust on the Status tab). A winback doctor can also be Active/New —
+      just like on that tab — and is pushed once, labeled <b>Winback</b>.</div>
 
     <div class="card">
       <div class="sb-card-title"><span class="sb-stepnum">1</span> Connect to Salesly</div>
@@ -6087,31 +6110,31 @@ function renderBridge() {
     </div>
 
     <div class="card">
-      <div class="sb-card-title"><span class="sb-stepnum">2</span> Review practices <span class="text-mut" style="font-weight:500;font-size:12px">(${fmtN(BRIDGE.pracs.length)} total)</span></div>
-      <div class="sb-stats">${SB_STATUSES.map(s => {
-        const cls = s === 'New Doctor' ? 's-new' : s === 'Winback' ? 's-winback' : s === 'Active' ? 's-active' : s === 'Falloff' ? 's-falloff' : 's-inactive';
-        return '<div class="sb-stat ' + cls + '"><b>' + fmtN(counts[s]) + '</b><span>' + esc(s) + '</span></div>';
-      }).join('')}</div>
-      <label class="sb-label">Statuses to push</label>
+      <div class="sb-card-title"><span class="sb-stepnum">2</span> Review doctors <span class="text-mut" style="font-weight:500;font-size:12px">(${fmtN(rows.length)} total)</span></div>
+      <div class="sb-stats">${statMeta.map(m =>
+        '<div class="sb-stat ' + m.cls + '"><b>' + fmtN(counts[m.s]) + '</b><span>' + esc(m.lbl) + '</span></div>').join('')}</div>
+      <div class="sb-hint" style="margin:0 0 10px">These five totals mirror the Status tab exactly (Winback overlaps the others there too, so the boxes can sum to more than the doctor count).</div>
+      <label class="sb-label">Segments to push</label>
       <div class="sb-checkrow" id="sbChecks">${SB_STATUSES.map(s =>
         '<label><input type="checkbox" data-st="' + esc(s) + '"' + (BRIDGE.wanted[s] ? ' checked' : '') + '> ' + esc(s) + '</label>').join('')}</div>
       <div class="card flush" style="border-radius:10px">
         <div class="table-scroll" style="max-height:420px">
           <table class="dtable">
-            <thead><tr><th>Status</th><th>Practice</th><th>City</th><th>ST</th><th>Last case</th><th class="num">90d</th><th class="num">Lifetime</th><th>Scanner</th></tr></thead>
-            <tbody>${shown.map(p =>
-              '<tr><td><span class="sb-pill ' + SB_PILL[p.status] + '">' + esc(p.status) + '</span></td><td>' + esc(p.name) + '</td><td>' + esc(p.city) + '</td><td>' + esc(p.stAb) + '</td><td class="text-num">' + sbUS(p.last) + '</td><td class="num">' + sbMoney(p.rev90) + '</td><td class="num">' + sbMoney(p.rev) + '</td><td>' + esc(p.scan) + '</td></tr>').join('')}</tbody>
+            <thead><tr><th>Status</th><th>Doctor</th><th>Practice</th><th>City</th><th>ST</th><th>Last case</th><th class="num">90d</th><th class="num">Lifetime</th><th>Scanner</th></tr></thead>
+            <tbody>${shown.map(r =>
+              '<tr><td><span class="sb-pill ' + SB_PILL[r.label] + '">' + esc(r.label) + '</span></td><td>' + esc(r.name) + '</td><td>' + esc(r.practice) + '</td><td>' + esc(r.city) + '</td><td>' + esc(r.stAb) + '</td><td class="text-num">' + sbUS(r.last) + '</td><td class="num">' + sbMoney(r.rev90) + '</td><td class="num">' + sbMoney(r.rev) + '</td><td>' + esc(r.scan) + '</td></tr>').join('')}</tbody>
           </table>
         </div>
       </div>
-      ${rows.length > CAP ? '<div class="sb-hint" style="margin:8px 0 0">Showing the top ' + CAP + ' of ' + fmtN(rows.length) + ' practices (sorted by status, then 90-day revenue). The sync and the CSV always include all of them.</div>' : ''}
+      ${sorted.length > CAP ? '<div class="sb-hint" style="margin:8px 0 0">Showing the top ' + CAP + ' of ' + fmtN(sorted.length) + ' doctors (sorted by status, then 90-day revenue). The sync and the CSV always include all of them.</div>' : ''}
     </div>
 
     <div class="card">
       <div class="sb-card-title"><span class="sb-stepnum">3</span> Sync to Salesly</div>
-      <div class="sb-hint">Reads the Sheet, geocodes offices Salesly hasn't seen (cached — already-pinned offices are never re-geocoded),
-        then merges: existing offices get a fresh <b>${SB_LAB_MARK}</b> status line prepended to their notes (rep notes are kept),
-        blanks are filled in, and unseen offices are added. Reps see changes within ~15 seconds.</div>
+      <div class="sb-hint">Groups the selected doctors into their practice offices, reads the Sheet, geocodes offices Salesly
+        hasn't seen (cached — already-pinned offices are never re-geocoded), then merges: existing offices get fresh
+        <b>${SB_LAB_MARK}</b> status lines — one per doctor — prepended to their notes (rep notes are kept), blanks are filled in,
+        and unseen offices are added. Reps see changes within ~15 seconds.</div>
       <button class="sb-btn-primary" id="sbGo">🔄 Sync now</button>
       <button class="btn-text" id="sbStop" style="display:none;margin-left:8px">■ Stop</button>
       <div class="sb-bar" id="sbBarWrap" style="display:none"><div id="sbBar"></div></div>
@@ -6136,11 +6159,11 @@ function renderBridge() {
   document.getElementById('sbDl').onclick = () => {
     const geo = sbLoadGeo();
     const q = v => { v = String(v == null ? '' : v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
-    const head = ['Status', 'Practice', 'Address', 'City', 'State', 'ZIP', 'Latitude', 'Longitude', 'Doctors', 'Phone', 'Email', 'Scanner', 'First case', 'Last case', 'Cases', 'Rev 90d', 'Rev lifetime'];
+    const head = ['Status', 'Doctor', 'Practice', 'Address', 'City', 'State', 'ZIP', 'Latitude', 'Longitude', 'Phone', 'Email', 'Scanner', 'First case', 'Last case', 'Cases', 'Rev 90d', 'Rev lifetime'];
     const lines = [head.join(',')];
-    BRIDGE.pracs.forEach(p => {
-      const g = geo[sbGeoKey(p)] || {};
-      lines.push([p.status, p.name, p.addr, p.city, p.stAb, g.zip || '', g.lat || '', g.lng || '', p.drs, p.phone, p.email, p.scan, sbUS(p.first), sbUS(p.last), p.cases, Math.round(p.rev90), Math.round(p.rev)].map(q).join(','));
+    BRIDGE.data.rows.forEach(r => {
+      const g = geo[sbGeoKey(r)] || {};
+      lines.push([r.label, r.name, r.practice, r.addr, r.city, r.stAb, g.zip || '', g.lat || '', g.lng || '', r.phone, r.email, r.scan, sbUS(r.first), sbUS(r.last), r.cases, Math.round(r.rev90), Math.round(r.rev)].map(q).join(','));
     });
     const blob = new Blob([lines.join('\r\n')], { type: 'text/csv' });
     const a = document.createElement('a');
@@ -6165,10 +6188,10 @@ async function sbSheetGet() {
   return doc;
 }
 
-async function sbGeocodeOne(p) {
+async function sbGeocodeOne(o) {
   const orsEl = document.getElementById('sbOrs');
   const ors = orsEl ? orsEl.value.trim() : '';
-  const qy = sbGeoQuery(p); if (!qy) return null;
+  const qy = sbGeoQuery(o); if (!qy) return null;
   if (ors) {
     try {
       const res = await fetch('https://api.openrouteservice.org/geocode/search?api_key=' + encodeURIComponent(ors) + '&text=' + encodeURIComponent(qy) + '&boundary.country=US&size=1');
@@ -6191,26 +6214,45 @@ async function sbGeocodeOne(p) {
   return null;
 }
 
-function sbStatusLine(p) {
-  return SB_LAB_MARK + ' ' + p.status.toUpperCase() + ' · last case ' + sbUS(p.last) + ' · ' + p.cases + ' cases · ' + sbMoney(p.rev90) + ' last 90d · ' + sbMoney(p.rev) + ' lifetime';
+function sbStatusLine(docRow, label) {
+  return SB_LAB_MARK + ' ' + label.toUpperCase() + ' · Dr. ' + docRow.name + ' · last case ' + sbUS(docRow.last) + ' · ' + docRow.cases + ' cases · ' + sbMoney(docRow.rev90) + ' last 90d · ' + sbMoney(docRow.rev) + ' lifetime';
 }
-function sbMergeNotes(existing, p) {
+function sbMergeNotes(existing, lines) {
   const keep = String(existing || '').split('\n').filter(l => !l.trim().startsWith(SB_LAB_MARK)).join('\n').trim();
-  return sbStatusLine(p) + (keep ? ('\n' + keep) : '');
+  return lines.join('\n') + (keep ? ('\n' + keep) : '');
 }
 
 async function sbSync() {
-  if (!BRIDGE.pracs) { toast('No data loaded yet'); return; }
+  if (!BRIDGE.data) { toast('No data loaded yet'); return; }
   sbSaveCfgFromInputs();
   const wanted = {};
   document.querySelectorAll('#sbChecks [data-st]').forEach(cb => wanted[cb.getAttribute('data-st')] = cb.checked);
-  const push = BRIDGE.pracs.filter(p => wanted[p.status]);
+  const selected = BRIDGE.data.rows.filter(r => r.segs.some(s => wanted[s]));
+  const noPractice = selected.filter(r => !r.practice.trim());
+  // group selected doctors into their practice offices
+  const officeMap = new Map();
+  selected.forEach(r => {
+    const pn = r.practice.trim();
+    if (!pn) return;
+    const key = sbNorm(pn);
+    let o = officeMap.get(key);
+    if (!o) {
+      const info = BRIDGE.data.offices.get(key) || { name: pn, addr: r.addr, city: r.city, stAb: r.stAb, phone: r.phone, email: r.email, scan: r.scan, drs: '' };
+      o = { name: info.name, addr: info.addr || '', city: info.city || '', stAb: info.stAb || '', phone: info.phone || '', email: info.email || '', scan: info.scan || '', drs: info.drs || '', docs: [] };
+      officeMap.set(key, o);
+    }
+    const label = (wanted['Winback'] && r.segs.indexOf('Winback') >= 0) ? 'Winback' : (r.segs.find(s => wanted[s]) || r.label);
+    o.docs.push({ row: r, label });
+  });
+  const push = Array.from(officeMap.values());
+
   const goBtn = document.getElementById('sbGo'), stopBtn = document.getElementById('sbStop');
   const barWrap = document.getElementById('sbBarWrap'), bar = document.getElementById('sbBar');
   goBtn.disabled = true;
   document.getElementById('sbLog').innerHTML = '';
   BRIDGE.stop = false;
   try {
+    sbLog(selected.length + ' doctors selected → ' + push.length + ' practice offices' + (noPractice.length ? ' (' + noPractice.length + ' doctors have no practice name and can\'t be matched to an office — they\'re skipped)' : ''));
     sbLog('Reading the Sheet…');
     const doc = await sbSheetGet();
     const cols = doc.cols.map(c => String(c).trim());
@@ -6230,55 +6272,58 @@ async function sbSync() {
     });
     // geocode plan: cache + already-pinned rows never geocode
     const geo = sbLoadGeo();
-    push.forEach(p => {
-      const i = byNC[sbNorm(p.name) + '|' + sbNorm(p.city)] ?? ((byN[sbNorm(p.name)] >= 0) ? byN[sbNorm(p.name)] : undefined);
-      p._row = (i == null ? -1 : i);
-      if (p._row >= 0) {
-        const r = rows[p._row];
-        if (r[ci.lat] && r[ci.lng]) { geo[sbGeoKey(p)] = { lat: r[ci.lat], lng: r[ci.lng], zip: r[ci.zip] || '' }; }
+    push.forEach(o => {
+      const i = byNC[sbNorm(o.name) + '|' + sbNorm(o.city)] ?? ((byN[sbNorm(o.name)] >= 0) ? byN[sbNorm(o.name)] : undefined);
+      o._row = (i == null ? -1 : i);
+      if (o._row >= 0) {
+        const r = rows[o._row];
+        if (r[ci.lat] && r[ci.lng]) { geo[sbGeoKey(o)] = { lat: r[ci.lat], lng: r[ci.lng], zip: r[ci.zip] || '' }; }
       }
     });
-    const need = push.filter(p => !geo[sbGeoKey(p)] && (p.addr || p.city));
-    sbLog(push.length + ' offices to sync · ' + push.filter(p => p._row >= 0).length + ' already in the Sheet · ' + need.length + ' need geocoding');
+    const need = push.filter(o => !geo[sbGeoKey(o)] && (o.addr || o.city));
+    sbLog(push.length + ' offices to sync · ' + push.filter(o => o._row >= 0).length + ' already in the Sheet · ' + need.length + ' need geocoding');
     if (need.length) {
       const ors = !!document.getElementById('sbOrs').value.trim();
       const delay = ors ? 350 : 1100;
       sbLog('Geocoding via ' + (ors ? 'OpenRouteService' : "OpenStreetMap (~1/sec — you can Stop anytime and finish; the rest just won't have pins yet)"));
       stopBtn.style.display = ''; barWrap.style.display = '';
       let done = 0, found = 0;
-      for (const p of need) {
+      for (const o of need) {
         if (BRIDGE.stop) break;
-        const g = await sbGeocodeOne(p);
-        if (g) { geo[sbGeoKey(p)] = g; found++; if (found % 25 === 0) sbSaveGeo(geo); }
+        const g = await sbGeocodeOne(o);
+        if (g) { geo[sbGeoKey(o)] = g; found++; if (found % 25 === 0) sbSaveGeo(geo); }
         done++;
         bar.style.width = ((done / need.length) * 100).toFixed(1) + '%';
         if (done % 25 === 0) sbLog('  …' + done + '/' + need.length + ' (' + found + ' pinned)');
         await new Promise(r => setTimeout(r, delay));
       }
       sbSaveGeo(geo);
-      sbLog('Geocoded ' + need.filter(p => geo[sbGeoKey(p)]).length + '/' + need.length + (BRIDGE.stop ? ' (stopped early)' : ''), 'ok');
+      sbLog('Geocoded ' + need.filter(o => geo[sbGeoKey(o)]).length + '/' + need.length + (BRIDGE.stop ? ' (stopped early)' : ''), 'ok');
       stopBtn.style.display = 'none';
     }
     // merge
     let updated = 0, added = 0;
     const setIfBlank = (r, c, v) => { if (v && (!r[ci[c]] || String(r[ci[c]]).trim() === '')) r[ci[c]] = v; };
-    push.forEach(p => {
-      const g = geo[sbGeoKey(p)] || {};
-      if (p._row >= 0) {
-        const r = rows[p._row];
-        r[ci.notes] = sbMergeNotes(r[ci.notes], p);
-        setIfBlank(r, 'addr', p.addr); setIfBlank(r, 'city', p.city); setIfBlank(r, 'zip', g.zip);
+    push.forEach(o => {
+      const g = geo[sbGeoKey(o)] || {};
+      const lines = o.docs
+        .slice().sort((a, b) => b.row.rev90 - a.row.rev90)
+        .map(d => sbStatusLine(d.row, d.label));
+      if (o._row >= 0) {
+        const r = rows[o._row];
+        r[ci.notes] = sbMergeNotes(r[ci.notes], lines);
+        setIfBlank(r, 'addr', o.addr); setIfBlank(r, 'city', o.city); setIfBlank(r, 'zip', g.zip);
         setIfBlank(r, 'lat', g.lat); setIfBlank(r, 'lng', g.lng);
-        setIfBlank(r, 'phone', p.phone); setIfBlank(r, 'email', p.email);
-        setIfBlank(r, 'scanner', p.scan); setIfBlank(r, 'drs', p.drs);
+        setIfBlank(r, 'phone', o.phone); setIfBlank(r, 'email', o.email);
+        setIfBlank(r, 'scanner', o.scan); setIfBlank(r, 'drs', o.drs);
         updated++;
       } else {
         const r = new Array(cols.length).fill('');
         r[ci.id] = 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-        r[ci.name] = p.name; r[ci.addr] = p.addr; r[ci.city] = p.city; r[ci.zip] = g.zip || '';
+        r[ci.name] = o.name; r[ci.addr] = o.addr; r[ci.city] = o.city; r[ci.zip] = g.zip || '';
         r[ci.lat] = g.lat || ''; r[ci.lng] = g.lng || '';
-        r[ci.phone] = p.phone; r[ci.email] = p.email; r[ci.scanner] = p.scan; r[ci.drs] = p.drs;
-        r[ci.notes] = sbStatusLine(p);
+        r[ci.phone] = o.phone; r[ci.email] = o.email; r[ci.scanner] = o.scan; r[ci.drs] = o.drs;
+        r[ci.notes] = lines.join('\n');
         rows.push(r); added++;
       }
     });
@@ -6288,8 +6333,8 @@ async function sbSync() {
     const res = await fetch(url + (url.indexOf('?') < 0 ? '?' : '&') + 'k=' + encodeURIComponent(token), { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ cols: cols, rows: rows }) });
     const reply = await res.text();
     if (!res.ok || reply.trim() !== 'ok') throw new Error('Sheet said: ' + reply);
-    const noPin = push.filter(p => !geo[sbGeoKey(p)]).length;
-    sbLog('✓ Done — ' + updated + ' offices updated, ' + added + ' added. Reps will see it within ~15 seconds.' + (noPin ? (' ' + noPin + " still have no pin (run Sync again later to retry, or pin them in the app).") : ''), 'ok');
+    const noPin = push.filter(o => !geo[sbGeoKey(o)]).length;
+    sbLog('✓ Done — ' + updated + ' offices updated, ' + added + ' added, covering ' + selected.length + ' doctors. Reps will see it within ~15 seconds.' + (noPin ? (' ' + noPin + " still have no pin (run Sync again later to retry, or pin them in the app).") : ''), 'ok');
   } catch (e) {
     sbLog('✗ ' + e.message, 'err');
   } finally {
@@ -6299,24 +6344,27 @@ async function sbSync() {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   TAB: NIGHTLY EMAIL REPORTS
-   Builds three email-ready HTML reports from the live dataset:
-     1. Customer (Doctor) Report — D/W/M/Q trends for revenue, units,
-        remake % and turnaround, overall and per client (Δ amount + Δ%)
-     2. Product Report — the same trends per product
-     3. Status Changes — doctors ADDED today to New / Winback /
-        Falloff / Inactive (diffed against yesterday's snapshot)
-   Reports are pushed to the same Apps Script the Salesly Bridge uses;
-   the script stores them and a nightly trigger emails them to the
-   saved recipients. "Send now" emails immediately.
+   TAB: NIGHTLY EMAIL REPORTS  —  BUSINESS DAYS ONLY (Mon–Fri)
+   The lab isn't in office on weekends, so every trend window counts
+   INVOICED BUSINESS DAYS, never calendar days:
+     Daily     = latest invoiced business day vs the one before it
+     Weekly    = last 7 invoiced business days  vs the prior 7
+     Monthly   = last 30 invoiced business days vs the prior 30
+     Quarterly = last 91 invoiced business days vs the prior 91
+   Weekend-dated cases (rare) are folded into the preceding Friday so
+   nothing is dropped; days with no invoicing (weekends, holidays)
+   don't exist on the axis at all.
+   Three reports: Customer (per-client trends), Product (per-product
+   trends), and Status Changes (doctors ADDED today to New / Winback /
+   Falloff / Inactive, diffed against yesterday's snapshot).
    ═══════════════════════════════════════════════════════════════ */
 
 const RP_SNAP_KEY = 'labreports_status_snap';
 const RP_PERIODS = [
-  { key: 'daily',     label: 'Daily',     cur: [0, 0],   prev: [1, 1],     cap: 40 },
-  { key: 'weekly',    label: 'Weekly',    cur: [0, 6],   prev: [7, 13],    cap: 50 },
-  { key: 'monthly',   label: 'Monthly',   cur: [0, 29],  prev: [30, 59],   cap: 60 },
-  { key: 'quarterly', label: 'Quarterly', cur: [0, 90],  prev: [91, 181],  cap: 60 }
+  { key: 'daily',     label: 'Daily',     n: 1,  cur: [0, 0],   prev: [1, 1],     cap: 40 },
+  { key: 'weekly',    label: 'Weekly',    n: 7,  cur: [0, 6],   prev: [7, 13],    cap: 50 },
+  { key: 'monthly',   label: 'Monthly',   n: 30, cur: [0, 29],  prev: [30, 59],   cap: 60 },
+  { key: 'quarterly', label: 'Quarterly', n: 91, cur: [0, 90],  prev: [91, 181],  cap: 60 }
 ];
 
 function rpNewBucket() { return { rev: 0, units: 0, rows: 0, remakes: 0, tatSum: 0, tatN: 0 }; }
@@ -6336,20 +6384,45 @@ function rpMetrics(b) {
   };
 }
 
-/* Bucket the Group/State-scoped records by day-offset from the dataset's max
-   date, overall and per entity (doctor or product). Returns
-   { overall: {period:{cur,prev}}, entities: Map(key → {label, sub, periods}) }. */
-function rpAggregate(entityOf) {
+/* Business-day machinery.
+   The day axis is built from the days that actually have invoices, Mon–Fri
+   only ("invoiced business days"): weekend-dated cases are FOLDED into the
+   preceding Friday (nothing is dropped), and days with no invoicing at all
+   (weekends, holidays, closures) simply don't exist on the axis — so
+   "last 7 days" is literally the last 7 invoiced business days. */
+function rpBizFoldDay(d) {
+  const dow = d.getDay();
+  const shift = dow === 6 ? 1 : dow === 0 ? 2 : 0;   // Sat→Fri, Sun→Fri
+  return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate() - shift);
+}
+function rpBizContext() {
   const maxDate = getMaxDate() || new Date();
-  const maxDay = Date.UTC(maxDate.getFullYear(), maxDate.getMonth(), maxDate.getDate());
+  const daySet = new Set();
+  for (const r of rawByGroupState()) {
+    if (r.anchorDate) daySet.add(rpBizFoldDay(r.anchorDate));
+  }
+  const days = Array.from(daySet).sort((a, b) => b - a);   // newest first
+  const map = {};
+  days.forEach((day, i) => { if (i <= 181) map[day] = i; });
+  let maxBiz = maxDate;
+  if (days.length) {
+    const t = new Date(days[0]);
+    maxBiz = new Date(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate());
+  }
+  return { maxBiz, map, maxDate, bizDays: days.length };
+}
+
+/* Bucket the Group/State-scoped records by INVOICED-business-day offset,
+   overall and per entity (doctor or product). */
+function rpAggregate(entityOf) {
+  const biz = rpBizContext();
   const mk = () => { const o = {}; RP_PERIODS.forEach(p => o[p.key] = { cur: rpNewBucket(), prev: rpNewBucket() }); return o; };
   const overall = mk();
   const entities = new Map();
   for (const r of rawByGroupState()) {
     if (!r.anchorDate) continue;
-    const day = Date.UTC(r.anchorDate.getFullYear(), r.anchorDate.getMonth(), r.anchorDate.getDate());
-    const off = Math.round((maxDay - day) / 864e5);
-    if (off < 0 || off > 181) continue;
+    const off = biz.map[rpBizFoldDay(r.anchorDate)];   // weekend cases count with the preceding Friday
+    if (off == null) continue;              // older than the deepest window
     let ent = null;
     const e = entityOf(r);
     if (e && e.key) {
@@ -6361,7 +6434,7 @@ function rpAggregate(entityOf) {
       if (off >= p.prev[0] && off <= p.prev[1]) { rpAdd(overall[p.key].prev, r); if (ent) rpAdd(ent.periods[p.key].prev, r); }
     }
   }
-  return { overall, entities, maxDate };
+  return { overall, entities, maxDate: biz.maxDate, maxBiz: biz.maxBiz };
 }
 
 /* ── email-HTML helpers (inline styles only — email-client safe) ── */
@@ -6404,7 +6477,11 @@ function rpHead(title, sub, maxDate) {
     '<div style="font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#93c5fd;font-weight:700">Lab Sales Dashboard — Nightly Report</div>' +
     '<div style="font-size:22px;font-weight:800;margin:4px 0 2px">' + title + '</div>' +
     '<div style="font-size:12px;color:#cbd5e1">' + sub + ' · Data through <b style="color:#fff">' + esc(fmtDate(maxDate)) + '</b>' +
-    (scope ? ' · ' + esc(scope) : '') + ' · Generated ' + esc(new Date().toLocaleString()) + '</div></div>';
+    (scope ? ' · ' + esc(scope) : '') + ' · <b style="color:#fff">Invoiced business days only (Mon–Fri)</b> · Generated ' + esc(new Date().toLocaleString()) + '</div></div>';
+}
+function rpWindowNote(p) {
+  if (p.key === 'daily') return 'latest invoiced business day vs the one before';
+  return 'last ' + p.n + ' invoiced business days vs prior ' + p.n;
 }
 function rpSummaryTable(overall) {
   const rows = [
@@ -6421,11 +6498,6 @@ function rpSummaryTable(overall) {
       RP_PERIODS.map(p => '<td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;font-size:13px">' + rpCell(rpMetrics(overall[p.key].cur), rpMetrics(overall[p.key].prev), r.m) + '</td>').join('') + '</tr>';
   });
   return h + '</table>';
-}
-function rpWindowNote(p) {
-  const d = n => n === 0 ? 'today' : n + 'd';
-  if (p.key === 'daily') return 'vs prior day';
-  return 'last ' + (p.cur[1] + 1) + 'd vs prior ' + (p.cur[1] + 1) + 'd';
 }
 function rpEntitySection(p, entities, entityNoun) {
   const list = [];
@@ -6466,7 +6538,8 @@ function rpBuildProductReport() {
   return h;
 }
 
-/* ── Status Changes report — daily ADDITIONS to each category ── */
+/* ── Status Changes report — daily ADDITIONS to each category.
+      Categories use the SAME rules as the Status tab (and the Bridge). ── */
 const RP_CATS = [
   { key: 'n', label: '🌱 New Doctors',  color: '#2563eb', test: d => d.status === 'new' },
   { key: 'w', label: '🔄 Winbacks',     color: '#7c3aed', test: d => d.isWinbackSegment },
@@ -6517,7 +6590,6 @@ function rpBuildStatusReport() {
     h += '<div style="' + RP_F + 'font-size:12px;color:#64748b;margin-bottom:14px">Additions since the previous snapshot (data through <b>' + esc(baseAsOf) + '</b>).</div>';
   }
 
-  const byId = {}; docs.forEach(d => byId[d.drId] = d);
   RP_CATS.forEach(cat => {
     const inCat = docs.filter(d => cat.test(d));
     const adds = baseline ? [] : inCat.filter(d => {
@@ -6630,7 +6702,7 @@ function renderReports() {
     return;
   }
   const cfg = sbCfg();
-  const maxDate = getMaxDate();
+  const biz = rpBizContext();
 
   el.innerHTML = `
     <div class="section-header">
@@ -6643,13 +6715,14 @@ function renderReports() {
       </div>
     </div>
 
-    <div class="info-bar ib"><b>How it works.</b> This tab builds three email-ready reports from the data currently loaded
-      (through <b>${esc(fmtDate(maxDate))}</b>, honoring your Group/State filters): the <b>Customer report</b> and
-      <b>Product report</b> each show daily, weekly, monthly &amp; quarterly trends for revenue, units, remake % and
-      turnaround — total change and % change, overall and per client / per product — and the <b>Status Changes report</b>
-      lists the doctors added that day to New, Winback, Falloff and Inactive. Click <b>Push tonight's reports</b> to store
-      them on your Google Sheet's Apps Script; a nightly trigger emails them to your recipients. Use <b>Send now</b> to
-      email immediately. Push again whenever you load fresh data so the nightly email stays current.</div>
+    <div class="info-bar ib"><b>Business days only (Mon–Fri).</b> All trend windows count <b>invoiced business days</b>,
+      never calendar days: Daily = latest invoiced business day (<b>${esc(fmtDate(biz.maxBiz))}</b>) vs the one before,
+      Weekly = last 7 invoiced business days vs the prior 7, Monthly = last 30 vs the prior 30, Quarterly = last 91 vs the prior 91.
+      Weekend-dated cases are counted with the preceding Friday, and days with no invoicing (weekends, holidays) are skipped entirely. The <b>Customer</b> and <b>Product</b> reports show those trends for revenue,
+      units, remake % and turnaround — total change and % change, overall and per client / per product — and the
+      <b>Status Changes report</b> lists doctors added that day to New, Winback, Falloff and Inactive (same rules as the
+      Status tab and the Bridge). Click <b>Push tonight's reports</b> after each data load so the nightly email stays current;
+      <b>Send now</b> emails immediately.</div>
 
     <div class="card">
       <div class="sb-card-title"><span class="sb-stepnum">1</span> Delivery setup</div>
