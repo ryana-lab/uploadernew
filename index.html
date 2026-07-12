@@ -6030,6 +6030,31 @@ function sbSegsOf(d) {
   if (!segs.length) segs.push('Active');   // engagement 'winback' past the window → still an active client
   return segs;
 }
+function sbStateTable() {
+  if (!BRIDGE.data) return '';
+  const order = ['Active', 'New Doctor', 'Winback', 'Falloff', 'Inactive'];
+  const by = {};
+  const tot = { Active:0, 'New Doctor':0, Winback:0, Falloff:0, Inactive:0, total:0 };
+  BRIDGE.data.rows.forEach(r => {
+    const st = r.stAb || '??';
+    (by[st] = by[st] || { Active:0, 'New Doctor':0, Winback:0, Falloff:0, Inactive:0, total:0 });
+    if (by[st][r.label] != null) { by[st][r.label]++; tot[r.label]++; }
+    by[st].total++; tot.total++;
+  });
+  const states = Object.keys(by).sort((a, b) => by[b].total - by[a].total);
+  const td = 'text-align:right;padding:3px 8px;font-variant-numeric:tabular-nums;';
+  return '<table style="border-collapse:collapse;font-size:11.5px;white-space:nowrap;">' +
+    '<tr><th style="text-align:left;padding:3px 10px 3px 0;color:var(--mut);">State</th>' +
+    order.map(o => '<th style="' + td + 'color:var(--mut);">' + o + '</th>').join('') +
+    '<th style="' + td + 'color:var(--mut);">Total</th></tr>' +
+    states.map(st => '<tr><td style="padding:3px 10px 3px 0;font-weight:700;">' + esc(st) + '</td>' +
+      order.map(o => '<td style="' + td + '">' + by[st][o] + '</td>').join('') +
+      '<td style="' + td + 'font-weight:700;">' + by[st].total + '</td></tr>').join('') +
+    '<tr><td style="padding:3px 10px 3px 0;font-weight:800;border-top:1px solid var(--border);">Total</td>' +
+      order.map(o => '<td style="' + td + 'font-weight:800;border-top:1px solid var(--border);">' + tot[o] + '</td>').join('') +
+      '<td style="' + td + 'font-weight:800;border-top:1px solid var(--border);">' + tot.total + '</td></tr>' +
+    '</table>';
+}
 function sbLabelOf(d) {
   if (d.isWinbackSegment) return 'Winback';
   return SB_BASE[d.status] || 'Active';
@@ -6157,6 +6182,10 @@ function renderBridge() {
       <div class="sb-stats">${statMeta.map(m =>
         '<div class="sb-stat ' + m.cls + '"><b>' + fmtN(counts[m.s]) + '</b><span>' + esc(m.lbl) + '</span></div>').join('')}</div>
       <div class="sb-hint" style="margin:0 0 10px">These five totals mirror the Status tab exactly (Winback overlaps the others there too, so the boxes can sum to more than the doctor count).</div>
+      <div style="margin:2px 0 12px;">
+        <div style="font-size:10px;color:var(--mut);text-transform:uppercase;letter-spacing:.05em;font-weight:700;margin-bottom:4px;">By state — one label per doctor, exactly as written to Salesly. A rep's Lab chips must equal their state's row; an admin's chips equal the Total row.</div>
+        <div style="overflow-x:auto;">${sbStateTable()}</div>
+      </div>
       <label class="sb-label">Segments to push</label>
       <div class="sb-checkrow" id="sbChecks">${SB_STATUSES.map(s =>
         '<label><input type="checkbox" data-st="' + esc(s) + '"' + (BRIDGE.wanted[s] ? ' checked' : '') + '> ' + esc(s) + '</label>').join('')}</div>
@@ -6711,6 +6740,7 @@ async function sbSync() {
       stopBtn.style.display = 'none';
     }
     // merge
+    const touched = new Set();
     let updated = 0, added = 0;
     const setIfBlank = (r, c, v) => { if (v && (!r[ci[c]] || String(r[ci[c]]).trim() === '')) r[ci[c]] = v; };
     push.forEach(o => {
@@ -6719,6 +6749,7 @@ async function sbSync() {
         .slice().sort((a, b) => b.row.rev90 - a.row.rev90)
         .map(d => sbStatusLine(d.row, d.label));
       if (o._row >= 0) {
+        touched.add(o._row);
         const r = rows[o._row];
         r[ci.notes] = sbMergeNotes(r[ci.notes], lines);
         setIfBlank(r, 'addr', o.addr); setIfBlank(r, 'city', o.city); setIfBlank(r, 'zip', g.zip);
@@ -6741,8 +6772,29 @@ async function sbSync() {
         r[ci.phone] = o.phone; r[ci.email] = o.email; r[ci.scanner] = o.scan; r[ci.drs] = o.drs;
         r[ci.notes] = lines.join('\n');
         rows.push(r); byId[String(r[ci.id])] = rows.length - 1; added++;
+        touched.add(rows.length - 1);
       }
     });
+    // ── Reconcile: when ALL five segments are pushed (a full sync), any office
+    // carrying a 📊 LAB line that was NOT touched this run no longer exists in
+    // the dashboard's data — its status line is stale (old practice-level
+    // format, a merged duplicate's leftovers, or a client that dropped off the
+    // report). Strip those lines so the app's chips are an exact 1:1 with the
+    // "By state" table above. Rep notes are kept untouched.
+    const fullSync = SB_STATUSES.every(st => wanted[st]);
+    if (fullSync) {
+      let stale = 0;
+      rows.forEach((r, i) => {
+        if (touched.has(i)) return;
+        const nts = String(r[ci.notes] || '');
+        if (nts.indexOf(SB_LAB_MARK) < 0) return;
+        r[ci.notes] = nts.split('\n').filter(l => !l.trim().startsWith(SB_LAB_MARK)).join('\n').trim();
+        stale++;
+      });
+      if (stale) sbLog(stale + ' offices are no longer in any segment — stale status lines removed (chips now match the table exactly)');
+    } else {
+      sbLog('Partial sync (not all five segments checked) — stale-status cleanup skipped', 'warn');
+    }
     sbLog('Writing back: ' + updated + ' updated, ' + added + ' new…');
     const cfg = sbCfg();
     const url = (cfg.url || '').trim(), token = (cfg.token || '').trim();
