@@ -777,7 +777,7 @@ html, body {
         <div class="brand-mark">L</div>
         <div class="brand-text">
           Lab Sales Dashboard
-          <span class="brand-sub">Sales · Production · Practice Operations <span style="opacity:.6;font-size:9px;margin-left:6px">v2026.07.12-ROSTERS</span></span>
+          <span class="brand-sub">Sales · Production · Practice Operations <span style="opacity:.6;font-size:9px;margin-left:6px">v2026.07.12-SENDFIX</span></span>
         </div>
       </div>
       <div class="brand-divider"></div>
@@ -6709,10 +6709,10 @@ async function sbSync() {
 
 const RP_SNAP_KEY = 'labreports_status_snap';
 const RP_PERIODS = [
-  { key: 'daily',     label: 'Daily',     n: 1,  cur: [0, 0],   prev: [1, 1],     cap: 40 },
-  { key: 'weekly',    label: 'Weekly',    n: 7,  cur: [0, 6],   prev: [7, 13],    cap: 50 },
-  { key: 'monthly',   label: 'Monthly',   n: 30, cur: [0, 29],  prev: [30, 59],   cap: 60 },
-  { key: 'quarterly', label: 'Quarterly', n: 91, cur: [0, 90],  prev: [91, 181],  cap: 60 }
+  { key: 'daily',     label: 'Daily',     n: 1,  cur: [0, 0],   prev: [1, 1],     cap: 25 },
+  { key: 'weekly',    label: 'Weekly',    n: 7,  cur: [0, 6],   prev: [7, 13],    cap: 30 },
+  { key: 'monthly',   label: 'Monthly',   n: 30, cur: [0, 29],  prev: [30, 59],   cap: 40 },
+  { key: 'quarterly', label: 'Quarterly', n: 91, cur: [0, 90],  prev: [91, 181],  cap: 40 }
 ];
 
 function rpNewBucket() { return { rev: 0, units: 0, rows: 0, remakes: 0, tatSum: 0, tatN: 0 }; }
@@ -6953,7 +6953,16 @@ function rpBuildStatusReport() {
     '<tr>' + ['Doctor', 'Practice', 'Location', 'Last case', 'Days since', 'Rev (90d)'].map(t =>
       '<th style="text-align:left;padding:7px 12px;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:#64748b;border-bottom:1px solid #e2e8f0">' + t + '</th>').join('') + '</tr>' +
     list.map(rpDocRow).join('') + '</table>';
-  const ROSTER_CAP = 200;
+  const ROSTER_CAP = 100;
+  const rpRosterRow = d =>
+    '<tr><td style="padding:5px 10px;border-bottom:1px solid #f1f5f9;font-size:12px"><b style="color:#0f172a">' + esc(d.name) + '</b></td>' +
+    '<td style="padding:5px 10px;border-bottom:1px solid #f1f5f9;font-size:12px">' + esc(d.practice || '—') + '</td>' +
+    '<td style="padding:5px 10px;border-bottom:1px solid #f1f5f9;font-size:12px">' + esc(fmtDate(d.lastDate)) + '</td>' +
+    '<td style="padding:5px 10px;border-bottom:1px solid #f1f5f9;font-size:12px;font-weight:700;color:#2563eb">' + rpMoneyF(rev90[d.drId] || 0) + '</td></tr>';
+  const rpRosterTable = list =>
+    '<table cellpadding="0" cellspacing="0" style="' + RP_F + 'width:100%;border-collapse:collapse;background:#fff;border:1px solid #e2e8f0;border-radius:10px">' +
+    '<tr>' + ['Doctor', 'Practice', 'Last case', 'Rev (90d)'].map(t => '<th style="text-align:left;padding:5px 10px;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:#64748b;border-bottom:1px solid #e2e8f0">' + t + '</th>').join('') + '</tr>' +
+    list.map(rpRosterRow).join('') + '</table>';
 
   RP_CATS.forEach(cat => {
     const inCat = docs.filter(d => cat.test(d)).sort((a, b) => (rev90[b.drId] || 0) - (rev90[a.drId] || 0));
@@ -6979,7 +6988,7 @@ function rpBuildStatusReport() {
     const roster = inCat.slice(0, ROSTER_CAP);
     if (roster.length) {
       h += '<div style="' + RP_F + 'font-size:12px;font-weight:700;color:#0f172a;margin:10px 0 4px">Everyone in this category' +
-        (inCat.length > ROSTER_CAP ? ' <span style="font-weight:500;color:#64748b">(top ' + ROSTER_CAP + ' of ' + inCat.length + ' by 90-day revenue — the full list is in the dashboard\'s Bridge master CSV)</span>' : '') + '</div>' + rpDocTable(roster);
+        (inCat.length > ROSTER_CAP ? ' <span style="font-weight:500;color:#64748b">(top ' + ROSTER_CAP + ' of ' + inCat.length + ' by 90-day revenue — the full list is in the dashboard\'s Bridge master CSV)</span>' : '') + '</div>' + rpRosterTable(roster);
     }
   });
   return h;
@@ -7018,13 +7027,23 @@ async function rpPost(action) {
   try {
     rpLog(action === 'sendNow' ? 'Building reports and sending now…' : 'Building and pushing tonight\'s reports…');
     const built = rpBuildAll();
-    const body = JSON.stringify({ action, k: token, recipients, asOf: built.asOf, reports: built.reports });
-    rpLog('  3 reports · ' + Math.round(body.length / 1024) + ' KB payload');
-    const res = await fetch(url + (url.indexOf('?') < 0 ? '?' : '&') + 'k=' + encodeURIComponent(token), {
-      method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body
-    });
-    const reply = (await res.text()).trim();
-    if (!res.ok || reply !== 'ok') throw new Error('Script said: ' + reply);
+    const post = async payload => {
+      const res = await fetch(url + (url.indexOf('?') < 0 ? '?' : '&') + 'k=' + encodeURIComponent(token), {
+        method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payload)
+      });
+      return (await res.text()).trim();
+    };
+    // Step 1 — store the reports (the heavy part).
+    const storeBody = { action: 'saveReports', k: token, recipients, asOf: built.asOf, reports: built.reports };
+    rpLog('  3 reports · ' + Math.round(JSON.stringify(storeBody).length / 1024) + ' KB → storing…');
+    let reply = await post(storeBody);
+    if (reply !== 'ok') throw new Error('Script said: ' + reply);
+    // Step 2 (send now only) — a tiny command; the script emails what it just stored.
+    if (action === 'sendNow') {
+      rpLog('  stored ✓ — telling the script to send…');
+      reply = await post({ action: 'sendNow', k: token, recipients });
+      if (reply !== 'ok') throw new Error('Script said: ' + reply);
+    }
     if (action === 'sendNow') {
       rpLog('✓ Sent to ' + recipients + ' — check the inbox (and spam, the first time).', 'ok');
       toast('Reports emailed');
