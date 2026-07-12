@@ -6035,10 +6035,14 @@ function sbStateTable() {
   const order = ['Active', 'New Doctor', 'Winback', 'Falloff', 'Inactive'];
   const by = {};
   const tot = { Active:0, 'New Doctor':0, Winback:0, Falloff:0, Inactive:0, total:0 };
+  // Mirror the sync's label math exactly: only doctors that fall in a segment
+  // get written, and Winback outranks the rest. These numbers ARE the push.
   BRIDGE.data.rows.forEach(r => {
+    if (!r.segs || !r.segs.length) return;                       // never pushed
+    const lbl = (r.segs.indexOf('Winback') >= 0) ? 'Winback' : (r.segs[0] || r.label);
     const st = r.stAb || '??';
     (by[st] = by[st] || { Active:0, 'New Doctor':0, Winback:0, Falloff:0, Inactive:0, total:0 });
-    if (by[st][r.label] != null) { by[st][r.label]++; tot[r.label]++; }
+    if (by[st][lbl] != null) { by[st][lbl]++; tot[lbl]++; }
     by[st].total++; tot.total++;
   });
   const states = Object.keys(by).sort((a, b) => by[b].total - by[a].total);
@@ -6183,7 +6187,7 @@ function renderBridge() {
         '<div class="sb-stat ' + m.cls + '"><b>' + fmtN(counts[m.s]) + '</b><span>' + esc(m.lbl) + '</span></div>').join('')}</div>
       <div class="sb-hint" style="margin:0 0 10px">These five totals mirror the Status tab exactly (Winback overlaps the others there too, so the boxes can sum to more than the doctor count).</div>
       <div style="margin:2px 0 12px;">
-        <div style="font-size:10px;color:var(--mut);text-transform:uppercase;letter-spacing:.05em;font-weight:700;margin-bottom:4px;">By state — one label per doctor, exactly as written to Salesly. A rep's Lab chips must equal their state's row; an admin's chips equal the Total row.</div>
+        <div style="font-size:10px;color:var(--mut);text-transform:uppercase;letter-spacing:.05em;font-weight:700;margin-bottom:4px;">By state — exactly what a full Sync writes to Salesly (one label per pushed doctor). A rep's Lab chips must equal their state's row; an admin's chips equal the Total row.</div>
         <div style="overflow-x:auto;">${sbStateTable()}</div>
       </div>
       <label class="sb-label">Segments to push</label>
@@ -6237,6 +6241,7 @@ function renderBridge() {
         <b>${SB_LAB_MARK}</b> status lines — one per doctor — prepended to their notes (rep notes are kept), blanks are filled in,
         and unseen offices are added. Reps see changes within ~15 seconds.</div>
       <button class="sb-btn-primary" id="sbGo">🔄 Sync now</button>
+      <button class="sb-btn-primary" id="sbDeep" style="background:#475569" title="One-time cleanup: merges copies onto the app's original pins (original GPS), repairs junk rows, collapses same-name duplicates, backfills missing ZIPs">🧹 Deep clean book</button>
       <button class="btn-text" id="sbStop" style="display:none;margin-left:8px">■ Stop</button>
       <div class="sb-bar" id="sbBarWrap" style="display:none"><div id="sbBar"></div></div>
       <div class="sb-log" id="sbLog" style="display:none"></div>
@@ -6274,6 +6279,7 @@ function renderBridge() {
     toast('Master CSV downloaded');
   };
   document.getElementById('sbGo').onclick = sbSync;
+  const dcb = document.getElementById('sbDeep'); if (dcb) dcb.onclick = sbDeepClean;
   document.getElementById('sbStop').onclick = () => { BRIDGE.stop = true; };
   document.getElementById('sbDupeScan').onclick = sbScanDupes;
   document.getElementById('sbDupeGo').onclick = sbMergeDupes;
@@ -6635,6 +6641,127 @@ async function sbMergeDupes() {
   }
 }
 
+/* ── DEEP CLEAN (safe to re-run) ──
+   Everything the standalone bridge's fixer did, inside the dashboard:
+   Pass 0: remove empty junk rows; give named id-less rows a real id.
+   Pass 1: merge duplicate copies of BUILT-IN offices onto the ORIGINAL pin
+           (an "s<index>" row with the book's own GPS) — notes, status,
+           scanner, visits and flags all carry over; the copy is deleted.
+   Pass 2: collapse remaining same-name+city duplicates — oldest entry wins.
+   Pass 4: backfill missing ZIPs by reverse-geocoding each pin, so the
+           state-scoped Lab chips can place every office. */
+function sbMergeRow(target, dup, ci) {
+  ['phone','email','scanner','lab','drs','hours','visitDay','pricelist','zip','addr'].forEach(c => {
+    if (ci[c] == null) return;
+    if ((!target[ci[c]] || String(target[ci[c]]).trim() === '') && dup[ci[c]]) target[ci[c]] = dup[ci[c]];
+  });
+  ['starterKit','welcomeEmail'].forEach(c => {
+    if (ci[c] == null) return;
+    if (String(dup[ci[c]] || '').toLowerCase().indexOf('yes') >= 0) target[ci[c]] = 'Yes';
+  });
+  const tv = String(target[ci.visited] || '').trim(), dv = String(dup[ci.visited] || '').trim().toLowerCase();
+  if (!tv && (dv.indexOf('yes') >= 0 || dv.indexOf('true') >= 0 || dv === '1')) target[ci.visited] = 'Yes';
+  if ((!target[ci.visits] || !String(target[ci.visits]).trim()) && dup[ci.visits]) target[ci.visits] = dup[ci.visits];
+  const have = {}; const out = [];
+  String(target[ci.notes] || '').split('\n').forEach(l => { const t = l.trim(); if (t && !have[t]) { have[t] = 1; out.push(l); } });
+  String(dup[ci.notes] || '').split('\n').forEach(l => { const t = l.trim(); if (t && !have[t]) { have[t] = 1; out.push(l); } });
+  target[ci.notes] = out.join('\n');
+}
+async function sbZipFor(lat, lng) {
+  const orsEl = document.getElementById('sbOrs');
+  const ors = orsEl ? orsEl.value.trim() : '';
+  if (ors) {
+    try {
+      const res = await fetch('https://api.openrouteservice.org/geocode/reverse?api_key=' + encodeURIComponent(ors) + '&point.lat=' + lat + '&point.lon=' + lng + '&size=1&layers=address');
+      if (res.ok) { const d = await res.json(); const f = d && d.features && d.features[0];
+        if (f && f.properties && f.properties.postalcode) return String(f.properties.postalcode).slice(0, 5); }
+    } catch (e) {}
+    await new Promise(r => setTimeout(r, 150));
+  }
+  try {
+    const res = await fetch('https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=' + lat + '&lon=' + lng + '&zoom=14&addressdetails=1', { headers: { 'Accept': 'application/json' } });
+    if (res.ok) { const d = await res.json(); if (d && d.address && d.address.postcode) return String(d.address.postcode).slice(0, 5); }
+  } catch (e) {}
+  return '';
+}
+async function sbDeepClean() {
+  const btn = document.getElementById('sbDeep'); if (btn) btn.disabled = true;
+  try {
+    sbLog('Deep clean: reading the Sheet…');
+    const doc = await sbSheetGet();
+    const cols = doc.cols.map(c => String(c).trim());
+    const ci = {}; cols.forEach((c, i) => ci[c] = i);
+    ['id','name','addr','city','zip','lat','lng','visited','notes','visits'].forEach(c => { if (ci[c] == null) throw new Error("Sheet missing '" + c + "' column"); });
+    const rows = doc.rows.map(r => { const o = r.slice(); while (o.length < cols.length) o.push(''); return o; });
+    sbLog('Sheet has ' + rows.length + ' rows. Loading the built-in book…');
+    await sbLoadSeed();
+    const byId = {}; rows.forEach((r, i) => { const rid = String(r[ci.id] || '').trim(); if (rid && byId[rid] == null) byId[rid] = i; });
+    const isDel = r => String(r[ci.visited] || '').trim().toLowerCase() === 'deleted';
+    let idFixed = 0, junk = 0, toBook = 0, collapsed = 0;
+    // Pass 0
+    rows.forEach((r, i) => {
+      if (String(r[ci.id] || '').trim() || isDel(r)) return;
+      if (!String(r[ci.name] || '').trim()) { r[ci.visited] = 'DELETED'; junk++; return; }
+      const nid = 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8) + i.toString(36);
+      r[ci.id] = nid; byId[nid] = i; idFixed++;
+    });
+    // Pass 1
+    rows.forEach((r, i) => {
+      const rid = String(r[ci.id] || '').trim();
+      if (!rid || rid[0] === 's' || isDel(r)) return;
+      const idx = sbSeedIdx(r[ci.name], r[ci.city], r[ci.addr], r[ci.zip]);
+      if (idx == null) return;
+      const sid = 's' + idx; let t;
+      if (byId[sid] != null) { t = rows[byId[sid]]; }
+      else {
+        t = new Array(cols.length).fill(''); const so = sbSeed[idx];
+        t[ci.id] = sid; t[ci.name] = String(so[0]); t[ci.addr] = String(so[1]); t[ci.city] = String(so[2]); t[ci.zip] = String(so[3] || '');
+        t[ci.lat] = String(so[4]); t[ci.lng] = String(so[5]);
+        rows.push(t); byId[sid] = rows.length - 1;
+      }
+      sbMergeRow(t, r, ci); r[ci.visited] = 'DELETED'; toBook++;
+    });
+    // Pass 2
+    const firstByKey = {};
+    const pn = x => String(x || '').toLowerCase().replace(/&/g, 'and').replace(/\./g, '').replace(/\s+/g, ' ').trim();
+    rows.forEach((r, i) => {
+      const rid = String(r[ci.id] || '').trim();
+      if (!rid || isDel(r)) return;
+      const k = pn(sbStripGroup(r[ci.name])) + '|' + pn(r[ci.city]); if (k === '|') return;
+      if (firstByKey[k] == null) { firstByKey[k] = i; return; }
+      sbMergeRow(rows[firstByKey[k]], r, ci); r[ci.visited] = 'DELETED'; collapsed++;
+    });
+    sbLog(junk + ' junk rows removed · ' + idFixed + ' ids repaired · ' + toBook + ' copies merged onto ORIGINAL pins · ' + collapsed + ' duplicates collapsed (oldest wins)');
+    // Pass 4
+    const needZip = [];
+    rows.forEach((r, i) => {
+      if (isDel(r) || String(r[ci.zip] || '').trim()) return;
+      if (String(r[ci.lat] || '').trim() && String(r[ci.lng] || '').trim()) needZip.push(i);
+    });
+    let zipped = 0;
+    if (needZip.length) {
+      sbLog(needZip.length + ' offices have a pin but no ZIP — backfilling so state chips can count them…');
+      const orsOn = document.getElementById('sbOrs') && document.getElementById('sbOrs').value.trim();
+      const delay = orsOn ? 150 : 1100;
+      for (let k = 0; k < needZip.length; k++) {
+        const r = rows[needZip[k]];
+        const z = await sbZipFor(r[ci.lat], r[ci.lng]);
+        if (z) { r[ci.zip] = z; zipped++; }
+        if ((k + 1) % 50 === 0) sbLog('  …' + (k + 1) + '/' + needZip.length + ' (' + zipped + ' found)');
+        await new Promise(rz => setTimeout(rz, delay));
+      }
+      sbLog(zipped + ' ZIPs backfilled');
+    }
+    if (!(junk + idFixed + toBook + collapsed + zipped)) { sbLog('Book is already clean.', 'ok'); return; }
+    sbLog('Writing back…');
+    const url = document.getElementById('sbUrl').value.trim(), token = document.getElementById('sbToken').value.trim();
+    const res = await fetch(url + (url.indexOf('?') < 0 ? '?' : '&') + 'k=' + encodeURIComponent(token), { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ cols: cols, rows: rows, noNotify: true }) });
+    const reply = await res.text();
+    if (!res.ok || reply.trim() !== 'ok') throw new Error('Sheet said: ' + reply);
+    sbLog('✓ Deep clean done. Now run 🔄 Sync (all five segments) so fresh statuses land on the cleaned book.', 'ok');
+  } catch (e) { sbLog('✗ ' + e.message, 'err'); }
+  finally { const btn = document.getElementById('sbDeep'); if (btn) btn.disabled = false; }
+}
 async function sbSync() {
   if (!BRIDGE.data) { toast('No data loaded yet'); return; }
   sbSaveCfgFromInputs();
@@ -6798,7 +6925,7 @@ async function sbSync() {
     sbLog('Writing back: ' + updated + ' updated, ' + added + ' new…');
     const cfg = sbCfg();
     const url = (cfg.url || '').trim(), token = (cfg.token || '').trim();
-    const res = await fetch(url + (url.indexOf('?') < 0 ? '?' : '&') + 'k=' + encodeURIComponent(token), { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ cols: cols, rows: rows }) });
+    const res = await fetch(url + (url.indexOf('?') < 0 ? '?' : '&') + 'k=' + encodeURIComponent(token), { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ cols: cols, rows: rows, noNotify: true }) });
     const reply = await res.text();
     if (!res.ok || reply.trim() !== 'ok') throw new Error('Sheet said: ' + reply);
     const noPin = push.filter(o => !geo[sbGeoKey(o)]).length;
