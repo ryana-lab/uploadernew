@@ -777,7 +777,7 @@ html, body {
         <div class="brand-mark">L</div>
         <div class="brand-text">
           Lab Sales Dashboard
-          <span class="brand-sub">Sales · Production · Practice Operations <span style="opacity:.6;font-size:9px;margin-left:6px">v2026.07.12-GEOCODIO</span></span>
+          <span class="brand-sub">Sales · Production · Practice Operations <span style="opacity:.6;font-size:9px;margin-left:6px">v2026.07.12-ROSTERS</span></span>
         </div>
       </div>
       <div class="brand-divider"></div>
@@ -6889,10 +6889,11 @@ function rpBuildProductReport() {
 /* ── Status Changes report — daily ADDITIONS to each category.
       Categories use the SAME rules as the Status tab (and the Bridge). ── */
 const RP_CATS = [
-  { key: 'n', label: '🌱 New Doctors',  color: '#2563eb', test: d => d.status === 'new' },
-  { key: 'w', label: '🔄 Winbacks',     color: '#7c3aed', test: d => d.isWinbackSegment },
-  { key: 'f', label: '⚠️ Falloffs',     color: '#d97706', test: d => d.status === 'falloff' },
-  { key: 'i', label: '💤 Inactives',    color: '#dc2626', test: d => d.status === 'inactive' }
+  { key: 'n', label: '🌱 New Doctors',      color: '#2563eb', test: d => d.status === 'new' },
+  { key: 'w', label: '🔄 Winbacks',         color: '#7c3aed', test: d => d.isWinbackSegment },
+  { key: 'f', label: '⚠️ Falloffs',         color: '#d97706', test: d => d.status === 'falloff' },
+  { key: 'i', label: '💤 Inactives',        color: '#dc2626', test: d => d.status === 'inactive' },
+  { key: 'c', label: '✅ Current (Active)', color: '#059669', test: d => d.status === 'current' }
 ];
 function rpCatCode(d) { return RP_CATS.filter(c => c.test(d)).map(c => c.key).join(''); }
 function rpLoadSnap() { try { return JSON.parse(localStorage.getItem(RP_SNAP_KEY) || 'null'); } catch (e) { return null; } }
@@ -6916,19 +6917,20 @@ function rpBuildStatusReport() {
   // Roll the snapshot: keep a previous copy so re-generating on the same data
   // date stays stable, and only advance when the dataset's max date advances.
   let snap = rpLoadSnap();
-  let baseMap = null, baseAsOf = null, baseline = false;
+  let baseMap = null, baseAsOf = null, baseline = false, baseCats = 'nwfi';
+  const CUR_CATS = RP_CATS.map(c => c.key).join('');
   if (!snap) {
     baseline = true;
-    rpSaveSnap({ asOf, map: curMap, prevAsOf: null, prevMap: null });
+    rpSaveSnap({ asOf, map: curMap, cats: CUR_CATS, prevAsOf: null, prevMap: null, prevCats: null });
   } else if (snap.asOf === asOf) {
-    baseMap = snap.prevMap; baseAsOf = snap.prevAsOf;
+    baseMap = snap.prevMap; baseAsOf = snap.prevAsOf; baseCats = snap.prevCats || 'nwfi';
     if (!baseMap) baseline = true;
   } else {
-    baseMap = snap.map; baseAsOf = snap.asOf;
-    rpSaveSnap({ asOf, map: curMap, prevAsOf: snap.asOf, prevMap: snap.map });
+    baseMap = snap.map; baseAsOf = snap.asOf; baseCats = snap.cats || 'nwfi';
+    rpSaveSnap({ asOf, map: curMap, cats: CUR_CATS, prevAsOf: snap.asOf, prevMap: snap.map, prevCats: snap.cats || 'nwfi' });
   }
 
-  let h = rpHead('🔔 Status Changes Report', 'Doctors added today to New / Winback / Falloff / Inactive', maxDate);
+  let h = rpHead('🔔 Status Changes Report', 'Daily additions + full rosters — New / Winback / Falloff / Inactive / Current', maxDate);
 
   if (baseline) {
     h += '<div style="' + RP_F + 'background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:12px 16px;font-size:13px;color:#92400e;margin-bottom:16px">' +
@@ -6938,33 +6940,47 @@ function rpBuildStatusReport() {
     h += '<div style="' + RP_F + 'font-size:12px;color:#64748b;margin-bottom:14px">Additions since the previous snapshot (data through <b>' + esc(baseAsOf) + '</b>).</div>';
   }
 
+  const rpDocRow = d =>
+    '<tr>' +
+    '<td style="padding:7px 12px;border-bottom:1px solid #f1f5f9;font-size:12.5px;font-weight:700;color:#0f172a">' + esc(d.name) + '</td>' +
+    '<td style="padding:7px 12px;border-bottom:1px solid #f1f5f9;font-size:12.5px">' + esc(d.practice || '—') + '</td>' +
+    '<td style="padding:7px 12px;border-bottom:1px solid #f1f5f9;font-size:12.5px">' + esc([d.city, d.stateAbbr || d.state].filter(Boolean).join(', ') || '—') + '</td>' +
+    '<td style="padding:7px 12px;border-bottom:1px solid #f1f5f9;font-size:12.5px">' + esc(fmtDate(d.lastDate)) + '</td>' +
+    '<td style="padding:7px 12px;border-bottom:1px solid #f1f5f9;font-size:12.5px">' + (d.daysSinceLast != null && isFinite(d.daysSinceLast) ? d.daysSinceLast + 'd' : '—') + '</td>' +
+    '<td style="padding:7px 12px;border-bottom:1px solid #f1f5f9;font-size:12.5px;font-weight:700;color:#2563eb">' + rpMoneyF(rev90[d.drId] || 0) + '</td></tr>';
+  const rpDocTable = list =>
+    '<table cellpadding="0" cellspacing="0" style="' + RP_F + 'width:100%;border-collapse:collapse;background:#fff;border:1px solid #e2e8f0;border-radius:10px">' +
+    '<tr>' + ['Doctor', 'Practice', 'Location', 'Last case', 'Days since', 'Rev (90d)'].map(t =>
+      '<th style="text-align:left;padding:7px 12px;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:#64748b;border-bottom:1px solid #e2e8f0">' + t + '</th>').join('') + '</tr>' +
+    list.map(rpDocRow).join('') + '</table>';
+  const ROSTER_CAP = 200;
+
   RP_CATS.forEach(cat => {
-    const inCat = docs.filter(d => cat.test(d));
-    const adds = baseline ? [] : inCat.filter(d => {
+    const inCat = docs.filter(d => cat.test(d)).sort((a, b) => (rev90[b.drId] || 0) - (rev90[a.drId] || 0));
+    // A category the previous snapshot never tracked (e.g. Current added in an
+    // update) baselines instead of flooding 'added today' with its whole roster.
+    const catBaseline = baseline || baseCats.indexOf(cat.key) < 0;
+    const adds = catBaseline ? [] : inCat.filter(d => {
       const prev = baseMap[d.drId] || '';
       return prev.indexOf(cat.key) < 0;
-    }).sort((a, b) => (rev90[b.drId] || 0) - (rev90[a.drId] || 0));
-
-    h += '<div style="' + RP_F + 'font-size:15px;font-weight:800;color:' + cat.color + ';margin:20px 0 8px">' + cat.label +
-      ' <span style="color:#0f172a">— ' + (baseline ? '' : '<b>' + adds.length + ' added today</b> · ') + inCat.length + ' total</span></div>';
-
-    if (baseline || !adds.length) {
-      h += '<div style="' + RP_F + 'font-size:12px;color:#64748b;font-style:italic">' + (baseline ? 'Baseline day — additions start tomorrow.' : 'No new additions today.') + '</div>';
-      return;
-    }
-    h += '<table cellpadding="0" cellspacing="0" style="' + RP_F + 'width:100%;border-collapse:collapse;background:#fff;border:1px solid #e2e8f0;border-radius:10px">' +
-      '<tr>' + ['Doctor', 'Practice', 'Location', 'Last case', 'Days since', 'Rev (90d)'].map(t =>
-        '<th style="text-align:left;padding:8px 12px;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:#64748b;border-bottom:1px solid #e2e8f0">' + t + '</th>').join('') + '</tr>';
-    adds.forEach(d => {
-      h += '<tr>' +
-        '<td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;font-size:12.5px;font-weight:700;color:#0f172a">' + esc(d.name) + '</td>' +
-        '<td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;font-size:12.5px">' + esc(d.practice || '—') + '</td>' +
-        '<td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;font-size:12.5px">' + esc([d.city, d.stateAbbr || d.state].filter(Boolean).join(', ') || '—') + '</td>' +
-        '<td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;font-size:12.5px">' + esc(fmtDate(d.lastDate)) + '</td>' +
-        '<td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;font-size:12.5px">' + (d.daysSinceLast != null && isFinite(d.daysSinceLast) ? d.daysSinceLast + 'd' : '—') + '</td>' +
-        '<td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;font-size:12.5px;font-weight:700;color:#2563eb">' + rpMoneyF(rev90[d.drId] || 0) + '</td></tr>';
     });
-    h += '</table>';
+
+    h += '<div style="' + RP_F + 'font-size:15px;font-weight:800;color:' + cat.color + ';margin:22px 0 8px">' + cat.label +
+      ' <span style="color:#0f172a">— ' + (catBaseline ? '' : '<b>' + adds.length + ' added today</b> · ') + inCat.length + ' total</span></div>';
+
+    if (catBaseline) {
+      h += '<div style="' + RP_F + 'font-size:12px;color:#64748b;font-style:italic;margin-bottom:6px">Baseline day for this category — additions start tomorrow.</div>';
+    } else if (!adds.length) {
+      h += '<div style="' + RP_F + 'font-size:12px;color:#64748b;font-style:italic;margin-bottom:6px">No new additions today.</div>';
+    } else {
+      h += '<div style="' + RP_F + 'font-size:12px;font-weight:700;color:#0f172a;margin:6px 0 4px">Added today</div>' + rpDocTable(adds);
+    }
+    // Full roster so the team can cater to every doctor currently in this bucket
+    const roster = inCat.slice(0, ROSTER_CAP);
+    if (roster.length) {
+      h += '<div style="' + RP_F + 'font-size:12px;font-weight:700;color:#0f172a;margin:10px 0 4px">Everyone in this category' +
+        (inCat.length > ROSTER_CAP ? ' <span style="font-weight:500;color:#64748b">(top ' + ROSTER_CAP + ' of ' + inCat.length + ' by 90-day revenue — the full list is in the dashboard\'s Bridge master CSV)</span>' : '') + '</div>' + rpDocTable(roster);
+    }
   });
   return h;
 }
