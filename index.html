@@ -777,7 +777,7 @@ html, body {
         <div class="brand-mark">L</div>
         <div class="brand-text">
           Lab Sales Dashboard
-          <span class="brand-sub">Sales · Production · Practice Operations <span style="opacity:.6;font-size:9px;margin-left:6px">v2026.07.13-TOMBSTONE</span></span>
+          <span class="brand-sub">Sales · Production · Practice Operations <span style="opacity:.6;font-size:9px;margin-left:6px">v2026.07.13-REPORTROUTING</span></span>
         </div>
       </div>
       <div class="brand-divider"></div>
@@ -7113,9 +7113,17 @@ async function rpPost(action) {
   const url = (document.getElementById('rpUrl').value || '').trim();
   const token = (document.getElementById('rpToken').value || '').trim();
   const recipients = (document.getElementById('rpRcpt').value || '').trim();
-  sbSaveCfgObj({ url, token, rcpt: recipients });
+  // Per-report overrides (blank = use the default list above).
+  const perReport = {};
+  ['doctors', 'products', 'status'].forEach(k => {
+    const el = document.getElementById('rpRcpt_' + k);
+    const v = el ? el.value.trim() : '';
+    if (v) perReport[k] = v;
+  });
+  sbSaveCfgObj({ url, token, rcpt: recipients, rcptDoctors: (document.getElementById('rpRcpt_doctors')||{}).value||'', rcptProducts: (document.getElementById('rpRcpt_products')||{}).value||'', rcptStatus: (document.getElementById('rpRcpt_status')||{}).value||'' });
   if (!url) { rpLog('✗ Enter the Apps Script URL first', 'err'); return; }
-  if (!recipients) { rpLog('✗ Enter at least one recipient email', 'err'); return; }
+  const anyRcpt = recipients || Object.keys(perReport).length;
+  if (!anyRcpt) { rpLog('✗ Enter a default recipient, or at least one per-report recipient', 'err'); return; }
   const goA = document.getElementById('rpPush'), goB = document.getElementById('rpSend');
   goA.disabled = goB.disabled = true;
   try {
@@ -7128,21 +7136,26 @@ async function rpPost(action) {
       return (await res.text()).trim();
     };
     // Step 1 — store the reports (the heavy part).
-    const storeBody = { action: 'saveReports', k: token, recipients, asOf: built.asOf, reports: built.reports };
+    // Attach the resolved recipient list to each report (per-report override,
+    // else the default). The script emails each report to its own "to".
+    built.reports.forEach(r => { r.to = perReport[r.key] || recipients || ''; });
+    const routed = built.reports.filter(r => r.to);
+    const storeBody = { action: 'saveReports', k: token, recipients, recipientsByReport: perReport, asOf: built.asOf, reports: built.reports };
     rpLog('  3 reports · ' + Math.round(JSON.stringify(storeBody).length / 1024) + ' KB → storing…');
     let reply = await post(storeBody);
     if (reply !== 'ok') throw new Error('Script said: ' + reply);
     // Step 2 (send now only) — a tiny command; the script emails what it just stored.
     if (action === 'sendNow') {
       rpLog('  stored ✓ — telling the script to send…');
-      reply = await post({ action: 'sendNow', k: token, recipients });
+      reply = await post({ action: 'sendNow', k: token, recipients, recipientsByReport: perReport });
       if (reply !== 'ok') throw new Error('Script said: ' + reply);
     }
+    const routeNote = built.reports.map(r => '    • ' + r.subject.replace(/^[^ ]+ /, '') + ' → ' + (r.to || '(no recipient — skipped)')).join('\n');
     if (action === 'sendNow') {
-      rpLog('✓ Sent to ' + recipients + ' — check the inbox (and spam, the first time).', 'ok');
+      rpLog('✓ Sent — routing:\n' + routeNote + '\n(check spam the first time)', 'ok');
       toast('Reports emailed');
     } else {
-      rpLog('✓ Stored. The nightly trigger will email these to ' + recipients + '. Re-push after each data refresh to keep them current.', 'ok');
+      rpLog('✓ Stored for tonight — routing:\n' + routeNote + '\nRe-push after each data refresh to keep them current.', 'ok');
       toast('Reports pushed for tonight');
     }
   } catch (e) {
@@ -7213,8 +7226,15 @@ function renderReports() {
         <div><label class="sb-label">Apps Script Web App URL</label><input class="sync-input" id="rpUrl" placeholder="https://script.google.com/macros/s/…/exec" value="${esc(cfg.url || '')}"></div>
         <div><label class="sb-label">Sync token</label><input class="sync-input" id="rpToken" placeholder="token" value="${esc(cfg.token || '')}"></div>
       </div>
-      <label class="sb-label">Recipients (comma-separated — adjustable any time)</label>
+      <label class="sb-label">Default recipients (comma-separated — used for any report without its own list below)</label>
       <input class="sync-input" id="rpRcpt" placeholder="owner@lab.com, sales@lab.com" value="${esc(cfg.rcpt || '')}">
+      <div class="sb-hint" style="margin:12px 0 4px"><b>Send specific reports to specific people</b> (optional). Leave a box blank to use the default list above.</div>
+      <label class="sb-label">📋 Customer report → </label>
+      <input class="sync-input" id="rpRcpt_doctors" placeholder="e.g. sales-team@lab.com" value="${esc(cfg.rcptDoctors || '')}">
+      <label class="sb-label">📦 Product report → </label>
+      <input class="sync-input" id="rpRcpt_products" placeholder="e.g. production@lab.com" value="${esc(cfg.rcptProducts || '')}">
+      <label class="sb-label">🔔 Status changes → </label>
+      <input class="sync-input" id="rpRcpt_status" placeholder="e.g. owner@lab.com, reps@lab.com" value="${esc(cfg.rcptStatus || '')}">
     </div>
 
     <div class="card">
@@ -7241,9 +7261,10 @@ function renderReports() {
   document.getElementById('rpPrevStat').onclick = () => rpPreview('status');
   document.getElementById('rpPush').onclick = () => rpPost('saveReports');
   document.getElementById('rpSend').onclick = () => rpPost('sendNow');
-  ['rpUrl', 'rpToken', 'rpRcpt'].forEach(id => document.getElementById(id).addEventListener('change', () => {
-    sbSaveCfgObj({ url: document.getElementById('rpUrl').value.trim(), token: document.getElementById('rpToken').value.trim(), rcpt: document.getElementById('rpRcpt').value.trim() });
-  }));
+  ['rpUrl', 'rpToken', 'rpRcpt', 'rpRcpt_doctors', 'rpRcpt_products', 'rpRcpt_status'].forEach(id => { const el = document.getElementById(id); if (el) el.addEventListener('change', () => {
+    sbSaveCfgObj({ url: document.getElementById('rpUrl').value.trim(), token: document.getElementById('rpToken').value.trim(), rcpt: document.getElementById('rpRcpt').value.trim(),
+      rcptDoctors: (document.getElementById('rpRcpt_doctors')||{}).value||'', rcptProducts: (document.getElementById('rpRcpt_products')||{}).value||'', rcptStatus: (document.getElementById('rpRcpt_status')||{}).value||'' });
+  }); });
 }
 
 
