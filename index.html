@@ -777,7 +777,7 @@ html, body {
         <div class="brand-mark">L</div>
         <div class="brand-text">
           Lab Sales Dashboard
-          <span class="brand-sub">Sales · Production · Practice Operations <span style="opacity:.6;font-size:9px;margin-left:6px">v2026.07.13-REPORTROUTING</span></span>
+          <span class="brand-sub">Sales · Production · Practice Operations <span style="opacity:.6;font-size:9px;margin-left:6px">v2026.07.14-PERPRACTICE</span></span>
         </div>
       </div>
       <div class="brand-divider"></div>
@@ -4125,6 +4125,36 @@ const STATUS = { seg: 'current', query: '', winbackWindow: 30, sortKey: null, so
 // marks a doctor as churned. Adjustable from the Sales Hub header.
 const SH_STATE = { churnDays: 30 };
 
+// Pure status classifier — the SAME thresholds used doctor-wide, but callable on
+// any timeline. Given a doctor's case dates AT ONE PRACTICE (sorted or not), it
+// returns {status, isWinbackSegment, daysSinceLast, ...}. This is what makes a
+// doctor's status location-specific: Dr. Varma can be "current" at Practice A and
+// "inactive" at Practice B, because each practice's timeline is judged on its own.
+function statusFromTimeline(dates, maxDate, winbackWindowMs, winbackGapMs) {
+  const D15=15*864e5, D20=20*864e5, D29=29*864e5, D60=60*864e5;
+  const ds = (dates||[]).filter(Boolean).slice().sort((a,b)=>a-b);
+  const firstDate = ds.length ? ds[0] : null;
+  const lastDate  = ds.length ? ds[ds.length-1] : null;
+  const sinceLast  = lastDate  ? (maxDate - lastDate)  : Infinity;
+  const sinceFirst = firstDate ? (maxDate - firstDate) : 0;
+  let maxGap=0, gapEndDate=null, gapStartDate=null;
+  for (let i=1;i<ds.length;i++){ const g=ds[i]-ds[i-1]; if(g>maxGap){ maxGap=g; gapStartDate=ds[i-1]; gapEndDate=ds[i]; } }
+  let status;
+  if (sinceLast > D29)            status='inactive';
+  else if (sinceLast > D20)       status='falloff';
+  else if (sinceFirst <= D15)     status='new';
+  else if (maxGap > D60 && sinceLast <= D20) status='winback';
+  else                            status='current';
+  const isWinbackSegment = (maxGap >= winbackGapMs && gapEndDate != null && (maxDate - gapEndDate) <= winbackWindowMs);
+  return {
+    status, isWinbackSegment,
+    firstDate, lastDate,
+    daysSinceLast: Math.floor(sinceLast/864e5),
+    maxGapDays: Math.round(maxGap/864e5),
+    gapBeforeReturn: Math.round(maxGap/864e5),
+    returnedDate: gapEndDate
+  };
+}
 function computeDoctorStatus() {
   // Engagement status respects the Group and State filters but uses FULL history
   // (it ignores the date range), because recency — "days since last case" — only
@@ -4156,6 +4186,7 @@ function computeDoctorStatus() {
         totalCases: 0, totalRev: 0, totalUnits: 0, remakes: 0,
         tatSum: 0, tatN: 0,
         practices: new Map(),
+        practiceDates: new Map(),   // practiceName(normalized) -> {name, dates[], cases, rev, rev90}
         dates: [], firstDate: null, lastDate: null
       };
       map.set(r.drId, d);
@@ -4165,6 +4196,19 @@ function computeDoctorStatus() {
     d.totalUnits += r.qty;
     if (r.remake) d.remakes++;
     tallyPractice(d.practices, r.practice);
+    // Per-practice case timeline for THIS doctor (the Karan Varma fix): each
+    // practice accumulates only the cases billed under it, so its status reflects
+    // that location alone — not the doctor's blanket activity everywhere.
+    {
+      const pnRaw = (r.practice || '').trim();
+      if (pnRaw) {
+        const pk = pnRaw.toLowerCase().replace(/\s+/g,' ').trim();
+        let pd = d.practiceDates.get(pk);
+        if (!pd) { pd = { name: pnRaw, dates: [], cases: 0, rev: 0 }; d.practiceDates.set(pk, pd); }
+        pd.cases++; pd.rev += r.netCost;
+        if (r.anchorDate) pd.dates.push(r.anchorDate);
+      }
+    }
     if (r.tat != null && r.tat >= 0 && r.tat < 200) { d.tatSum += r.tat; d.tatN++; }
     if (r.anchorDate) {
       d.dates.push(r.anchorDate);
@@ -4218,6 +4262,18 @@ function computeDoctorStatus() {
       gapEndDate != null &&
       (maxDate - gapEndDate) <= winbackWindowMs
     );
+
+    // Per-practice status for this doctor. Same classifier, per-location timeline.
+    d.byPractice = new Map();
+    d.practiceDates.forEach((pd, pk) => {
+      const st = statusFromTimeline(pd.dates, maxDate, winbackWindowMs, winbackGapMs);
+      d.byPractice.set(pk, {
+        practice: pd.name, cases: pd.cases, rev: pd.rev,
+        status: st.status, isWinbackSegment: st.isWinbackSegment,
+        firstDate: st.firstDate, lastDate: st.lastDate,
+        daysSinceLast: st.daysSinceLast
+      });
+    });
   });
   return docs;
 }
@@ -6007,10 +6063,15 @@ function buildBridgeData() {
 
   const maxDate = getMaxDate() || new Date();
   const cutoff90 = new Date(maxDate.getTime() - 90 * 864e5);
-  const rev90 = {};
+  const rev90 = {};        // by drId (doctor-wide, kept for compatibility)
+  const rev90dp = {};      // by drId|practiceKey (per-location, used for the row)
   const offices = new Map();   // practice contact + geo info for the sync
   for (const r of rawByGroupState()) {
-    if (r.anchorDate && r.anchorDate >= cutoff90) rev90[r.drId] = (rev90[r.drId] || 0) + r.netCost;
+    if (r.anchorDate && r.anchorDate >= cutoff90) {
+      rev90[r.drId] = (rev90[r.drId] || 0) + r.netCost;
+      const pk = (r.practice || '').trim().toLowerCase().replace(/\s+/g,' ').trim();
+      if (pk) rev90dp[r.drId + '|' + pk] = (rev90dp[r.drId + '|' + pk] || 0) + r.netCost;
+    }
     const nameRaw = (r.practice || '').trim();
     if (!nameRaw) continue;
     const key = sbNorm(nameRaw);
@@ -6033,18 +6094,32 @@ function buildBridgeData() {
     o.drs = names.slice(0, 5).map(n => 'Dr. ' + n).join(', ') + (names.length > 5 ? ' +' + (names.length - 5) + ' more' : '');
   });
 
-  const rows = docs.map(d => {
-    const o = offices.get(sbNorm(d.practice || '')) || null;
-    return {
-      drId: d.drId, name: d.name, practice: d.practice || '',
-      city: d.city || (o && o.city) || '', stAb: d.stateAbbr || stateAbbr(d.state) || (o && o.stAb) || '',
-      addr: (o && o.addr) || d.address || '', phone: sbPhone(d.phone) || (o && o.phone) || '',
-      email: (d.email && d.email !== 'nan' ? d.email : '') || (o && o.email) || '',
-      scan: (o && o.scan) || '',
-      first: d.firstDate, last: d.lastDate, cases: d.totalCases,
-      rev: d.totalRev, rev90: rev90[d.drId] || 0,
-      label: sbLabelOf(d), segs: sbSegsOf(d)
-    };
+  // One row PER (doctor, practice). A doctor who works at three practices yields
+  // three rows, each carrying that practice's own status — so the LAB line written
+  // to each office reflects the doctor's activity AT THAT OFFICE, not everywhere.
+  const rows = [];
+  docs.forEach(d => {
+    const buckets = (d.byPractice && d.byPractice.size)
+      ? Array.from(d.byPractice.values())
+      : [{ practice: d.practice || '', cases: d.totalCases, rev: d.totalRev,
+           status: d.status, isWinbackSegment: d.isWinbackSegment,
+           firstDate: d.firstDate, lastDate: d.lastDate }];
+    buckets.forEach(b => {
+      const o = offices.get(sbNorm(b.practice || '')) || null;
+      const pk = (b.practice || '').toLowerCase().replace(/\s+/g,' ').trim();
+      // A per-location view for sbLabelOf/sbSegsOf (same shape they expect).
+      const dp = { status: b.status, isWinbackSegment: b.isWinbackSegment };
+      rows.push({
+        drId: d.drId, name: d.name, practice: b.practice || '',
+        city: d.city || (o && o.city) || '', stAb: d.stateAbbr || stateAbbr(d.state) || (o && o.stAb) || '',
+        addr: (o && o.addr) || d.address || '', phone: sbPhone(d.phone) || (o && o.phone) || '',
+        email: (d.email && d.email !== 'nan' ? d.email : '') || (o && o.email) || '',
+        scan: (o && o.scan) || '',
+        first: b.firstDate, last: b.lastDate, cases: b.cases,
+        rev: b.rev, rev90: rev90dp[d.drId + '|' + pk] || 0,
+        label: sbLabelOf(dp), segs: sbSegsOf(dp)
+      });
+    });
   });
 
   return { rows, counts, offices, maxDate };
