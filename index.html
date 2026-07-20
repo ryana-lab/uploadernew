@@ -7097,35 +7097,29 @@ async function sbSync() {
     // Carry lifetime revenue + true last-case date onto each office, so S-tier
     // metrics come from the invoice data rather than a guess.
     const meta = {};
-    // "As of" date = the most recent case in the whole dataset (same anchor the
-    // Status tab uses), so status thresholds match what you see on screen.
-    let asOf = 0;
-    push.forEach(o => (o.docs||[]).forEach(d=>{ const dt=d.row&&d.row.last?new Date(d.row.last).getTime():0; if(dt>asOf)asOf=dt; }));
-    if(!asOf) asOf = Date.now();
-    const DAY=86400000;
+    // Roll each practice up to ONE lifecycle status from its doctors' labels.
+    // d.label is ALREADY the correct segment (Winback/New/Falloff/Inactive/Active)
+    // from the same engine as the Status tab — including winback, which needs the
+    // full case-gap timeline the earlier date-only rollup couldn't see.
+    //
+    // Priority when a practice's doctors disagree: the most "engaged/notable"
+    // signal wins, so a returning (Winback) or brand-New relationship isn't hidden
+    // behind a quieter doctor at the same practice.
+    const RANK = { 'New':5, 'Winback':4, 'Active':3, 'Falloff':2, 'Inactive':1 };
+    const NORM = s => { s=String(s||'').trim(); return s==='New Doctor'?'New':s; };
     push.forEach(o => {
-      let rev = 0, last = '', first = '';
+      let rev = 0, last = '';
+      let best = '', bestRank = 0;
       (o.docs || []).forEach(d => {
         const r = d.row || {};
         if (isFinite(+r.rev)) rev += +r.rev;
         const dt = r.last ? new Date(r.last) : null;
         if (dt && !isNaN(dt) && (!last || dt > last)) last = dt;
-        const ft = r.first ? new Date(r.first) : null;
-        if (ft && !isNaN(ft) && (!first || ft < first)) first = ft;
+        const lbl = NORM(d.label);
+        const rk = RANK[lbl] || 0;
+        if (rk > bestRank) { bestRank = rk; best = lbl; }
       });
-      // Roll the practice up to ONE status from its most-recently-active doctor,
-      // using the same thresholds as the Status tab:
-      //   Inactive >29d silent · Falloff >20d · New first case ≤15d · else Current
-      let status = '';
-      if (last) {
-        const sinceLast = Math.floor((asOf - last.getTime())/DAY);
-        const sinceFirst = first ? Math.floor((asOf - first.getTime())/DAY) : 9999;
-        if (sinceLast > 29)          status = 'Inactive';
-        else if (sinceLast > 20)     status = 'Falloff';
-        else if (sinceFirst <= 15)   status = 'New';
-        else                         status = 'Active';
-      }
-      meta[sbStrict(o.name)] = { rev: rev, last: last || '', status: status };
+      meta[sbStrict(o.name)] = { rev: rev, last: last || '', status: best };
     });
     await sbSheetPost(cols, rows, { tier: 'S', meta: meta });
     const noPin = push.filter(o => !geo[sbGeoKey(o)]).length;
