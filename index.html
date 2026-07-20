@@ -4649,6 +4649,15 @@ function renderStatus() {
 
   document.querySelectorAll('#stSegBar .sub-tab').forEach(b => {
     b.addEventListener('click', () => {
+      // Snapshot the sync checkboxes before re-rendering so they never reset.
+      try{
+        const s=[];
+        if(document.getElementById('segCurrent')?.checked) s.push('current');
+        if(document.getElementById('segWinback')?.checked) s.push('winback');
+        if(document.getElementById('segNew')?.checked) s.push('new');
+        syncSet(SYNC_KEYS.segs, s);
+        const au=document.getElementById('syncAuto'); if(au) syncSet(SYNC_KEYS.auto, au.checked);
+      }catch(e){}
       STATUS.seg = b.dataset.seg;
       // Reset sort so each segment opens with its most useful default
       STATUS.sortKey = null;
@@ -6152,6 +6161,7 @@ async function sbSheetPost(cols, rows, opts) {
     r.tier = null;
     r.last_invoice_date = null;
     r.total_sales = null;
+    r.status = null;
 
     if (opts.tier === 'S' && r.active) {
       r.tier = 'S';
@@ -6163,12 +6173,16 @@ async function sbSheetPost(cols, rows, opts) {
           const d = new Date(m.last);
           if (!isNaN(d)) r.last_invoice_date = d.toISOString().slice(0, 10);
         }
+        // Lifecycle status → offices.status. The DB trigger stamps status_changed_at
+        // only when it actually flips, powering the "just changed" badge in Salesly.
+        if (m.status) r.status = m.status;
       }
     }
-    // A null tier would overwrite an existing tier with NULL on upsert. Drop the
-    // keys entirely when they carry no information — now every record in THIS
-    // batch is shaped the same, which is all PostgREST requires.
+    // A null field would overwrite an existing value with NULL on upsert. Drop the
+    // keys entirely when they carry no info — every record in THIS batch stays
+    // the same shape, which is all PostgREST requires.
     if (r.tier === null) { delete r.tier; delete r.last_invoice_date; delete r.total_sales; }
+    if (r.status === null) { delete r.status; }
     recs.push(r);
   });
 
@@ -7083,15 +7097,35 @@ async function sbSync() {
     // Carry lifetime revenue + true last-case date onto each office, so S-tier
     // metrics come from the invoice data rather than a guess.
     const meta = {};
+    // "As of" date = the most recent case in the whole dataset (same anchor the
+    // Status tab uses), so status thresholds match what you see on screen.
+    let asOf = 0;
+    push.forEach(o => (o.docs||[]).forEach(d=>{ const dt=d.row&&d.row.last?new Date(d.row.last).getTime():0; if(dt>asOf)asOf=dt; }));
+    if(!asOf) asOf = Date.now();
+    const DAY=86400000;
     push.forEach(o => {
-      let rev = 0, last = '';
+      let rev = 0, last = '', first = '';
       (o.docs || []).forEach(d => {
         const r = d.row || {};
         if (isFinite(+r.rev)) rev += +r.rev;
         const dt = r.last ? new Date(r.last) : null;
         if (dt && !isNaN(dt) && (!last || dt > last)) last = dt;
+        const ft = r.first ? new Date(r.first) : null;
+        if (ft && !isNaN(ft) && (!first || ft < first)) first = ft;
       });
-      meta[sbStrict(o.name)] = { rev: rev, last: last || '' };
+      // Roll the practice up to ONE status from its most-recently-active doctor,
+      // using the same thresholds as the Status tab:
+      //   Inactive >29d silent · Falloff >20d · New first case ≤15d · else Current
+      let status = '';
+      if (last) {
+        const sinceLast = Math.floor((asOf - last.getTime())/DAY);
+        const sinceFirst = first ? Math.floor((asOf - first.getTime())/DAY) : 9999;
+        if (sinceLast > 29)          status = 'Inactive';
+        else if (sinceLast > 20)     status = 'Falloff';
+        else if (sinceFirst <= 15)   status = 'New';
+        else                         status = 'Active';
+      }
+      meta[sbStrict(o.name)] = { rev: rev, last: last || '', status: status };
     });
     await sbSheetPost(cols, rows, { tier: 'S', meta: meta });
     const noPin = push.filter(o => !geo[sbGeoKey(o)]).length;
@@ -7551,7 +7585,7 @@ function renderReports() {
         Reports are written to the <code>reports</code> table and emailed by the <code>send-reports</code>
         Edge Function, which runs nightly on a schedule. <b>Send now</b> invokes it immediately.
         Finally run <code>setupNightlyTrigger</code> once from the script editor to schedule the nightly send
-        (default 11 AM — change <code>SEND_HOUR</code> in the script to adjust).</div>
+        (default 6 AM — change <code>SEND_HOUR</code> in the script to adjust).</div>
       <div class="sb-row">
         <div class="sb-hint">Backend: the Supabase project configured on the <b>Salesly Bridge</b> tab. Reports are written to the <code>reports</code> table and emailed by the <code>send-reports</code> Edge Function.</div>
         
