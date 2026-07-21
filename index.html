@@ -781,7 +781,7 @@ html, body {
         <div class="brand-mark">L</div>
         <div class="brand-text">
           Lab Sales Dashboard
-          <span class="brand-sub">Sales · Production · Practice Operations <span style="opacity:.6;font-size:9px;margin-left:6px">v2026.07.20-STATUS</span></span>
+          <span class="brand-sub">Sales · Production · Practice Operations <span style="opacity:.6;font-size:9px;margin-left:6px">v2026.07.21-GEO</span></span>
         </div>
       </div>
       <div class="brand-divider"></div>
@@ -6259,6 +6259,7 @@ function sbSaveCfgFromInputs() {
   if (g('sbUrl') != null) patch.url = g('sbUrl');
   if (g('sbToken') != null) patch.token = g('sbToken');
   if (g('sbOrs') != null) patch.ors = g('sbOrs');
+  if (g('sbGc') != null) patch.gc = g('sbGc');
   sbSaveCfgObj(patch);
 }
 function sbLoadGeo() { try { return JSON.parse(localStorage.getItem(SB_GEO_KEY) || '{}'); } catch (e) { return {}; } }
@@ -6429,6 +6430,7 @@ function renderBridge() {
         <div><label class="sb-label">Supabase Project URL</label><input class="sync-input" id="sbUrl" placeholder="https://xxxxxxxx.supabase.co" value="${esc(cfg.url || '')}"></div>
         <div><label class="sb-label">Anon (public) key</label><input class="sync-input" id="sbToken" placeholder="eyJhbGciOi…" value="${esc(cfg.token || '')}"></div>
         <div><label class="sb-label">OpenRouteService key (optional)</label><input class="sync-input" id="sbOrs" placeholder="for faster geocoding" value="${esc(cfg.ors || '')}"></div>
+        <div><label class="sb-label">Geocodio key (optional)</label><input class="sync-input" id="sbGc" placeholder="rooftop-accurate geocoding" value="${esc(cfg.gc || '')}"></div>
       </div>
       <div style="margin-top:12px"><button class="btn-text" id="sbTest">Test connection</button><span class="sb-conn-status" id="sbConnStatus"></span></div>
     </div>
@@ -6542,7 +6544,23 @@ function renderBridge() {
 async function sbGeocodeOne(o) {
   const orsEl = document.getElementById('sbOrs');
   const ors = orsEl ? orsEl.value.trim() : '';
+  const gcEl = document.getElementById('sbGc');
+  const gc = gcEl ? gcEl.value.trim() : '';
   const qy = sbGeoQuery(o); if (!qy) return null;
+  // Geocodio first when a key is present — rooftop accuracy (the same source
+  // that placed the original import) instead of interpolated street positions.
+  if (gc) {
+    try {
+      const res = await fetch('https://api.geocod.io/v1.7/geocode?q=' + encodeURIComponent(qy) + '&limit=1&api_key=' + encodeURIComponent(gc));
+      if (res.ok) {
+        const d = await res.json(); const r = d && d.results && d.results[0];
+        if (r && r.location) { return { lat: +(+r.location.lat).toFixed(6), lng: +(+r.location.lng).toFixed(6), zip: (r.address_components && r.address_components.zip) || '' }; }
+      } else if (res.status === 403 || res.status === 401) {
+        sbLog('Geocodio key rejected — falling back', 'warn');
+        if (gcEl) gcEl.value = '';
+      }
+    } catch (e) {}
+  }
   if (ors) {
     try {
       const res = await fetch('https://api.openrouteservice.org/geocode/search?api_key=' + encodeURIComponent(ors) + '&text=' + encodeURIComponent(qy) + '&boundary.country=US&size=1');
