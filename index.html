@@ -781,7 +781,7 @@ html, body {
         <div class="brand-mark">L</div>
         <div class="brand-text">
           Lab Sales Dashboard
-          <span class="brand-sub">Sales · Production · Practice Operations <span style="opacity:.6;font-size:9px;margin-left:6px">v2026.07.21-PERPRACTICE</span></span>
+          <span class="brand-sub">Sales · Production · Practice Operations <span style="opacity:.6;font-size:9px;margin-left:6px">v2026.07.22-SYNCFIX</span></span>
         </div>
       </div>
       <div class="brand-divider"></div>
@@ -4534,20 +4534,10 @@ function maybeAutoSync() {
 }
 
 function renderStatus() {
-  // SNAPSHOT any live sync checkboxes before we rebuild the panel, so a data
-  // load / auto-sync re-render can't revert what the user just checked. (The
-  // boxes are recreated on every render; without this their state resets to the
-  // last-saved value, which felt "random".)
-  try{
-    const cur=document.getElementById('segCurrent');
-    if(cur){ const s=[];
-      if(document.getElementById('segCurrent').checked) s.push('current');
-      if(document.getElementById('segWinback').checked) s.push('winback');
-      if(document.getElementById('segNew').checked) s.push('new');
-      syncSet(SYNC_KEYS.segs, s);
-      const au=document.getElementById('syncAuto'); if(au) syncSet(SYNC_KEYS.auto, au.checked);
-    }
-  }catch(e){}
+  // NOTE: do NOT read the checkboxes here. Reading the DOM at render time races
+  // with the rebuild — if this ran before wireSync() restored them, it saved an
+  // EMPTY selection and permanently wiped the user's choices. The saved state in
+  // localStorage is the single source of truth, written only on real user input.
   const docs = computeDoctorStatus();
   // Use the engagement-status field for Current / New / Falloff / Inactive segments.
   // The Winbacks segment uses isWinbackSegment (45+ day gap, returned within window)
@@ -4679,15 +4669,8 @@ function renderStatus() {
 
   document.querySelectorAll('#stSegBar .sub-tab').forEach(b => {
     b.addEventListener('click', () => {
-      // Snapshot the sync checkboxes before re-rendering so they never reset.
-      try{
-        const s=[];
-        if(document.getElementById('segCurrent')?.checked) s.push('current');
-        if(document.getElementById('segWinback')?.checked) s.push('winback');
-        if(document.getElementById('segNew')?.checked) s.push('new');
-        syncSet(SYNC_KEYS.segs, s);
-        const au=document.getElementById('syncAuto'); if(au) syncSet(SYNC_KEYS.auto, au.checked);
-      }catch(e){}
+      // (No checkbox snapshot here — the change handlers already persist them.
+      //  Writing from a render/click path could save a half-built state.)
       STATUS.seg = b.dataset.seg;
       // Reset sort so each segment opens with its most useful default
       STATUS.sortKey = null;
@@ -6364,12 +6347,17 @@ function buildBridgeData() {
   // Totals — the same five formulas renderStatus() uses, so the stat boxes
   // here always equal the Status tab's segment counts exactly.
   const isWin2 = d => d.isWinbackSegment || d.status === 'winback';
+  // Count per DOCTOR-AT-PRACTICE — identical expansion to the Status tab, so the
+  // two views report the same numbers. (These boxes previously counted whole
+  // doctors while the rows below were per-practice, which is why the Bridge read
+  // 384/26/210 against the tab's 395/32/226.)
+  const bEntries = statusEntries(docs);
   const counts = {
-    'Active':     docs.filter(d => d.status === 'current').length,
-    'New Doctor': docs.filter(d => d.status === 'new').length,
-    'Winback':    docs.filter(isWin2).length,
-    'Falloff':    docs.filter(d => d.status === 'falloff').length,
-    'Inactive':   docs.filter(d => d.status === 'inactive').length
+    'Active':     bEntries.filter(d => d.status === 'current').length,
+    'New Doctor': bEntries.filter(d => d.status === 'new').length,
+    'Winback':    bEntries.filter(isWin2).length,
+    'Falloff':    bEntries.filter(d => d.status === 'falloff').length,
+    'Inactive':   bEntries.filter(d => d.status === 'inactive').length
   };
 
   const maxDate = getMaxDate() || new Date();
