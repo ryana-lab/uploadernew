@@ -781,7 +781,7 @@ html, body {
         <div class="brand-mark">L</div>
         <div class="brand-text">
           Lab Sales Dashboard
-          <span class="brand-sub">Sales · Production · Practice Operations <span style="opacity:.6;font-size:9px;margin-left:6px">v2026.07.21-GEO</span></span>
+          <span class="brand-sub">Sales · Production · Practice Operations <span style="opacity:.6;font-size:9px;margin-left:6px">v2026.07.21-PERPRACTICE</span></span>
         </div>
       </div>
       <div class="brand-divider"></div>
@@ -4214,8 +4214,10 @@ function computeDoctorStatus() {
       if (pnRaw) {
         const pk = pnRaw.toLowerCase().replace(/\s+/g,' ').trim();
         let pd = d.practiceDates.get(pk);
-        if (!pd) { pd = { name: pnRaw, dates: [], cases: 0, rev: 0 }; d.practiceDates.set(pk, pd); }
-        pd.cases++; pd.rev += r.netCost;
+        if (!pd) { pd = { name: pnRaw, dates: [], cases: 0, rev: 0, units: 0, remakes: 0, tatSum: 0, tatN: 0 }; d.practiceDates.set(pk, pd); }
+        pd.cases++; pd.rev += r.netCost; pd.units += r.qty;
+        if (r.remake) pd.remakes++;
+        if (r.tat != null && r.tat >= 0 && r.tat < 200) { pd.tatSum += r.tat; pd.tatN++; }
         if (r.anchorDate) pd.dates.push(r.anchorDate);
       }
     }
@@ -4279,9 +4281,13 @@ function computeDoctorStatus() {
       const st = statusFromTimeline(pd.dates, maxDate, winbackWindowMs, winbackGapMs);
       d.byPractice.set(pk, {
         practice: pd.name, cases: pd.cases, rev: pd.rev,
+        units: pd.units || 0,
+        remakeRate: pd.cases ? (pd.remakes || 0) / pd.cases : 0,
+        avgTAT: pd.tatN ? pd.tatSum / pd.tatN : null,
         status: st.status, isWinbackSegment: st.isWinbackSegment,
         firstDate: st.firstDate, lastDate: st.lastDate,
-        daysSinceLast: st.daysSinceLast
+        daysSinceLast: st.daysSinceLast,
+        gapBeforeReturn: st.gapBeforeReturn, returnedDate: st.returnedDate
       });
     });
   });
@@ -4550,12 +4556,15 @@ function renderStatus() {
   // so no doctor falls between buckets. (A 'winback'-status doctor who didn't
   // meet the strict isWinbackSegment window used to be counted nowhere.)
   const isWin = d => d.isWinbackSegment || d.status === 'winback';
+  // Count PER DOCTOR-AT-PRACTICE, exactly like the Salesly Bridge does, so the
+  // two views can never disagree about a doctor again.
+  const entries = statusEntries(docs);
   const counts = {
-    current: docs.filter(d => d.status === 'current').length,
-    new: docs.filter(d => d.status === 'new').length,
-    winback: docs.filter(isWin).length,
-    falloff: docs.filter(d => d.status === 'falloff').length,
-    inactive: docs.filter(d => d.status === 'inactive').length
+    current: entries.filter(d => d.status === 'current').length,
+    new: entries.filter(d => d.status === 'new').length,
+    winback: entries.filter(isWin).length,
+    falloff: entries.filter(d => d.status === 'falloff').length,
+    inactive: entries.filter(d => d.status === 'inactive').length
   };
 
   const segs = [
@@ -4752,10 +4761,44 @@ function renderStatus() {
   maybeAutoSync();
 }
 
+/* Expand each doctor into one entry PER PRACTICE, classified on that practice's
+   own timeline — the identical rule the Salesly Bridge uses. This is what makes
+   the Status tab and the Bridge agree: an established doctor who moved to a new
+   office reads "New" at the new office and "Inactive" at the old one, instead of
+   a single blended "Winback" that matches neither location.
+   Doctors with no practice recorded still appear once, with their doctor-wide
+   figures, so nobody is dropped. */
+function statusEntries(docs) {
+  const out = [];
+  (docs || []).forEach(d => {
+    if (d.byPractice && d.byPractice.size) {
+      d.byPractice.forEach(b => {
+        out.push({
+          drId: d.drId, name: d.name,
+          email: d.email, phone: d.phone, address: d.address,
+          city: d.city, state: d.state, stateAbbr: d.stateAbbr,
+          practice: b.practice,
+          practiceInfo: { primary: b.practice, count: 1, list: [{ name: b.practice, count: b.cases }] },
+          totalCases: b.cases, totalRev: b.rev, totalUnits: b.units,
+          remakeRate: b.remakeRate, avgTAT: b.avgTAT,
+          status: b.status, isWinbackSegment: b.isWinbackSegment,
+          firstDate: b.firstDate, lastDate: b.lastDate,
+          daysSinceLast: b.daysSinceLast,
+          gapBeforeReturn: b.gapBeforeReturn, returnedDate: b.returnedDate
+        });
+      });
+    } else {
+      out.push(d);   // no practice on file — keep the doctor-wide record
+    }
+  });
+  return out;
+}
+
 function filterStatusSegment(docs) {
+  const entries = statusEntries(docs);   // per-practice, same as the Bridge
   let segDocs;
-  if (STATUS.seg === 'winback') segDocs = docs.filter(d => d.isWinbackSegment);
-  else                          segDocs = docs.filter(d => d.status === STATUS.seg);
+  if (STATUS.seg === 'winback') segDocs = entries.filter(d => d.isWinbackSegment || d.status === 'winback');
+  else                          segDocs = entries.filter(d => d.status === STATUS.seg);
   if (STATUS.query) {
     segDocs = segDocs.filter(d =>
       (d.name     || '').toLowerCase().includes(STATUS.query) ||
