@@ -781,7 +781,7 @@ html, body {
         <div class="brand-mark">L</div>
         <div class="brand-text">
           Lab Sales Dashboard
-          <span class="brand-sub">Sales · Production · Practice Operations <span style="opacity:.6;font-size:9px;margin-left:6px">v2026.07.22-SYNCFIX</span></span>
+          <span class="brand-sub">Sales · Production · Practice Operations <span style="opacity:.6;font-size:9px;margin-left:6px">v2026.07.22-AUTOSYNC</span></span>
         </div>
       </div>
       <div class="brand-divider"></div>
@@ -1252,7 +1252,7 @@ function ingestFile(file) {
     complete: function() {
       showProgress('Cleaning & indexing', 90, rowCount.toLocaleString() + ' rows', '90%');
       // Defer normalization so progress UI updates
-      setTimeout(() => finishIngest(collected, file.name), 30);
+      setTimeout(() => finishIngest(collected, file.name, true), 30);   // true = fresh upload -> auto-sync
     },
     error: function(err) {
       hideProgress();
@@ -1274,7 +1274,7 @@ function ingestText(csvText, fileName) {
   });
 }
 
-function finishIngest(rawRows, fileName) {
+function finishIngest(rawRows, fileName, freshUpload) {
   try {
     const records = normalizeRecords(rawRows);
     APP.raw = records;
@@ -1296,6 +1296,9 @@ function finishIngest(rawRows, fileName) {
     setTimeout(() => {
       initDashboard();
       hideProgress();
+      // Only a genuine upload triggers the automatic push — restoring the cached
+      // dataset on page load must not re-sync or re-queue emails.
+      if (freshUpload) setTimeout(() => { try { autoSyncAll(); } catch (e) { console.error(e); } }, 400);
     }, 60);
   } catch (e) {
     hideProgress();
@@ -2251,6 +2254,8 @@ function initDashboard() {
           hideProgress();
           const msg = added.toLocaleString() + ' new rows added' + (replaced ? ' (' + replaced.toLocaleString() + ' duplicates skipped)' : '') + ' · ' + merged.length.toLocaleString() + ' total · auto-saved';
           toast('➕ ' + msg);
+          // New data merged in -> push it straight through to Salesly + the queue.
+          setTimeout(() => { try { autoSyncAll(); } catch (e) { console.error(e); } }, 400);
         } catch (err) {
           hideProgress();
           toast('Merge failed: ' + err.message);
@@ -4374,9 +4379,11 @@ function priceGroupFor(group) {
 /* Build the rows to send for the chosen segments. When force is false, skips
    doctors already synced (so auto-sync only pushes new entrants). Returns
    { rows, skippedNoEmail, newIds }. */
-function buildSyncRows(force) {
+function buildSyncRows(force, segsOverride) {
   const cfg = syncCfg();
-  const segs = new Set(cfg.segments);
+  // segsOverride lets the automatic path push a fixed set (New + Winback)
+  // without depending on the checkbox state at all.
+  const segs = segsOverride || new Set(cfg.segments);
   const done = syncedSet();
   const docs = computeDoctorStatus();
   const rows = [], newIds = [];
@@ -4512,6 +4519,109 @@ function syncNow(force) {
    baseline) it establishes the baseline silently and sends nothing, so loading
    your data doesn't dump the existing book. After that it sends only clients
    that newly appear in the selected segments. */
+/* ─────────────────────────────────────────────────────────────────────────
+   AUTOMATIC SYNC ON DATA LOAD
+   When a new file is uploaded, push everything through without any clicking:
+     1. offices + lifecycle status  ->  Salesly
+     2. New + Winback doctors       ->  email queue
+   The email step uses a FIXED segment set (New + Winback) rather than the
+   checkboxes, so it can't be affected by their state. A banner reports the
+   result. Toggle it off on the Salesly Bridge tab if you ever want manual
+   control back.
+   ───────────────────────────────────────────────────────────────────────── */
+const AUTOSYNC_KEY = 'vda_autosync_all';
+function autoSyncOn() {
+  try { const v = localStorage.getItem(AUTOSYNC_KEY); return v === null ? true : JSON.parse(v); }
+  catch (e) { return true; }
+}
+function setAutoSyncOn(v) { try { localStorage.setItem(AUTOSYNC_KEY, JSON.stringify(!!v)); } catch (e) {} }
+
+function syncBanner(msg, kind) {
+  let el = document.getElementById('autoSyncBanner');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'autoSyncBanner';
+    el.style.cssText =
+      'position:fixed;left:50%;transform:translateX(-50%);bottom:22px;z-index:9999;' +
+      'max-width:min(680px,92vw);padding:12px 16px;border-radius:12px;font-size:13.5px;' +
+      'line-height:1.5;box-shadow:0 8px 28px rgba(0,0,0,.18);display:flex;gap:10px;' +
+      'align-items:flex-start;background:#fff;border:1px solid #e2e8f0;color:#0f172a';
+    document.body.appendChild(el);
+  }
+  const tone = kind === 'ok'   ? { bg:'#f0fdf4', bd:'#86efac', ic:'✓' }
+             : kind === 'warn' ? { bg:'#fffbeb', bd:'#fcd34d', ic:'!' }
+             : kind === 'err'  ? { bg:'#fef2f2', bd:'#fca5a5', ic:'✕' }
+             :                   { bg:'#eff6ff', bd:'#93c5fd', ic:'⟳' };
+  el.style.background = tone.bg; el.style.borderColor = tone.bd;
+  el.innerHTML = '<b style="flex:0 0 auto">' + tone.ic + '</b><div style="flex:1 1 auto">' + msg + '</div>' +
+    '<button style="flex:0 0 auto;border:none;background:none;cursor:pointer;font-size:15px;color:#64748b" ' +
+    'onclick="this.parentElement.remove()">×</button>';
+  if (kind === 'ok' || kind === 'warn') {
+    clearTimeout(window.__asbT);
+    window.__asbT = setTimeout(() => { const n = document.getElementById('autoSyncBanner'); if (n) n.remove(); }, 12000);
+  }
+}
+
+let _autoSyncBusy = false;
+async function autoSyncAll() {
+  if (!autoSyncOn()) return;
+  // Re-entrancy guard: an upload followed quickly by "Add Data" would otherwise
+  // start a second run that interleaves with the first on shared BRIDGE state.
+  if (_autoSyncBusy) { syncBanner('A sync is already running — skipping the duplicate request.', 'warn'); return; }
+  _autoSyncBusy = true;
+  try {
+    await _autoSyncRun();
+  } finally {
+    _autoSyncBusy = false;
+  }
+}
+
+async function _autoSyncRun() {
+  if (!pgClient()) { syncBanner('Auto-sync skipped — connect Supabase on the <b>Salesly Bridge</b> tab first.', 'warn'); return; }
+
+  syncBanner('Auto-sync running — pushing offices and statuses to Salesly…', 'run');
+
+  let officeMsg;
+  try {
+    await sbSync();
+    officeMsg = 'offices &amp; statuses pushed to Salesly';
+  } catch (e) {
+    officeMsg = 'Salesly push failed (' + esc(String(e && e.message || e)) + ')';
+  }
+
+  syncBanner('Auto-sync running — queueing New &amp; Winback emails…', 'run');
+
+  let queueMsg;
+  try {
+    if (!hasBaseline()) {
+      const n = establishBaseline();
+      queueMsg = 'email queue baseline set (' + n + ' existing clients marked handled — nothing sent)';
+    } else {
+      const { rows, newIds, skippedNoEmail } = buildSyncRows(false, new Set(['new', 'winback']));
+      if (!rows.length) {
+        queueMsg = 'email queue already up to date' + (skippedNoEmail ? ' (' + skippedNoEmail + ' skipped, no email)' : '');
+      } else {
+        const result = await pushSyncRows(rows);
+        if (result && result.confirmed && result.data && !result.data.ok) {
+          queueMsg = 'email queue error — left for manual sync';
+        } else {
+          markSynced(newIds);
+          syncSet(SYNC_KEYS.last, { n: rows.length, t: Date.now() });
+          queueMsg = rows.length + ' New/Winback doctor' + (rows.length === 1 ? '' : 's') + ' queued for email';
+        }
+      }
+    }
+  } catch (e) {
+    queueMsg = 'email queue failed (' + esc(String(e && e.message || e)) + ')';
+  }
+
+  const failed = /failed|error/i.test(officeMsg) || /failed|error/i.test(queueMsg);
+  syncBanner('<b>Sync complete</b> — ' + officeMsg + ' · ' + queueMsg +
+             '<div style="font-size:11.5px;color:#64748b;margin-top:4px">' +
+             new Date().toLocaleTimeString() + ' · runs automatically on every data upload</div>',
+             failed ? 'err' : 'ok');
+}
+
 function maybeAutoSync() {
   const cfg = syncCfg();
   if (!cfg.auto || !cfg.url) return;
@@ -6305,6 +6415,8 @@ function sbSaveCfgFromInputs() {
   if (g('sbOrs') != null) patch.ors = g('sbOrs');
   if (g('sbGc') != null) patch.gc = g('sbGc');
   sbSaveCfgObj(patch);
+  const aa = document.getElementById('sbAutoAll');
+  if (aa) setAutoSyncOn(aa.checked);
 }
 function sbLoadGeo() { try { return JSON.parse(localStorage.getItem(SB_GEO_KEY) || '{}'); } catch (e) { return {}; } }
 function sbSaveGeo(g) { try { localStorage.setItem(SB_GEO_KEY, JSON.stringify(g)); } catch (e) {} }
@@ -6481,6 +6593,13 @@ function renderBridge() {
         <div><label class="sb-label">Anon (public) key</label><input class="sync-input" id="sbToken" placeholder="eyJhbGciOi…" value="${esc(cfg.token || '')}"></div>
         <div><label class="sb-label">OpenRouteService key (optional)</label><input class="sync-input" id="sbOrs" placeholder="for faster geocoding" value="${esc(cfg.ors || '')}"></div>
         <div><label class="sb-label">Geocodio key (optional)</label><input class="sync-input" id="sbGc" placeholder="rooftop-accurate geocoding" value="${esc(cfg.gc || '')}"></div>
+        <div style="grid-column:1/-1;margin-top:4px">
+          <label class="sync-chk" style="display:flex;align-items:center;gap:8px;font-size:13px">
+            <input type="checkbox" id="sbAutoAll" ${autoSyncOn() ? 'checked' : ''}>
+            <span><b>Auto-sync on every data upload</b> — pushes offices &amp; statuses to Salesly and queues
+            New + Winback emails automatically, with a confirmation when it finishes. Turn off for manual control.</span>
+          </label>
+        </div>
       </div>
       <div style="margin-top:12px"><button class="btn-text" id="sbTest">Test connection</button><span class="sb-conn-status" id="sbConnStatus"></span></div>
     </div>
@@ -6547,7 +6666,16 @@ function renderBridge() {
     </div>`;
 
   /* wiring */
-  ['sbUrl', 'sbToken', 'sbOrs'].forEach(id => document.getElementById(id).addEventListener('change', () => { sbSaveCfgFromInputs(); pgReset(); }));
+  ['sbUrl', 'sbToken', 'sbOrs', 'sbGc'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('change', () => { sbSaveCfgFromInputs(); pgReset(); });
+  });
+  // The auto-sync master toggle must persist the moment it's clicked.
+  const _autoEl = document.getElementById('sbAutoAll');
+  if (_autoEl) _autoEl.addEventListener('change', () => {
+    setAutoSyncOn(_autoEl.checked);
+    toast(_autoEl.checked ? 'Auto-sync on upload: ON' : 'Auto-sync on upload: OFF');
+  });
   pgPaintAuth();
   document.getElementById('sbChecks').addEventListener('change', () => {
     document.querySelectorAll('#sbChecks [data-st]').forEach(cb => BRIDGE.wanted[cb.getAttribute('data-st')] = cb.checked);
@@ -6592,10 +6720,13 @@ function renderBridge() {
    the new one and silently winning.) */
 
 async function sbGeocodeOne(o) {
+  // Read the keys from the inputs when the Bridge tab is on screen, otherwise
+  // from saved config — so an automatic sync works from any tab.
+  const _cfgK = (typeof sbCfg === 'function') ? (sbCfg() || {}) : {};
   const orsEl = document.getElementById('sbOrs');
-  const ors = orsEl ? orsEl.value.trim() : '';
+  const ors = (orsEl ? orsEl.value.trim() : '') || (_cfgK.ors || '');
   const gcEl = document.getElementById('sbGc');
-  const gc = gcEl ? gcEl.value.trim() : '';
+  const gc = (gcEl ? gcEl.value.trim() : '') || (_cfgK.gc || '');
   const qy = sbGeoQuery(o); if (!qy) return null;
   // Geocodio first when a key is present — rooftop accuracy (the same source
   // that placed the original import) instead of interpolated street positions.
@@ -7043,10 +7174,23 @@ async function sbMergeDupes() {
 }
 
 async function sbSync() {
+  // An automatic sync usually runs while another tab is on screen, so the Bridge
+  // tab may never have rendered and BRIDGE.data would still be null. Build it on
+  // demand rather than silently bailing out.
+  if (!BRIDGE.data) { try { BRIDGE.data = buildBridgeData(); } catch (e) {} }
   if (!BRIDGE.data) { toast('No data loaded yet'); return; }
   sbSaveCfgFromInputs();
+  // Read the segment checkboxes when the Bridge tab is on screen; otherwise use
+  // the remembered selection (BRIDGE.wanted, which defaults to every status).
+  // Without this an off-tab sync sees an empty NodeList and pushes NOTHING.
   const wanted = {};
-  document.querySelectorAll('#sbChecks [data-st]').forEach(cb => wanted[cb.getAttribute('data-st')] = cb.checked);
+  const _cbs = document.querySelectorAll('#sbChecks [data-st]');
+  if (_cbs.length) {
+    _cbs.forEach(cb => wanted[cb.getAttribute('data-st')] = cb.checked);
+  } else {
+    if (!BRIDGE.wanted) { BRIDGE.wanted = {}; SB_STATUSES.forEach(st => BRIDGE.wanted[st] = true); }
+    SB_STATUSES.forEach(st => wanted[st] = !!BRIDGE.wanted[st]);
+  }
   const selected = BRIDGE.data.rows.filter(r => r.segs.some(s => wanted[s]));
   const noPractice = selected.filter(r => !r.practice.trim());
   // group selected doctors into their practice offices
@@ -7066,10 +7210,17 @@ async function sbSync() {
   });
   const push = Array.from(officeMap.values());
 
-  const goBtn = document.getElementById('sbGo'), stopBtn = document.getElementById('sbStop');
-  const barWrap = document.getElementById('sbBarWrap'), bar = document.getElementById('sbBar');
+  // These live on the Salesly Bridge tab. An automatic sync usually runs while a
+  // DIFFERENT tab is on screen, so they may not exist — fall back to inert stubs
+  // rather than throwing on `.disabled` / `.style`.
+  const _stub = () => ({ style: {}, disabled: false });
+  const goBtn   = document.getElementById('sbGo')      || _stub();
+  const stopBtn = document.getElementById('sbStop')    || _stub();
+  const barWrap = document.getElementById('sbBarWrap') || _stub();
+  const bar     = document.getElementById('sbBar')     || _stub();
   goBtn.disabled = true;
-  document.getElementById('sbLog').innerHTML = '';
+  const _logEl = document.getElementById('sbLog');
+  if (_logEl) _logEl.innerHTML = '';
   BRIDGE.stop = false;
   try {
     sbLog(selected.length + ' doctors selected → ' + push.length + ' practice offices' + (noPractice.length ? ' (' + noPractice.length + ' doctors have no practice name and can\'t be matched to an office — they\'re skipped)' : ''));
@@ -7115,7 +7266,8 @@ async function sbSync() {
     const need = push.filter(o => o._row !== -2 && !geo[sbGeoKey(o)] && (o.addr || o.city));
     sbLog(push.length + ' offices to sync · ' + push.filter(o => o._row >= 0).length + ' already in the Sheet · ' + need.length + ' need geocoding');
     if (need.length) {
-      const ors = !!document.getElementById('sbOrs').value.trim();
+      const _orsEl = document.getElementById('sbOrs');
+  const ors = !!((_orsEl ? _orsEl.value.trim() : '') || ((typeof sbCfg === 'function' ? (sbCfg() || {}) : {}).ors || ''));
       const delay = ors ? 350 : 1100;
       sbLog('Geocoding via ' + (ors ? 'OpenRouteService' : "OpenStreetMap (~1/sec — you can Stop anytime and finish; the rest just won't have pins yet)"));
       stopBtn.style.display = ''; barWrap.style.display = '';
