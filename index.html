@@ -781,7 +781,7 @@ html, body {
         <div class="brand-mark">L</div>
         <div class="brand-text">
           Lab Sales Dashboard
-          <span class="brand-sub">Sales · Production · Practice Operations <span style="opacity:.6;font-size:9px;margin-left:6px">v2026.07.22-AUTOSYNC</span></span>
+          <span class="brand-sub">Sales · Production · Practice Operations <span style="opacity:.6;font-size:9px;margin-left:6px">v2026.07.23-PRESERVE</span></span>
         </div>
       </div>
       <div class="brand-divider"></div>
@@ -6288,6 +6288,37 @@ async function sbSheetGet() {
     if (!data || data.length < PAGE) break;
     if (from > 50000) break;                 // hard stop; S-tier should never be this big
   }
+
+  /* Also pull every office a rep has VISITED, even if it is still an A/B
+     prospect with a pin. Without this they fall outside the read set above, so
+     when that prospect becomes a customer the bridge cannot match it, treats it
+     as brand new, and writes a SECOND row — leaving the rep's visit history
+     stranded on the old one. Reading them here means they match and update in
+     place, with their visits carried through untouched. */
+  const seenIds = new Set(out.map(r => String(r.id)));
+  let visitedPulled = 0;
+  try {
+    for (let from = 0; ; from += PAGE) {
+      const { data, error } = await db.from('offices')
+        .select('*')
+        .neq('visits', '')
+        .eq('active', true)
+        .order('id').range(from, from + PAGE - 1);
+      if (error) throw new Error(error.message);
+      (data || []).forEach(r => {
+        if (!seenIds.has(String(r.id))) { seenIds.add(String(r.id)); out.push(r); visitedPulled++; }
+      });
+      if (!data || data.length < PAGE) break;
+      if (from > 50000) break;
+    }
+    if (visitedPulled) sbLog('Also loaded ' + visitedPulled + ' visited prospect' + (visitedPulled === 1 ? '' : 's') + ' so their visit history is preserved', 'ok');
+  } catch (e) {
+    // Degrade gracefully: the primary read set above is still valid, so the sync
+    // proceeds. Only the visited-prospect matching is lost, which at worst
+    // recreates the pre-existing duplicate behaviour rather than breaking a sync.
+    sbLog('Could not pre-load visited prospects (' + (e && e.message ? e.message : e) + ') — continuing', 'warn');
+  }
+
   return { cols: PG_COLS.slice(), rows: out.map(pgRowToArr) };
 }
 
@@ -7372,11 +7403,14 @@ async function sbSync() {
    ═══════════════════════════════════════════════════════════════ */
 
 const RP_SNAP_KEY = 'labreports_status_snap';
+/* cap = how many rows show up front. Everything past it is no longer thrown
+   away — it goes into an expandable "Show all N" block underneath, so the full
+   list is always reachable from the same report. */
 const RP_PERIODS = [
   { key: 'daily',     label: 'Daily',     n: 1,  cur: [0, 0],   prev: [1, 1],     cap: 25 },
-  { key: 'weekly',    label: 'Weekly',    n: 7,  cur: [0, 6],   prev: [7, 13],    cap: 30 },
-  { key: 'monthly',   label: 'Monthly',   n: 30, cur: [0, 29],  prev: [30, 59],   cap: 40 },
-  { key: 'quarterly', label: 'Quarterly', n: 91, cur: [0, 90],  prev: [91, 181],  cap: 40 }
+  { key: 'weekly',    label: 'Weekly',    n: 7,  cur: [0, 6],   prev: [7, 13],    cap: 25 },
+  { key: 'monthly',   label: 'Monthly',   n: 30, cur: [0, 29],  prev: [30, 59],   cap: 25 },
+  { key: 'quarterly', label: 'Quarterly', n: 91, cur: [0, 90],  prev: [91, 181],  cap: 25 }
 ];
 
 function rpNewBucket() { return { rev: 0, units: 0, rows: 0, remakes: 0, tatSum: 0, tatN: 0 }; }
@@ -7520,18 +7554,37 @@ function rpEntitySection(p, entities, entityNoun) {
   });
   list.sort((a, b) => Math.abs(b.dRev) - Math.abs(a.dRev));
   const shown = list.slice(0, p.cap);
+  const rest  = list.slice(p.cap);
+
+  const headRow = '<tr>' + [entityNoun, 'Revenue', 'Units', 'Remake %', 'Avg TAT'].map(lbl =>
+    '<th style="text-align:left;padding:8px 12px;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:#64748b;border-bottom:1px solid #e2e8f0">' + lbl + '</th>').join('') + '</tr>';
+  const bodyRow = x =>
+    '<tr><td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;font-size:12.5px"><b style="color:#0f172a">' + esc(x.ent.label) + '</b>' +
+    (x.ent.sub ? '<div style="font-size:11px;color:#64748b">' + esc(x.ent.sub) + '</div>' : '') + '</td>' +
+    ['rev', 'units', 'remake', 'tat'].map(m => '<td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;font-size:12.5px">' + rpCell(x.curM, x.prevM, m) + '</td>').join('') + '</tr>';
+  const tableOf = rows => '<table cellpadding="0" cellspacing="0" style="' + RP_F +
+    'width:100%;border-collapse:collapse;background:#fff;border:1px solid #e2e8f0;border-radius:10px">' +
+    headRow + rows.map(bodyRow).join('') + '</table>';
+
   let h = '<div style="' + RP_F + 'font-size:15px;font-weight:800;color:#0f172a;margin:20px 0 8px">' + p.label + ' — per ' + entityNoun +
-    ' <span style="font-weight:500;font-size:11px;color:#64748b">(' + rpWindowNote(p) + (list.length > p.cap ? ' · top ' + p.cap + ' of ' + list.length + ' by |Δ revenue|' : '') + ')</span></div>';
+    ' <span style="font-weight:500;font-size:11px;color:#64748b">(' + rpWindowNote(p) +
+    (rest.length ? ' · top ' + p.cap + ' of ' + list.length + ' by |Δ revenue| — full list below' : '') + ')</span></div>';
   if (!shown.length) return h + '<div style="' + RP_F + 'font-size:12px;color:#64748b;font-style:italic;margin-bottom:6px">No activity in this window.</div>';
-  h += '<table cellpadding="0" cellspacing="0" style="' + RP_F + 'width:100%;border-collapse:collapse;background:#fff;border:1px solid #e2e8f0;border-radius:10px">' +
-    '<tr>' + ['<th style="text-align:left', '<th style="text-align:left', '<th style="text-align:left', '<th style="text-align:left', '<th style="text-align:left'].map((s, i) =>
-      s + ';padding:8px 12px;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:#64748b;border-bottom:1px solid #e2e8f0">' + [entityNoun, 'Revenue', 'Units', 'Remake %', 'Avg TAT'][i] + '</th>').join('') + '</tr>';
-  shown.forEach(x => {
-    h += '<tr><td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;font-size:12.5px"><b style="color:#0f172a">' + esc(x.ent.label) + '</b>' +
-      (x.ent.sub ? '<div style="font-size:11px;color:#64748b">' + esc(x.ent.sub) + '</div>' : '') + '</td>' +
-      ['rev', 'units', 'remake', 'tat'].map(m => '<td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;font-size:12.5px">' + rpCell(x.curM, x.prevM, m) + '</td>').join('') + '</tr>';
-  });
-  return h + '</table>';
+
+  h += tableOf(shown);
+
+  if (rest.length) {
+    // The remainder used to be discarded. It now lives in a collapsed block.
+    // NOTE: <details> is ignored by Outlook and some webmail — there the block
+    // simply renders already-open, which still shows the complete list.
+    h += '<details style="' + RP_F + 'margin-top:8px">' +
+      '<summary style="cursor:pointer;font-size:12px;font-weight:700;color:#2563eb;padding:8px 12px;' +
+      'background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;list-style:none">' +
+      '▸ Show the remaining ' + rest.length + ' ' + entityNoun.toLowerCase() + (rest.length === 1 ? '' : 's') +
+      ' (' + list.length + ' total)</summary>' +
+      '<div style="margin-top:8px">' + tableOf(rest) + '</div></details>';
+  }
+  return h;
 }
 
 function rpBuildDoctorReport() {
@@ -7820,7 +7873,7 @@ function renderReports() {
 
     <div class="card">
       <div class="sb-card-title"><span class="sb-stepnum">2</span> Preview</div>
-      <div class="sb-hint">Exactly what lands in the inbox. Per-entity tables are sorted by biggest revenue swing; long lists are capped per period (the caps are noted in each section).</div>
+      <div class="sb-hint">Exactly what lands in the inbox. Per-entity tables are sorted by biggest revenue swing. Each period shows the <b>top 25</b>, with the rest in an expandable <b>Show the remaining…</b> block — so the full client and product lists are always reachable.</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn-text" id="rpPrevDoc">📋 Customer report</button>
         <button class="btn-text" id="rpPrevProd">📦 Product report</button>
