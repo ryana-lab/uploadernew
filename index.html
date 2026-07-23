@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.07.23-PRESERVE</title>
+<title>Lab Sales Dashboard v2026.07.23-RCPTFIX</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -6435,7 +6435,10 @@ function sbCfg() { try { return JSON.parse(localStorage.getItem(SB_CFG_KEY) || '
 function sbSaveCfgObj(patch) {
   const c = sbCfg();
   Object.assign(c, patch);
-  try { localStorage.setItem(SB_CFG_KEY, JSON.stringify(c)); } catch (e) {}
+  // Report failure instead of swallowing it — a settings change that silently
+  // does nothing is worse than one that errors loudly.
+  try { localStorage.setItem(SB_CFG_KEY, JSON.stringify(c)); c._saved = true; }
+  catch (e) { c._saved = false; c._saveErr = (e && e.message) || 'storage error'; }
   return c;
 }
 function sbSaveCfgFromInputs() {
@@ -7869,6 +7872,7 @@ function renderReports() {
       <input class="sync-input" id="rpRcpt_products" placeholder="e.g. production@lab.com" value="${esc(cfg.rcptProducts || '')}">
       <label class="sb-label">🔔 Status changes → </label>
       <input class="sync-input" id="rpRcpt_status" placeholder="e.g. owner@lab.com, reps@lab.com" value="${esc(cfg.rcptStatus || '')}">
+      <div id="rpSaveNote" style="margin-top:10px;font-size:12px;font-weight:600"></div>
     </div>
 
     <div class="card">
@@ -7895,10 +7899,38 @@ function renderReports() {
   document.getElementById('rpPrevStat').onclick = () => rpPreview('status');
   document.getElementById('rpPush').onclick = () => rpPost('saveReports');
   document.getElementById('rpSend').onclick = () => rpPost('sendNow');
-  ['rpUrl', 'rpToken', 'rpRcpt', 'rpRcpt_doctors', 'rpRcpt_products', 'rpRcpt_status'].forEach(id => { const el = document.getElementById(id); if (el) el.addEventListener('change', () => {
-    sbSaveCfgObj({ url: document.getElementById('rpUrl').value.trim(), token: document.getElementById('rpToken').value.trim(), rcpt: document.getElementById('rpRcpt').value.trim(),
-      rcptDoctors: (document.getElementById('rpRcpt_doctors')||{}).value||'', rcptProducts: (document.getElementById('rpRcpt_products')||{}).value||'', rcptStatus: (document.getElementById('rpRcpt_status')||{}).value||'' });
-  }); });
+  /* Save the recipient boxes. The old handler read rpUrl/rpToken, which were
+     removed when the backend moved to the Salesly Bridge tab — getElementById
+     returned null and `.value` threw on the FIRST line, so sbSaveCfgObj was
+     never reached and typing a recipient silently saved nothing. Every read is
+     now guarded, only the recipient keys are written (url/token belong to the
+     Bridge), and the result is confirmed on screen so a save is never silent. */
+  const rpRead = id => { const el = document.getElementById(id); return el ? el.value.trim() : null; };
+  const rpSaveRecipients = () => {
+    const patch = {};
+    const map = { rpRcpt: 'rcpt', rpRcpt_doctors: 'rcptDoctors', rpRcpt_products: 'rcptProducts', rpRcpt_status: 'rcptStatus' };
+    Object.keys(map).forEach(id => { const v = rpRead(id); if (v !== null) patch[map[id]] = v; });
+    if (!Object.keys(patch).length) return;
+    const res = sbSaveCfgObj(patch);
+    const el = document.getElementById('rpSaveNote');
+    if (res && res._saved === false) {
+      if (el) { el.textContent = '⚠️ Could not save recipients (' + (res._saveErr || 'storage error') + ') — they will NOT be used.'; el.style.color = '#dc2626'; }
+      toast('⚠️ Recipients not saved — ' + (res._saveErr || 'storage error'));
+    } else {
+      const filled = Object.values(patch).filter(Boolean).length;
+      if (el) {
+        el.textContent = filled
+          ? '✅ Recipients saved ' + new Date().toLocaleTimeString() + ' — used on the next “Push tonight\'s reports”.'
+          : 'No recipients set. Reports with no recipient are skipped, so add at least one address.';
+        el.style.color = filled ? '#059669' : '#b45309';
+      }
+    }
+  };
+  ['rpRcpt', 'rpRcpt_doctors', 'rpRcpt_products', 'rpRcpt_status'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.addEventListener('change', rpSaveRecipients); el.addEventListener('blur', rpSaveRecipients); }
+  });
+  rpSaveRecipients();   // paint the current state on load
 }
 
 
