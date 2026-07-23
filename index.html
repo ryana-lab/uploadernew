@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.07.23-LAYOUT2</title>
+<title>Lab Sales Dashboard v2026.07.23-ONTIME</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -132,7 +132,12 @@ html, body {
 @media (max-width: 620px)  { .kpi-row.cols-4 { grid-template-columns: 1fr; } }
 
 /* On-time delivery scorecard — three stacked rows (early/ontime/late) */
-.ot-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; box-shadow: var(--shadow-sm); }
+.ot-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; box-shadow: var(--shadow-sm); height: 100%; display: flex; flex-direction: column; }
+/* The card is wrapped in a .flex-1 grid item. The wrapper stretched to the row
+   height but the card inside kept its natural height — that gap under the
+   On-Time Delivery card is exactly this. Fill the wrapper, and let the bars
+   breathe into the extra space instead of leaving it blank. */
+.flex-1 > .ot-card { height: 100%; }
 .ot-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 14px; }
 .ot-title { font-size: 13px; font-weight: 700; color: var(--ink); letter-spacing: -.01em; }
 .ot-sub { font-size: 11px; color: var(--mut); }
@@ -3914,16 +3919,25 @@ function renderDoctorDetail() {
   for (const r of cases) {
     if (!r.anchorMonth || !validMonths.has(r.anchorMonth)) continue;
     let m = mmap.get(r.anchorMonth);
-    if (!m) { m = { key: r.anchorMonth, revenue: 0, cases: 0, remakes: 0, tatSum: 0, tatN: 0 }; mmap.set(r.anchorMonth, m); }
+    if (!m) { m = { key: r.anchorMonth, revenue: 0, cases: 0, remakes: 0, tatSum: 0, tatN: 0,
+                    otEarly: 0, otOnTime: 0, otLate: 0, otTotal: 0 }; mmap.set(r.anchorMonth, m); }
     m.revenue += r.netCost; m.cases++;
     if (r.remake) m.remakes++;
     if (r.tat != null && r.tat >= 0 && r.tat < 200) { m.tatSum += r.tat; m.tatN++; }
+    // Same on-time accumulation the Product Detail month buckets use.
+    if (r.onTimeStatus) {
+      m.otTotal++;
+      if      (r.onTimeStatus === 'early')  m.otEarly++;
+      else if (r.onTimeStatus === 'ontime') m.otOnTime++;
+      else if (r.onTimeStatus === 'late')   m.otLate++;
+    }
   }
   // Fill in zero months so the chart shows a continuous timeline even if this doctor
   // had no cases that month
   for (const k of validMonths) {
     if (!mmap.has(k)) {
-      mmap.set(k, { key: k, revenue: 0, cases: 0, remakes: 0, tatSum: 0, tatN: 0 });
+      mmap.set(k, { key: k, revenue: 0, cases: 0, remakes: 0, tatSum: 0, tatN: 0,
+                    otEarly: 0, otOnTime: 0, otLate: 0, otTotal: 0 });
     }
   }
   const months = Array.from(mmap.values()).sort((a,b) => a.key.localeCompare(b.key));
@@ -3997,6 +4011,14 @@ function renderDoctorDetail() {
         <div class="chart-title">Invoiced vs. Due — Latest 60 Cases</div>
         <div class="card-sub" style="margin:-10px 0 10px;font-size:11px;color:var(--mut)">Each dot is one case. Above the line = late; on the line = on-time; below = early.</div>
         <div class="chart-wrap" style="height:200px"><canvas id="ddOnTimeScatter"></canvas></div>
+      </div>
+    </div>
+
+    <div class="flex-row">
+      <div class="card flex-1">
+        <div class="chart-title">On-Time % by Month</div>
+        <div class="card-sub" style="margin:-10px 0 10px;font-size:11px;color:var(--mut)">Share of cases that were early, on-time, or late each month.</div>
+        <div class="chart-wrap short"><canvas id="ddOnTimeTrend"></canvas></div>
       </div>
     </div>
 
@@ -4094,6 +4116,26 @@ function renderDoctorDetail() {
     return { x: i, y: delta, status: r.onTimeStatus };
   });
   const ptColor = (s) => s === 'late' ? '#dc2626' : s === 'ontime' ? '#d97706' : '#059669';
+  // On-time stacked bars by month — same 100%-stacked treatment as Product Detail.
+  makeChart('ddOnTimeTrend', {
+    type: 'bar',
+    data: {
+      labels: months.map(m => fmtMonthKey(m.key)),
+      datasets: [
+        { label: 'Early',   data: months.map(m => m.otTotal ? m.otEarly  / m.otTotal * 100 : 0), backgroundColor: '#059669', borderRadius: 2, stack: 'o' },
+        { label: 'On-Time', data: months.map(m => m.otTotal ? m.otOnTime / m.otTotal * 100 : 0), backgroundColor: '#d97706', borderRadius: 2, stack: 'o' },
+        { label: 'Late',    data: months.map(m => m.otTotal ? m.otLate   / m.otTotal * 100 : 0), backgroundColor: '#dc2626', borderRadius: 2, stack: 'o' }
+      ]
+    },
+    options: {
+      ...commonChartOpts(),
+      plugins: { ...commonChartOpts().plugins, legend: { ...commonChartOpts().plugins.legend, position: 'bottom' },
+        tooltip: { callbacks: { label: (ctx) => ctx.dataset.label + ': ' + ctx.parsed.y.toFixed(1) + '%' } } },
+      scales: { x: { ...commonChartOpts().scales.x, stacked: true },
+                y: { ...commonChartOpts().scales.y, stacked: true, max: 100, ticks: { ...commonChartOpts().scales.y.ticks, callback: v => v + '%' } } }
+    }
+  });
+
   makeChart('ddOnTimeScatter', {
     type: 'scatter',
     data: {
