@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.07.23-ONTIME</title>
+<title>Lab Sales Dashboard v2026.07.23-ONTIME2</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -141,7 +141,7 @@ html, body {
 .ot-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 14px; }
 .ot-title { font-size: 13px; font-weight: 700; color: var(--ink); letter-spacing: -.01em; }
 .ot-sub { font-size: 11px; color: var(--mut); }
-.ot-rows { display: flex; flex-direction: column; gap: 10px; }
+.ot-rows { display: flex; flex-direction: column; gap: 10px; flex: 1 1 auto; justify-content: center; }
 .ot-row { display: grid; grid-template-columns: 110px 1fr 64px; align-items: center; gap: 10px; font-size: 12px; }
 .ot-row-label { display: flex; align-items: center; gap: 6px; font-weight: 700; }
 .ot-row-label .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
@@ -154,7 +154,7 @@ html, body {
 .ot-row.ontime .ot-bar-fill { background: var(--amb); }
 .ot-row.late .ot-bar-fill   { background: var(--red); }
 .ot-row-val { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; font-size: 13px; }
-.ot-empty { font-size: 12px; color: var(--mut); font-style: italic; padding: 12px 0; text-align: center; }
+.ot-empty { font-size: 12px; color: var(--mut); font-style: italic; padding: 12px 0; text-align: center;  flex: 1 1 auto; display: flex; align-items: center; justify-content: center;}
 .kpi { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; box-shadow: var(--shadow-sm); transition: all .15s; height: 100%; display: flex; flex-direction: column; justify-content: flex-start; }
 
 /* On-time KPI tile — sized to fit inside the .kpi-row alongside other KPIs.
