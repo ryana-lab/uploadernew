@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard</title>
+<title>Lab Sales Dashboard v2026.07.23-PRESERVE</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -781,7 +781,7 @@ html, body {
         <div class="brand-mark">L</div>
         <div class="brand-text">
           Lab Sales Dashboard
-          <span class="brand-sub">Sales · Production · Practice Operations <span style="opacity:.6;font-size:9px;margin-left:6px">v2026.07.23-PRESERVE</span></span>
+          <span class="brand-sub">Sales · Production · Practice Operations <span id="appVer" style="opacity:.6;font-size:9px;margin-left:6px"></span></span>
         </div>
       </div>
       <div class="brand-divider"></div>
@@ -8246,6 +8246,69 @@ function prPaint() {
   document.getElementById('prNext').disabled = to >= PROSPECTS.total;
 }
 
+
+/* ---- AUTO-UPDATE (same mechanism as the rep app) ----------------------------
+   GitHub Pages caches index.html (~10 min, browser + CDN) and the
+   <meta http-equiv="Cache-Control"> tags are ignored for the document itself,
+   so a redeploy would otherwise keep serving the old build. On launch and on
+   resume we fetch this page's first bytes with cache:'no-store' and a unique
+   query string — bypassing both caches — read the version out of the <title>,
+   and reload once through a cache-busting URL if the server is newer. The
+   version lives ONLY in the <title>, so it cannot drift. */
+(function autoUpdate(){
+  const RUNNING = (String(document.title).match(/\bv[\w.\-]+/) || [""])[0];
+  // Paint the header stamp from the SAME source the update check uses, so the
+  // two can never disagree. The version now lives only in the <title>.
+  try{ const vEl=document.getElementById("appVer"); if(vEl) vEl.textContent=RUNNING; }catch(_){}
+  if(!RUNNING) return;
+  const SEEN_KEY = "_dash_updated_to";
+  let lastCheck = 0;
+
+  async function fetchServerVersion(){
+    const url = location.pathname + "?_v=" + Date.now();
+    let txt = "";
+    try{
+      const r = await fetch(url, { cache:"no-store", headers:{ "Range":"bytes=0-2047" } });
+      if(r.ok || r.status === 206) txt = await r.text();
+    }catch(_){}
+    if(!txt){
+      try{
+        const r2 = await fetch(url, { cache:"no-store" });
+        if(!r2.ok) return null;
+        txt = await r2.text();
+      }catch(_){ return null; }
+    }
+    const t = txt.match(/<title>([^<]*)<\/title>/i);
+    if(!t) return null;
+    const m = t[1].match(/\bv[\w.\-]+/);
+    return m ? m[0] : null;
+  }
+
+  async function check(){
+    if(navigator.onLine === false) return;
+    const server = await fetchServerVersion();
+    if(!server || server === RUNNING) return;
+    try{ if(sessionStorage.getItem(SEEN_KEY) === server) return; }catch(_){}
+    try{ sessionStorage.setItem(SEEN_KEY, server); }catch(_){}
+    // Never interrupt an upload or a running sync.
+    if((typeof _autoSyncBusy !== "undefined" && _autoSyncBusy) ||
+       (typeof BRIDGE !== "undefined" && BRIDGE && BRIDGE.running)){
+      setTimeout(check, 30000); return;
+    }
+    try{ if(typeof toast === "function") toast("Updating to " + server + "…"); }catch(_){}
+    setTimeout(function(){ location.replace(location.pathname + "?b=" + encodeURIComponent(server)); }, 700);
+  }
+
+  function maybeCheck(){
+    if(Date.now() - lastCheck < 300000) return;
+    lastCheck = Date.now(); check();
+  }
+  setTimeout(function(){ lastCheck = Date.now(); check(); }, 3000);
+  document.addEventListener("visibilitychange", function(){
+    if(document.visibilityState === "visible") maybeCheck();
+  });
+  window.addEventListener("online", maybeCheck);
+})();
 </script>
 </body>
 </html>
