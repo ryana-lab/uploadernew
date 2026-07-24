@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.07.24-WINBACK2</title>
+<title>Lab Sales Dashboard v2026.07.24-HUB2</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -7820,14 +7820,100 @@ function rpBuildStatusReport() {
   return h;
 }
 
-function rpBuildAll() {
+/* ── DAILY VISIT REPORT ──────────────────────────────────────────────────────
+   Unlike the other three reports, this one's data lives in Supabase rather than
+   the uploaded case file — visits are logged by reps in Salesly. So it fetches,
+   which makes it (and rpBuildAll) async.
+
+   Reads offices.visits, whose entries are "date~color~note~rep" separated by
+   "|", keeps the ones logged on the target day, and groups them by rep. The
+   onboarding flags on the office (starter kit / welcome email / price list)
+   ride along so the report shows what was set up during the visit. */
+async function rpBuildVisitReport(forDate) {
+  const day = forDate || isoDate(new Date());
+  const db = pgClient();
+  if (!db) {
+    return { html: `<div style="${RP_F}font-size:13px;color:#b45309">Not connected to Supabase — set up the Salesly Bridge tab to include visit reports.</div>`, count: 0 };
+  }
+
+  let offices = [];
+  try {
+    const { data, error } = await db.from('offices')
+      .select('name,addr,city,state,visits,starter_kit,welcome_email,pricelist,notes')
+      .neq('visits', '')
+      .eq('active', true)
+      .limit(5000);
+    if (error) throw new Error(error.message);
+    offices = data || [];
+  } catch (e) {
+    return { html: `<div style="${RP_F}font-size:13px;color:#dc2626">Could not load visits: ${esc(e.message)}</div>`, count: 0 };
+  }
+
+  // Flatten to one entry per visit made on the target day.
+  const byRep = new Map();
+  let total = 0;
+  offices.forEach(o => {
+    String(o.visits || '').split('|').forEach(raw => {
+      const e = raw.trim(); if (!e) return;
+      const p = e.split('~');
+      const d = (p[0] || '').trim();
+      if (d.slice(0, 10) !== day) return;
+      const rep  = (p[3] || '').trim() || 'Unattributed';
+      const note = (p[2] || '').trim();
+      const color = (p[1] || '').trim();
+      if (!byRep.has(rep)) byRep.set(rep, []);
+      byRep.get(rep).push({ office: o, note, color });
+      total++;
+    });
+  });
+
+  if (!total) {
+    return { html: `<div style="${RP_F}font-size:13px;color:#64748b;font-style:italic">No visits logged on ${esc(day)}.</div>`, count: 0 };
+  }
+
+  const CHIP = (bg, txt) => `<span style="background:${bg}1a;color:${bg};border:1px solid ${bg}40;border-radius:5px;padding:1px 7px;font-size:10.5px;font-weight:700;white-space:nowrap;margin-right:4px">${txt}</span>`;
+  const reps = Array.from(byRep.entries()).sort((a, b) => b[1].length - a[1].length);
+
+  let h = `<div style="${RP_F}font-size:15px;font-weight:800;color:#0f172a;margin:0 0 4px">Visits on ${esc(day)}</div>`;
+  h += `<div style="${RP_F}font-size:12px;color:#64748b;margin-bottom:14px">${total} visit${total === 1 ? '' : 's'} across ${reps.length} rep${reps.length === 1 ? '' : 's'}.</div>`;
+
+  reps.forEach(([rep, list]) => {
+    const kits = list.filter(x => x.office.starter_kit).length;
+    const wels = list.filter(x => x.office.welcome_email).length;
+    h += `<div style="${RP_F}margin:16px 0 6px;font-size:14px;font-weight:800;color:#0f172a">${esc(rep)}
+            <span style="font-weight:500;font-size:12px;color:#64748b"> — ${list.length} visit${list.length === 1 ? '' : 's'}`
+       + (kits ? ` · ${kits} starter kit${kits === 1 ? '' : 's'}` : '')
+       + (wels ? ` · ${wels} welcome email${wels === 1 ? '' : 's'}` : '')
+       + `</span></div>`;
+    h += `<table cellpadding="0" cellspacing="0" style="${RP_F}width:100%;border-collapse:collapse;background:#fff;border:1px solid #e2e8f0;border-radius:10px">`;
+    h += '<tr>' + ['Practice', 'Location', 'Set up', 'Notes'].map(l =>
+      `<th style="text-align:left;padding:8px 12px;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:#64748b;border-bottom:1px solid #e2e8f0">${l}</th>`).join('') + '</tr>';
+    list.forEach(x => {
+      const o = x.office;
+      const flags = (o.starter_kit ? CHIP('#d97706', 'Starter Kit') : '')
+                  + (o.welcome_email ? CHIP('#059669', 'Welcome Email') : '')
+                  + (o.pricelist ? CHIP('#2563eb', esc(o.pricelist)) : '');
+      h += `<tr>
+        <td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;font-size:12.5px"><b style="color:#0f172a">${esc(o.name || '(unnamed)')}</b></td>
+        <td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;font-size:12px;color:#64748b">${esc([o.city, o.state].filter(Boolean).join(', '))}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #f1f5f9">${flags || '<span style="color:#94a3b8;font-size:12px">—</span>'}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;font-size:12px;color:#334155">${esc(x.note) || '<span style="color:#94a3b8">—</span>'}</td>
+      </tr>`;
+    });
+    h += '</table>';
+  });
+  return { html: h, count: total };
+}
+
+async function rpBuildAll() {
   const asOf = isoDate(getMaxDate() || new Date());
   return {
     asOf,
     reports: [
       { key: 'doctors',  subject: '📋 Daily Customer Report',   html: rpBuildDoctorReport() },
       { key: 'products', subject: '📦 Daily Product Report',    html: rpBuildProductReport() },
-      { key: 'status',   subject: '🔔 Status Changes Report',   html: rpBuildStatusReport() }
+      { key: 'status',   subject: '🔔 Status Changes Report',   html: rpBuildStatusReport() },
+      { key: 'visits',   subject: '🚗 Daily Visit Report',      html: (await rpBuildVisitReport(isoDate(new Date()))).html }
     ]
   };
 }
@@ -7852,7 +7938,8 @@ async function rpPost(action) {
     rcpt: recipients,
     rcptDoctors: (document.getElementById('rpRcpt_doctors') || {}).value || '',
     rcptProducts: (document.getElementById('rpRcpt_products') || {}).value || '',
-    rcptStatus: (document.getElementById('rpRcpt_status') || {}).value || ''
+    rcptStatus: (document.getElementById('rpRcpt_status') || {}).value || '',
+    rcptVisits: (document.getElementById('rpRcpt_visits') || {}).value || ''
   });
   const db = pgClient();
   if (!db) { rpLog('✗ Set your Supabase URL and anon key on the Salesly Bridge tab first', 'err'); return; }
@@ -7863,7 +7950,7 @@ async function rpPost(action) {
   goA.disabled = goB.disabled = true;
   try {
     rpLog(action === 'sendNow' ? 'Building reports and sending now…' : 'Building and storing tonight\'s reports…');
-    const built = rpBuildAll();
+    const built = await rpBuildAll();
     built.reports.forEach(r => { r.to = perReport[r.key] || recipients || ''; });
 
     // The Apps Script chunked each report's HTML across spreadsheet cells because
@@ -7917,8 +8004,8 @@ function rpPreview(which) {
   box.scrollTop = 0;
 }
 
-function rpDownloadAll() {
-  const built = rpBuildAll();
+async function rpDownloadAll() {
+  const built = await rpBuildAll();
   const html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Lab Reports ' + built.asOf + '</title></head><body style="background:#f8f9fb;padding:20px">' +
     built.reports.map(r => r.html).join('<div style="height:34px"></div>') + '</body></html>';
   const blob = new Blob([html], { type: 'text/html' });
@@ -7978,6 +8065,8 @@ function renderReports() {
       <input class="sync-input" id="rpRcpt_products" placeholder="e.g. production@lab.com" value="${esc(cfg.rcptProducts || '')}">
       <label class="sb-label">🔔 Status changes → </label>
       <input class="sync-input" id="rpRcpt_status" placeholder="e.g. owner@lab.com, reps@lab.com" value="${esc(cfg.rcptStatus || '')}">
+      <label class="sb-label">🚗 Daily visits → </label>
+      <input class="sync-input" id="rpRcpt_visits" placeholder="e.g. owner@lab.com" value="${esc(cfg.rcptVisits || '')}">
       <div id="rpSaveNote" style="margin-top:10px;font-size:12px;font-weight:600"></div>
     </div>
 
@@ -8014,7 +8103,7 @@ function renderReports() {
   const rpRead = id => { const el = document.getElementById(id); return el ? el.value.trim() : null; };
   const rpSaveRecipients = () => {
     const patch = {};
-    const map = { rpRcpt: 'rcpt', rpRcpt_doctors: 'rcptDoctors', rpRcpt_products: 'rcptProducts', rpRcpt_status: 'rcptStatus' };
+    const map = { rpRcpt: 'rcpt', rpRcpt_doctors: 'rcptDoctors', rpRcpt_products: 'rcptProducts', rpRcpt_status: 'rcptStatus', rpRcpt_visits: 'rcptVisits' };
     Object.keys(map).forEach(id => { const v = rpRead(id); if (v !== null) patch[map[id]] = v; });
     if (!Object.keys(patch).length) return;
     const res = sbSaveCfgObj(patch);
@@ -8032,7 +8121,7 @@ function renderReports() {
       }
     }
   };
-  ['rpRcpt', 'rpRcpt_doctors', 'rpRcpt_products', 'rpRcpt_status'].forEach(id => {
+  ['rpRcpt', 'rpRcpt_doctors', 'rpRcpt_products', 'rpRcpt_status', 'rpRcpt_visits'].forEach(id => {
     const el = document.getElementById(id);
     if (el) { el.addEventListener('change', rpSaveRecipients); el.addEventListener('blur', rpSaveRecipients); }
   });
@@ -8112,7 +8201,7 @@ const PL_GROUPS = [
   ['mb2', 'MB2'], ['elite', 'Elite / EDA'], ['udp', 'UDP'], ['adi', 'ADI'],
   ['smilebrands', 'Smile Brands'], ['dca', 'DCA'], ['retail', 'Retail'],
 ];
-const QUEUE = { rows: [], busy: false };
+const QUEUE = { rows: [], typeFilter: '' };
 
 function renderQueue() {
   const el = document.getElementById('panel-queue');
@@ -8150,7 +8239,7 @@ async function qLoad() {
   try {
     const { data, error } = await db.from('email_queue')
       .select('*')
-      .in('status', ['queued', 'approved', 'hold', 'error'])
+      .in('status', ['queued', 'approved', 'hold', 'error'])   // 'cleared' and 'sent' stay out of the working list
       .order('status').order('created_at', { ascending: false })
       .limit(500);
     if (error) throw new Error(error.message);
@@ -8175,11 +8264,15 @@ function qPaint() {
     QUEUE.rows.length + ' in queue · ' + ready + ' ready to approve';
 
   if (!QUEUE.rows.length) {
-    document.getElementById('qTable').innerHTML = '<div class="empty-state">Queue is empty. New and Winback clients land here when you sync, and rep welcome-email requests appear automatically.</div>';
+    document.getElementById('qTable').innerHTML = '<div class="empty-state">Queue is empty. New and Winback clients land here when you sync; starter-kit and welcome-email requests appear the moment a rep ticks the box in Salesly.</div>';
     return;
   }
 
-  const rows = QUEUE.rows.map(r => {
+  const shown = QUEUE.typeFilter
+    ? QUEUE.rows.filter(r => r.type === QUEUE.typeFilter)
+    : QUEUE.rows;
+
+  const rows = shown.map(r => {
     const opts = PL_GROUPS.map(([v, label]) =>
       `<option value="${v}"${r.pricelist_group === v ? ' selected' : ''}>${esc2(label)}</option>`).join('');
     const isHeartland = String(r.email || '').toLowerCase().endsWith('@mydentalmail.com');
@@ -8187,13 +8280,17 @@ function qPaint() {
       ? '<span class="sb-hint">Heartland (auto)</span>'
       : `<select class="sync-input" style="min-width:150px" onchange="qSetGroup(${r.id}, this.value)">${opts}</select>`;
     const canApprove = r.status === 'queued' && (isHeartland || r.pricelist_group);
+    const fromSalesly = SALESLY_TYPES.includes(r.type);
+    const who = r.rep_name
+      ? `<div class="sb-hint" style="${fromSalesly ? 'color:' + SALESLY_LIME + ';font-weight:600' : ''}">flagged by ${esc2(r.rep_name)} in Salesly</div>`
+      : (fromSalesly ? `<div class="sb-hint" style="color:${SALESLY_LIME};font-weight:600">raised in Salesly</div>` : '');
     return `
-      <tr>
+      <tr${fromSalesly ? ` style="background:${SALESLY_LIME}0d"` : ''}>
         <td>${statusPill(r.status)}</td>
-        <td><b>${esc2(r.office_name || '')}</b><div class="sb-hint">${esc2(r.email)}</div></td>
-        <td>${esc2(r.type)}</td>
+        <td><b>${esc2(r.office_name || r.practice || '')}</b><div class="sb-hint">${esc2(r.email)}</div>${who}</td>
+        <td>${qTypePill(r.type)}</td>
         <td>${plCell}</td>
-        <td class="sb-hint">${esc2(r.source === 'field' ? 'rep (field)' : 'dashboard')}</td>
+        <td class="sb-hint">${esc2(r.source === 'salesly' ? 'rep (Salesly)' : r.source === 'field' ? 'rep (field)' : 'dashboard')}</td>
         <td style="white-space:nowrap">
           ${r.status === 'queued'
             ? `<button class="btn-text" ${canApprove ? '' : 'disabled title="pick a price list first"'} onclick="qApprove(${r.id})">Approve</button>`
@@ -8202,15 +8299,94 @@ function qPaint() {
               : r.status === 'error'
                 ? `<button class="btn-text" onclick="qRequeue(${r.id})">Retry</button>`
                 : ''}
+          <button class="btn-text" style="color:var(--mut)" title="Remove from the queue — it will not be sent"
+                  onclick="qClear(${r.id})">✕</button>
         </td>
       </tr>`;
   }).join('');
 
   document.getElementById('qTable').innerHTML = `
+    <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:10px">
+      ${qFilterChip('', 'All', QUEUE.rows.length)}
+      ${QUEUE_TYPES.map(([t, lbl]) => qFilterChip(t, lbl, QUEUE.rows.filter(r => r.type === t).length)).join('')}
+      <span style="flex:1"></span>
+      ${QUEUE.typeFilter
+        ? `<button class="btn-text" onclick="qApproveType('${QUEUE.typeFilter}')">✓ Approve all ${esc2(qTypeLabel(QUEUE.typeFilter))}</button>
+           <button class="btn-text" style="color:var(--mut)" onclick="qClearType('${QUEUE.typeFilter}')">✕ Clear all ${esc2(qTypeLabel(QUEUE.typeFilter))}</button>`
+        : ''}
+    </div>
     <table class="grid" style="width:100%">
       <thead><tr><th>Status</th><th>Office</th><th>Type</th><th>Price list</th><th>Source</th><th></th></tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
+}
+
+/* Every email kind the queue can hold, with the colour used on its badge.
+   Onboarding requests (starter kit / welcome) come from a rep ticking the box
+   in Salesly; intro/reintro come from the status sync. */
+const QUEUE_TYPES = [
+  ['intro',       'New (intro)'],
+  ['reintro',     'Winback (reintro)'],
+  ['starter_kit', 'Starter Kit'],
+  ['welcome',     'Welcome Email']
+];
+/* Starter-kit and welcome rows are raised by a rep in Salesly rather than by the
+   status sync, so they share ONE colour — lime green — to mark them as
+   field-raised at a glance. They send the same intro script and use the same
+   price-list picker; only where they came from differs. */
+const SALESLY_LIME = '#65a30d';
+const QUEUE_TYPE_COLOR = { intro: '#2563eb', reintro: '#7c3aed', starter_kit: SALESLY_LIME, welcome: SALESLY_LIME };
+const SALESLY_TYPES = ['starter_kit', 'welcome'];
+function qTypeLabel(t) { const f = QUEUE_TYPES.find(x => x[0] === t); return f ? f[1] : t; }
+function qTypePill(t) {
+  const c = QUEUE_TYPE_COLOR[t] || '#64748b';
+  return `<span style="background:${c}1a;color:${c};border:1px solid ${c}40;border-radius:5px;padding:2px 8px;font-size:11px;font-weight:700;white-space:nowrap">${esc(qTypeLabel(t))}</span>`;
+}
+function qFilterChip(t, label, n) {
+  const on = (QUEUE.typeFilter || '') === t;
+  const c = t ? (QUEUE_TYPE_COLOR[t] || '#64748b') : '#334155';
+  return `<button class="btn-text" onclick="qSetTypeFilter('${t}')"
+    style="border:1px solid ${on ? c : 'var(--border)'};background:${on ? c + '14' : 'transparent'};
+           color:${on ? c : 'var(--ink)'};border-radius:20px;padding:4px 12px;font-size:12px;font-weight:${on ? 700 : 500}">
+    ${esc(label)} <span style="opacity:.65">${n}</span></button>`;
+}
+function qSetTypeFilter(t) { QUEUE.typeFilter = t || ''; qPaint(); }
+
+/* Dismiss without sending. 'cleared' is a real status rather than a delete, so
+   the dedupe index still remembers the address and it won't silently re-queue. */
+async function qClear(id) {
+  const db = pgClient(); if (!db) return;
+  const { error } = await db.from('email_queue').update({ status: 'cleared' }).eq('id', id);
+  if (error) { toast('✗ ' + error.message); return; }
+  QUEUE.rows = QUEUE.rows.filter(r => r.id !== id);
+  qPaint();
+}
+async function qClearType(t) {
+  const ids = QUEUE.rows.filter(r => r.type === t && r.status !== 'sent').map(r => r.id);
+  if (!ids.length) { toast('Nothing to clear'); return; }
+  if (!confirm(`Remove ${ids.length} ${qTypeLabel(t)} row${ids.length === 1 ? '' : 's'} from the queue? They will not be sent.`)) return;
+  const db = pgClient(); if (!db) return;
+  const { error } = await db.from('email_queue').update({ status: 'cleared' }).in('id', ids);
+  if (error) { toast('✗ ' + error.message); return; }
+  QUEUE.rows = QUEUE.rows.filter(r => !ids.includes(r.id));
+  qPaint(); toast(`Cleared ${ids.length}`);
+}
+/* Bulk approve one kind — the whole point of the tab as an onboarding hub.
+   Skips anything still missing a price list, and says how many it skipped. */
+async function qApproveType(t) {
+  const eligible = QUEUE.rows.filter(r => r.type === t && r.status === 'queued' &&
+    (String(r.email || '').toLowerCase().endsWith('@mydentalmail.com') || r.pricelist_group));
+  const blocked = QUEUE.rows.filter(r => r.type === t && r.status === 'queued').length - eligible.length;
+  if (!eligible.length) { toast(blocked ? `${blocked} still need a price list` : 'Nothing ready to approve'); return; }
+  if (!confirm(`Approve ${eligible.length} ${qTypeLabel(t)} email${eligible.length === 1 ? '' : 's'} for sending?` +
+               (blocked ? `\n\n${blocked} skipped — no price list selected.` : ''))) return;
+  const db = pgClient(); if (!db) return;
+  const ids = eligible.map(r => r.id);
+  const { error } = await db.from('email_queue').update({ status: 'approved' }).in('id', ids);
+  if (error) { toast('✗ ' + error.message); return; }
+  QUEUE.rows.forEach(r => { if (ids.includes(r.id)) r.status = 'approved'; });
+  qPaint();
+  toast(`Approved ${ids.length}${blocked ? ` · ${blocked} skipped` : ''}`);
 }
 
 async function qSetGroup(id, group) {
