@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.07.24-COUNTFIX</title>
+<title>Lab Sales Dashboard v2026.07.24-WINBACK2</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -4223,7 +4223,23 @@ function statusFromTimeline(dates, maxDate, winbackWindowMs, winbackGapMs) {
   else if (sinceFirst <= D15)     status='new';
   else if (maxGap > D60 && sinceLast <= D20) status='winback';
   else                            status='current';
-  const isWinbackSegment = (maxGap >= winbackGapMs && gapEndDate != null && (maxDate - gapEndDate) <= winbackWindowMs);
+  /* A winback means we HAD the relationship, lost it, and got it back. That
+     requires an established pattern before the gap — with only one case before
+     it, there was never a relationship to lose.
+
+     Without this guard, any doctor who simply ordered TWICE months apart looked
+     like a winback: the interval between their only two cases counts as a
+     45+ day "gap" that "just ended". Per-practice timelines are sparse by
+     nature (a doctor's second practice often has a handful of cases), so that
+     false positive dominated the count. */
+  let casesBeforeGap = 0;
+  if (gapEndDate != null) { for (let i = 0; i < ds.length; i++) { if (ds[i] < gapEndDate) casesBeforeGap++; } }
+  const isWinbackSegment = (
+    maxGap >= winbackGapMs &&
+    gapEndDate != null &&
+    (maxDate - gapEndDate) <= winbackWindowMs &&
+    casesBeforeGap >= 2                    // an established run, not a first order
+  );
   return {
     status, isWinbackSegment,
     firstDate, lastDate,
@@ -4337,10 +4353,14 @@ function computeDoctorStatus() {
     // returned within the user-controlled winback window (default 30 days).
     // This is broader than the engagement-status 'winback' so the segment
     // shows the meaningful list of recovered relationships.
+    // Same established-relationship guard as statusFromTimeline above.
+    let ddCasesBeforeGap = 0;
+    if (gapEndDate != null) { for (let i = 0; i < d.dates.length; i++) { if (d.dates[i] < gapEndDate) ddCasesBeforeGap++; } }
     d.isWinbackSegment = (
       maxGap >= winbackGapMs &&
       gapEndDate != null &&
-      (maxDate - gapEndDate) <= winbackWindowMs
+      (maxDate - gapEndDate) <= winbackWindowMs &&
+      ddCasesBeforeGap >= 2
     );
 
     // Per-practice status for this doctor. Same classifier, per-location timeline.
@@ -4397,8 +4417,8 @@ function hasBaseline() { return !!syncGet(SYNC_KEYS.baseline, null); }
    after a 45+ day gap); Current = status 'current'. */
 function inSyncSegment(d, segs) {
   if (segs.has('new')     && d.status === 'new') return true;
-  if (segs.has('winback') && (d.isWinbackSegment || d.status === 'winback')) return true;
-  if (segs.has('current') && d.status === 'current') return true;
+  if (segs.has('winback') && d.isWinbackSegment) return true;
+  if (segs.has('current') && (d.status === 'current' || (d.status === 'winback' && !d.isWinbackSegment))) return true;
   return false;
 }
 
@@ -4718,12 +4738,17 @@ function renderStatus() {
   // Winback counts the base 'winback' status OR the isWinbackSegment overlay,
   // so no doctor falls between buckets. (A 'winback'-status doctor who didn't
   // meet the strict isWinbackSegment window used to be counted nowhere.)
-  const isWin = d => d.isWinbackSegment || d.status === 'winback';
+  // Winback = the gap ended INSIDE the window (isWinbackSegment). A stale base
+  // status of 'winback' only means "ordering now, had a long gap at some point"
+  // — that is an ACTIVE customer, and is counted as one below. Without this the
+  // list showed returns dated last year inside a 30-day window.
+  const isWin = d => d.isWinbackSegment;
+  const isActive = d => d.status === 'current' || (d.status === 'winback' && !d.isWinbackSegment);
   // Count PER DOCTOR-AT-PRACTICE, exactly like the Salesly Bridge does, so the
   // two views can never disagree about a doctor again.
   const entries = statusEntries(docs);
   const counts = {
-    current: entries.filter(d => d.status === 'current').length,
+    current: entries.filter(isActive).length,
     new: entries.filter(d => d.status === 'new').length,
     winback: entries.filter(isWin).length,
     falloff: entries.filter(d => d.status === 'falloff').length,
@@ -4736,7 +4761,7 @@ function renderStatus() {
     { key: 'new',      label: 'New Doctors',     cls: 'ab', info: 'ib',
       desc: 'Doctors whose first-ever case landed within the last 15 days. Onboarding window — make sure these stick.' },
     { key: 'winback',  label: 'Winbacks',        cls: 'ap', info: 'ip',
-      desc: `Doctors who had a gap of 45+ days in their history but have returned to sending within the last ${STATUS.winbackWindow} days. These are recovered relationships worth nurturing.` },
+      desc: `Doctors with an established run of cases (2+ before the gap) who went quiet for 45+ days and have returned within the last ${STATUS.winbackWindow} days. Doctors who simply ordered once or twice are excluded — there was no relationship to recover.` },
     { key: 'falloff',  label: 'Falloff',         cls: 'aa', info: 'ia',
       desc: 'Doctors silent for 21–29 days. At-risk — call them before they become inactive.' },
     { key: 'inactive', label: 'Inactive',        cls: 'ar', info: 'ir',
@@ -4953,8 +4978,9 @@ function statusEntries(docs) {
 function filterStatusSegment(docs) {
   const entries = statusEntries(docs);   // per-practice, same as the Bridge
   let segDocs;
-  if (STATUS.seg === 'winback') segDocs = entries.filter(d => d.isWinbackSegment || d.status === 'winback');
-  else                          segDocs = entries.filter(d => d.status === STATUS.seg);
+  if (STATUS.seg === 'winback')      segDocs = entries.filter(d => d.isWinbackSegment);
+  else if (STATUS.seg === 'current') segDocs = entries.filter(d => d.status === 'current' || (d.status === 'winback' && !d.isWinbackSegment));
+  else                               segDocs = entries.filter(d => d.status === STATUS.seg);
   if (STATUS.query) {
     segDocs = segDocs.filter(d =>
       (d.name     || '').toLowerCase().includes(STATUS.query) ||
@@ -5031,7 +5057,7 @@ function drawStatusBody(docs, segs) {
   // isWinbackSegment overlay.
   const allEntries = statusEntries(docs);
   const segTotal = (STATUS.seg === 'winback')
-    ? allEntries.filter(d => d.isWinbackSegment || d.status === 'winback').length
+    ? allEntries.filter(d => d.isWinbackSegment).length
     : allEntries.filter(d => d.status === STATUS.seg).length;
   // Distinct doctors behind those rows — a doctor working three practices
   // contributes three rows, so showing both makes the number self-explanatory.
@@ -6561,7 +6587,8 @@ function sbSegsOf(d) {
   return segs;
 }
 function sbLabelOf(d) {
-  if (d.isWinbackSegment || d.status === 'winback') return 'Winback';
+  if (d.isWinbackSegment) return 'Winback';
+  if (d.status === 'winback') return 'Active';   // long-ago gap, ordering now
   return SB_BASE[d.status] || 'Active';
 }
 
@@ -6570,14 +6597,15 @@ function buildBridgeData() {
   const docs = computeDoctorStatus();          // SAME engine as the Status tab
   // Totals — the same five formulas renderStatus() uses, so the stat boxes
   // here always equal the Status tab's segment counts exactly.
-  const isWin2 = d => d.isWinbackSegment || d.status === 'winback';
+  const isWin2 = d => d.isWinbackSegment;
+  const isActive2 = d => d.status === 'current' || (d.status === 'winback' && !d.isWinbackSegment);
   // Count per DOCTOR-AT-PRACTICE — identical expansion to the Status tab, so the
   // two views report the same numbers. (These boxes previously counted whole
   // doctors while the rows below were per-practice, which is why the Bridge read
   // 384/26/210 against the tab's 395/32/226.)
   const bEntries = statusEntries(docs);
   const counts = {
-    'Active':     bEntries.filter(d => d.status === 'current').length,
+    'Active':     bEntries.filter(isActive2).length,
     'New Doctor': bEntries.filter(d => d.status === 'new').length,
     'Winback':    bEntries.filter(isWin2).length,
     'Falloff':    bEntries.filter(d => d.status === 'falloff').length,
