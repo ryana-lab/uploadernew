@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.07.24-HUB2</title>
+<title>Lab Sales Dashboard v2026.07.24-HUB3</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -7997,10 +7997,20 @@ async function rpPost(action) {
   }
 }
 
-function rpPreview(which) {
+async function rpPreview(which) {
   const box = document.getElementById('rpPreview');
-  const html = which === 'doctors' ? rpBuildDoctorReport() : which === 'products' ? rpBuildProductReport() : rpBuildStatusReport();
-  box.innerHTML = html;
+  // The visit report reads from Supabase rather than the uploaded case file, so
+  // it is the one preview that has to wait on a fetch.
+  if (which === 'visits') {
+    box.innerHTML = '<div style="padding:18px;color:#64748b;font-size:13px">Loading visits…</div>';
+    try { box.innerHTML = (await rpBuildVisitReport(isoDate(new Date()))).html; }
+    catch (e) { box.innerHTML = '<div style="padding:18px;color:#dc2626;font-size:13px">' + esc(e.message) + '</div>'; }
+    box.scrollTop = 0;
+    return;
+  }
+  box.innerHTML = which === 'doctors' ? rpBuildDoctorReport()
+                : which === 'products' ? rpBuildProductReport()
+                : rpBuildStatusReport();
   box.scrollTop = 0;
 }
 
@@ -8077,6 +8087,7 @@ function renderReports() {
         <button class="btn-text" id="rpPrevDoc">📋 Customer report</button>
         <button class="btn-text" id="rpPrevProd">📦 Product report</button>
         <button class="btn-text" id="rpPrevStat">🔔 Status changes</button>
+        <button class="btn-text" id="rpPrevVisits">🚗 Daily visits</button>
       </div>
       <div class="rp-preview" id="rpPreview"></div>
     </div>
@@ -8092,6 +8103,7 @@ function renderReports() {
   document.getElementById('rpPrevDoc').onclick = () => rpPreview('doctors');
   document.getElementById('rpPrevProd').onclick = () => rpPreview('products');
   document.getElementById('rpPrevStat').onclick = () => rpPreview('status');
+  document.getElementById('rpPrevVisits').onclick = () => rpPreview('visits');
   document.getElementById('rpPush').onclick = () => rpPost('saveReports');
   document.getElementById('rpSend').onclick = () => rpPost('sendNow');
   /* Save the recipient boxes. The old handler read rpUrl/rpToken, which were
