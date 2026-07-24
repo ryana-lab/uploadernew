@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.07.24-HUB3</title>
+<title>Lab Sales Dashboard v2026.07.24-HUB4</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -7859,7 +7859,22 @@ async function rpBuildVisitReport(forDate) {
       const d = (p[0] || '').trim();
       if (d.slice(0, 10) !== day) return;
       const rep  = (p[3] || '').trim() || 'Unattributed';
-      const note = (p[2] || '').trim();
+      // Two places a rep's words can land. The visit entry carries a note when
+      // one was typed with the visit; but "Add a quick note" in the map popup
+      // writes to the OFFICE notes as "[Jul 24, 2026] …" and leaves the visit
+      // note empty — so the report reads both, or it looks like the note was
+      // never saved.
+      let note = (p[2] || '').trim();
+      if (!note) {
+        const stamp = '[' + new Date(day + 'T12:00:00').toLocaleDateString(undefined,
+                        { month: 'short', day: 'numeric', year: 'numeric' }) + ']';
+        const todays = String(o.notes || '').split('\n')
+          .map(l => l.trim())
+          .filter(l => l.startsWith(stamp))
+          .map(l => l.slice(stamp.length).trim())
+          .filter(Boolean);
+        if (todays.length) note = todays.join(' · ');
+      }
       const color = (p[1] || '').trim();
       if (!byRep.has(rep)) byRep.set(rep, []);
       byRep.get(rep).push({ office: o, note, color });
