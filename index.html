@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.07.23-ONTIME2</title>
+<title>Lab Sales Dashboard v2026.07.23-GRIDSWEEP</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -113,7 +113,7 @@ html, body {
 
 /* Every tab panel is one vertical grid with a single uniform gap, so every
    block — KPI strip, chart cards, tables — sits on the same rhythm. */
-.tab-panel.active { display: grid; grid-template-columns: 1fr; gap: 14px; align-content: start; }
+.tab-panel.active { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; align-content: start; }
 
 /* Section headers */
 .section-header { display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 12px; }
@@ -129,7 +129,7 @@ html, body {
 .kpi-row.cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 @media (max-width: 1180px) { .kpi-row.cols-4 { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 900px)  { .kpi-row.cols-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 620px)  { .kpi-row.cols-4 { grid-template-columns: 1fr; } }
+@media (max-width: 620px)  { .kpi-row.cols-4 { grid-template-columns: minmax(0, 1fr); } }
 
 /* On-time delivery scorecard — three stacked rows (early/ontime/late) */
 .ot-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; box-shadow: var(--shadow-sm); height: 100%; display: flex; flex-direction: column; }
@@ -142,7 +142,7 @@ html, body {
 .ot-title { font-size: 13px; font-weight: 700; color: var(--ink); letter-spacing: -.01em; }
 .ot-sub { font-size: 11px; color: var(--mut); }
 .ot-rows { display: flex; flex-direction: column; gap: 10px; flex: 1 1 auto; justify-content: center; }
-.ot-row { display: grid; grid-template-columns: 110px 1fr 64px; align-items: center; gap: 10px; font-size: 12px; }
+.ot-row { display: grid; grid-template-columns: 110px minmax(0, 1fr) 64px; align-items: center; gap: 10px; font-size: 12px; }
 .ot-row-label { display: flex; align-items: center; gap: 6px; font-weight: 700; }
 .ot-row-label .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
 .ot-row.early .dot  { background: var(--grn); } .ot-row.early .ot-row-label { color: var(--grn); }
@@ -161,7 +161,7 @@ html, body {
    Three small split values (early/ontime/late) under a single label. */
 .kpi-ontime { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 18px 12px; box-shadow: var(--shadow-sm); display: flex; flex-direction: column; justify-content: center; }
 .kpi-ontime .kpi-label { font-size: 10px; letter-spacing: .05em; text-transform: uppercase; color: var(--mut); font-weight: 700; margin-bottom: 6px; }
-.kpi-ontime-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+.kpi-ontime-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .kpi-ontime-row > div { display: flex; flex-direction: column; align-items: center; padding: 2px 0; border-radius: 6px; }
 .kpi-ontime-row .v { font-size: 17px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.15; letter-spacing: -.01em; }
 .kpi-ontime-row .l { font-size: 9.5px; font-weight: 700; margin-top: 1px; letter-spacing: .04em; text-transform: uppercase; }
@@ -203,6 +203,19 @@ html, body {
 .flex-row > .card,
 .flex-row > .flex-1 { height: 100%; }
 .flex-1 { min-width: 0; }
+/* Grid children default to min-width:auto, which lets an oversized child (a long
+   email, an unbroken product name, a wide table) push past its track no matter
+   how the track is sized. Zeroing it on the card/list grids means content
+   ellipsises or scrolls inside its own column instead of shifting the layout. */
+.sh-list-row > div,
+.dm-row > div,
+.dr-grid > *,
+.tl-card-grid > *,
+.sh-cards > *,
+.kpi-row > *,
+.flex-row > *,
+.grid-2 > *, .grid-3 > *,
+.tl-card-row > div { min-width: 0; }
 .col-span-2 { grid-column: span 2; }
 .col-span-3 { grid-column: span 3; }
 .grid { display: grid; gap: 14px; }
@@ -215,7 +228,7 @@ html, body {
 
 /* Horizontal bars */
 .hbar-list { display: flex; flex-direction: column; gap: 12px; }
-.hbar { display: grid; grid-template-columns: 1fr; gap: 4px; }
+.hbar { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; }
 .hbar-head { display: flex; justify-content: space-between; font-size: 12px; align-items: baseline; gap: 8px; }
 .hbar-name { font-weight: 500; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .hbar-val { font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; flex-shrink: 0; }
@@ -412,7 +425,7 @@ html, body {
 .sh-card-sub { font-size: 12px; color: var(--mut); margin-top: 6px; line-height: 1.4; }
 .sh-card-sub b { color: var(--ink); }
 .sh-list { background: var(--card); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; box-shadow: var(--shadow-sm); }
-.sh-list-row { display: grid; grid-template-columns: 1fr auto auto; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border); align-items: center; font-size: 13px; cursor: pointer; transition: background .12s; }
+.sh-list-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border); align-items: center; font-size: 13px; cursor: pointer; transition: background .12s; }
 .sh-list-row:hover { background: rgba(37,99,235,.03); }
 .sh-list-row:last-child { border-bottom: none; }
 .sh-list-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: var(--ink); }
@@ -474,11 +487,12 @@ html, body {
 .tl-badge-active::before, .tl-badge-inactive::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 .tl-badge-gap { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 20px; font-size: 10px; font-weight: 600; background: var(--amb-soft); color: var(--amb); }
 .tl-card-body { padding: 0 18px 14px; flex: 1; }
-.tl-card-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+.tl-card-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; margin-bottom: 10px; align-items: start; }
+.tl-card-row > div { min-width: 0; }
 .tl-cf-label { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--mut); font-weight: 600; margin-bottom: 3px; }
 .tl-cf-value { font-size: 12px; color: var(--text); font-weight: 500; }
 .tl-cf-mono { font-variant-numeric: tabular-nums; }
-.tl-product-tag { display: inline-block; padding: 2px 9px; border-radius: 20px; font-size: 10px; font-weight: 500; background: var(--accent-soft); color: var(--accent); max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tl-product-tag { display: inline-block; padding: 2px 9px; border-radius: 20px; font-size: 10px; font-weight: 500; background: var(--accent-soft); color: var(--accent); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: top; }
 .tl-card-divider { height: 1px; background: var(--border); margin: 10px 0; }
 .tl-card-gaps { padding: 0; }
 .tl-cg-title { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--mut); font-weight: 600; margin-bottom: 6px; }
@@ -568,7 +582,7 @@ html, body {
 
 /* Time-gone cohort bars */
 .sh-cohort-bars { display: flex; flex-direction: column; gap: 14px; margin-top: 4px; }
-.sh-cohort-row { display: grid; grid-template-columns: 110px 1fr 130px; align-items: center; gap: 14px; }
+.sh-cohort-row { display: grid; grid-template-columns: 110px minmax(0, 1fr) 130px; align-items: center; gap: 14px; }
 .sh-cohort-label { font-size: 13px; font-weight: 700; }
 .sh-cohort-bar-outer { height: 28px; background: rgba(0,0,0,.04); border-radius: 7px; overflow: hidden; position: relative; }
 .sh-cohort-bar-fill { height: 100%; border-radius: 7px; display: flex; align-items: center; padding: 0 11px; color: #fff; font-size: 12px; font-weight: 700; min-width: 56px; transition: width .6s ease; }
@@ -635,7 +649,7 @@ html, body {
 .dm-export:hover { filter: brightness(.95); }
 
 /* Rows inside the modal body */
-.dm-row { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 14px; padding: 11px 14px; border-radius: 10px; cursor: pointer; transition: background .12s; }
+.dm-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 11px 14px; border-radius: 10px; cursor: pointer; transition: background .12s; }
 .dm-row:hover { background: var(--bg); }
 .dm-row + .dm-row { border-top: 1px solid rgba(226,232,240,.6); }
 .dm-row-name { font-weight: 700; color: var(--ink); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
@@ -728,7 +742,7 @@ html, body {
   .flex-row,
   .flex-row.cols-3,
   .grid-2,
-  .grid-3 { grid-template-columns: 1fr; }
+  .grid-3 { grid-template-columns: minmax(0, 1fr); }
   .col-span-2, .col-span-3 { grid-column: span 1; }
 }
 
