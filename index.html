@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.07.24-UNITS</title>
+<title>Lab Sales Dashboard v2026.07.24-REVERT2</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -4233,14 +4233,7 @@ function statusFromTimeline(dates, maxDate, winbackWindowMs, winbackGapMs) {
      45+ day "gap" that "just ended". Per-practice timelines are sparse by
      nature (a doctor's second practice often has a handful of cases), so that
      false positive dominated the count. */
-  let casesBeforeGap = 0;
-  if (gapEndDate != null) { for (let i = 0; i < ds.length; i++) { if (ds[i] < gapEndDate) casesBeforeGap++; } }
-  const isWinbackSegment = (
-    maxGap >= winbackGapMs &&
-    gapEndDate != null &&
-    (maxDate - gapEndDate) <= winbackWindowMs &&
-    casesBeforeGap >= 2                    // an established run, not a first order
-  );
+  const isWinbackSegment = (maxGap >= winbackGapMs && gapEndDate != null && (maxDate - gapEndDate) <= winbackWindowMs);
   return {
     status, isWinbackSegment,
     firstDate, lastDate,
@@ -4354,14 +4347,10 @@ function computeDoctorStatus() {
     // returned within the user-controlled winback window (default 30 days).
     // This is broader than the engagement-status 'winback' so the segment
     // shows the meaningful list of recovered relationships.
-    // Same established-relationship guard as statusFromTimeline above.
-    let ddCasesBeforeGap = 0;
-    if (gapEndDate != null) { for (let i = 0; i < d.dates.length; i++) { if (d.dates[i] < gapEndDate) ddCasesBeforeGap++; } }
     d.isWinbackSegment = (
       maxGap >= winbackGapMs &&
       gapEndDate != null &&
-      (maxDate - gapEndDate) <= winbackWindowMs &&
-      ddCasesBeforeGap >= 2
+      (maxDate - gapEndDate) <= winbackWindowMs
     );
 
     // Per-practice status for this doctor. Same classifier, per-location timeline.
@@ -4418,8 +4407,8 @@ function hasBaseline() { return !!syncGet(SYNC_KEYS.baseline, null); }
    after a 45+ day gap); Current = status 'current'. */
 function inSyncSegment(d, segs) {
   if (segs.has('new')     && d.status === 'new') return true;
-  if (segs.has('winback') && d.isWinbackSegment) return true;
-  if (segs.has('current') && (d.status === 'current' || (d.status === 'winback' && !d.isWinbackSegment))) return true;
+  if (segs.has('winback') && (d.isWinbackSegment || d.status === 'winback')) return true;
+  if (segs.has('current') && d.status === 'current') return true;
   return false;
 }
 
@@ -4762,7 +4751,7 @@ function renderStatus() {
     { key: 'new',      label: 'New Doctors',     cls: 'ab', info: 'ib',
       desc: 'Doctors whose first-ever case landed within the last 15 days. Onboarding window — make sure these stick.' },
     { key: 'winback',  label: 'Winbacks',        cls: 'ap', info: 'ip',
-      desc: `Doctors with an established run of cases (2+ before the gap) who went quiet for 45+ days and have returned within the last ${STATUS.winbackWindow} days. Doctors who simply ordered once or twice are excluded — there was no relationship to recover.` },
+      desc: `Doctors who had a gap of 45+ days in their history but have returned to sending within the last ${STATUS.winbackWindow} days. These are recovered relationships worth nurturing.` },
     { key: 'falloff',  label: 'Falloff',         cls: 'aa', info: 'ia',
       desc: 'Doctors silent for 21–29 days. At-risk — call them before they become inactive.' },
     { key: 'inactive', label: 'Inactive',        cls: 'ar', info: 'ir',
@@ -6588,8 +6577,11 @@ function sbSegsOf(d) {
   return segs;
 }
 function sbLabelOf(d) {
-  if (d.isWinbackSegment) return 'Winback';
-  if (d.status === 'winback') return 'Active';   // long-ago gap, ordering now
+  // Unchanged from the original on purpose: the LAB label a rep sees in Salesly
+  // must stay stable. The dashboard's winback LIST uses a stricter test (the gap
+  // has to have ended inside the window) to keep stale returns out of that view —
+  // that narrowing belongs there, not here.
+  if (d.isWinbackSegment || d.status === 'winback') return 'Winback';
   return SB_BASE[d.status] || 'Active';
 }
 
