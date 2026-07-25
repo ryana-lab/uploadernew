@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.07.24-RECONCILE5</title>
+<title>Lab Sales Dashboard v2026.07.24-FULLRECON6</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -7359,6 +7359,46 @@ async function sbMergeDupes() {
   }
 }
 
+/* Full-table reconcile of stale 📊 LAB lines. sbSheetGet only reads a subset of
+   offices, so stale lines on rows outside that subset are never cleared by the
+   in-loop reconcile. This walks the ENTIRE offices table, and for any row that
+   still has a LAB line but was NOT (re)written by this sync — identified by strict
+   name NOT being in keepNames — strips the LAB lines (keeping rep notes) and nulls
+   offices.status. Returns the number of offices cleaned. */
+async function sbReconcileAllLabLines(keepNames) {
+  const db = pgRequire();
+  const PAGE = 1000;
+  const toClear = [];
+  for (let from = 0; ; from += PAGE) {
+    // Only pull rows that actually carry a LAB line — keeps this cheap.
+    const { data, error } = await db.from('offices')
+      .select('id,name,notes,status,active')
+      .ilike('notes', '%LAB:%')
+      .order('id').range(from, from + PAGE - 1);
+    if (error) throw new Error(error.message);
+    const batch = data || [];
+    batch.forEach(r => {
+      const strict = sbStrict(r.name || '');
+      if (keepNames.has(strict)) return;           // written this sync — current, leave it
+      const notes = String(r.notes || '');
+      if (!/LAB:\s*[A-Za-z]/i.test(notes)) return; // no real LAB line
+      const kept = notes.split('\n').filter(l => !/LAB:\s*[A-Za-z]/i.test(l)).join('\n').replace(/^\n+|\n+$/g, '');
+      toClear.push({ id: String(r.id), notes: kept });
+    });
+    if (batch.length < PAGE) break;
+    if (from > 200000) break;                       // safety stop
+  }
+  if (!toClear.length) return 0;
+  // Write back in chunks: notes stripped, status nulled. Uniform shape per upsert.
+  const CHUNK = 500;
+  for (let i = 0; i < toClear.length; i += CHUNK) {
+    const slice = toClear.slice(i, i + CHUNK).map(r => ({ id: r.id, notes: r.notes, status: null }));
+    const { error } = await db.from('offices').upsert(slice, { onConflict: 'id' });
+    if (error) throw new Error(error.message);
+  }
+  return toClear.length;
+}
+
 async function sbSync() {
   // An automatic sync usually runs while another tab is on screen, so the Bridge
   // tab may never have rendered and BRIDGE.data would still be null. Build it on
@@ -7558,6 +7598,19 @@ async function sbSync() {
       meta[sbStrict(o.name)] = { rev: rev, last: last || '', status: best };
     });
     await sbSheetPost(cols, rows, { tier: 'S', meta: meta, clearStatusIds: reconciledIds });
+    // Full-coverage reconcile: the read set above (sbSheetGet) only pulls S-tier /
+    // unpinned / visited offices, so a stale office that is none of those is NEVER
+    // seen and its old 📊 LAB line lingers — inflating Salesly's dials above the
+    // dashboard's true counts. This pass queries the WHOLE offices table for any
+    // row still carrying a LAB line that this sync did NOT just (re)write, and
+    // strips the stale line + clears offices.status, preserving rep notes.
+    try {
+      const keepNames = new Set(push.filter(o => o._row !== -2).map(o => sbStrict(o.name)));
+      const extra = await sbReconcileAllLabLines(keepNames);
+      if (extra) sbLog('Full reconcile: cleared stale status on ' + extra + ' more office' + (extra === 1 ? '' : 's') + ' outside the sync read set', 'ok');
+    } catch (e) {
+      sbLog('Full reconcile skipped (' + (e && e.message ? e.message : e) + ')', 'warn');
+    }
     const noPin = push.filter(o => !geo[sbGeoKey(o)]).length;
     sbLog('✓ Done — ' + updated + ' offices updated, ' + added + ' added' + (skippedDeleted ? ', ' + skippedDeleted + ' left deleted (respected app deletions)' : '') + ', covering ' + selected.length + ' doctors. Reps will see it within ~15 seconds.' + (noPin ? (' ' + noPin + " still have no pin (run Sync again later to retry, or pin them in the app).") : ''), 'ok');
   } catch (e) {
