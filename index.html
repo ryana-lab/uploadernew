@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.07.24-REVERT2</title>
+<title>Lab Sales Dashboard v2026.07.24-NEWFIX3</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -4219,9 +4219,15 @@ function statusFromTimeline(dates, maxDate, winbackWindowMs, winbackGapMs) {
   let maxGap=0, gapEndDate=null, gapStartDate=null;
   for (let i=1;i<ds.length;i++){ const g=ds[i]-ds[i-1]; if(g>maxGap){ maxGap=g; gapStartDate=ds[i-1]; gapEndDate=ds[i]; } }
   let status;
-  if (sinceLast > D29)            status='inactive';
+  // NEW is tested FIRST and is purely per-practice: a doctor whose FIRST invoice
+  // from THIS practice falls within the new-window is New at this office, no matter
+  // what they are elsewhere (they may be falloff/winback at another practice) and
+  // no matter how quiet they've since gone here. Their newness-to-this-practice
+  // outranks the recency tests below — otherwise a doctor who sent once 12 days ago
+  // and went quiet was being stamped falloff/inactive and vanishing from New.
+  if (sinceFirst <= D15)          status='new';
+  else if (sinceLast > D29)       status='inactive';
   else if (sinceLast > D20)       status='falloff';
-  else if (sinceFirst <= D15)     status='new';
   else if (maxGap > D60 && sinceLast <= D20) status='winback';
   else                            status='current';
   /* A winback means we HAD the relationship, lost it, and got it back. That
@@ -4336,10 +4342,13 @@ function computeDoctorStatus() {
     d.remakeRate = d.totalCases ? d.remakes / d.totalCases : 0;
     d.avgTAT = d.tatN ? d.tatSum / d.tatN : null;
 
-    // Engagement-tracker status (drives the segment counts)
-    if (sinceLast > D29)            d.status = 'inactive';
+    // Engagement-tracker status (drives the segment counts). NEW is tested FIRST
+    // so it agrees with statusFromTimeline() above: a first case inside the
+    // new-window wins over the recency tests, instead of a briefly-quiet new
+    // doctor being mis-stamped falloff/inactive and dropped from the New segment.
+    if (sinceFirst <= D15)          d.status = 'new';
+    else if (sinceLast > D29)       d.status = 'inactive';
     else if (sinceLast > D20)       d.status = 'falloff';
-    else if (sinceFirst <= D15)     d.status = 'new';
     else if (maxGap > D60 && sinceLast <= D20) d.status = 'winback';
     else                            d.status = 'current';
 
