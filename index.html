@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.07.24-FULLRECON6</title>
+<title>Lab Sales Dashboard v2026.07.24-UNITS</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -1455,15 +1455,7 @@ function normalizeRecords(rows) {
    Sales Hub churn) where clipping the timeline by date would distort the
    "days since last case" math. Group and State don't affect recency, so they
    still apply. Memoized per filter state. */
-// When true, rawByGroupState ignores the on-screen State/Group filter and returns
-// the WHOLE book. The Salesly sync sets this so it always pushes every state's
-// offices — a rep is scoped to their own state INSIDE Salesly (by GPS), so the
-// dashboard must send everything or that rep's state would simply be missing.
-// On-screen dashboard views leave this false and stay filter-aware as before.
-let SYNC_FULL_BOOK = false;
 function rawByGroupState() {
-  // Bypass path: never use the cached filtered set, and apply no state/group filter.
-  if (SYNC_FULL_BOOK) return APP.raw;
   if (APP.derived._rawGS) return APP.derived._rawGS;
   const f = APP.filters;
   let data = APP.raw;
@@ -4227,15 +4219,9 @@ function statusFromTimeline(dates, maxDate, winbackWindowMs, winbackGapMs) {
   let maxGap=0, gapEndDate=null, gapStartDate=null;
   for (let i=1;i<ds.length;i++){ const g=ds[i]-ds[i-1]; if(g>maxGap){ maxGap=g; gapStartDate=ds[i-1]; gapEndDate=ds[i]; } }
   let status;
-  // NEW is tested FIRST and is purely per-practice: a doctor whose FIRST invoice
-  // from THIS practice falls within the new-window is New at this office, no matter
-  // what they are elsewhere (they may be falloff/winback at another practice) and
-  // no matter how quiet they've since gone here. Their newness-to-this-practice
-  // outranks the recency tests below — otherwise a doctor who sent once 12 days ago
-  // and went quiet was being stamped falloff/inactive and vanishing from New.
-  if (sinceFirst <= D15)          status='new';
-  else if (sinceLast > D29)       status='inactive';
+  if (sinceLast > D29)            status='inactive';
   else if (sinceLast > D20)       status='falloff';
+  else if (sinceFirst <= D15)     status='new';
   else if (maxGap > D60 && sinceLast <= D20) status='winback';
   else                            status='current';
   /* A winback means we HAD the relationship, lost it, and got it back. That
@@ -4247,7 +4233,14 @@ function statusFromTimeline(dates, maxDate, winbackWindowMs, winbackGapMs) {
      45+ day "gap" that "just ended". Per-practice timelines are sparse by
      nature (a doctor's second practice often has a handful of cases), so that
      false positive dominated the count. */
-  const isWinbackSegment = (maxGap >= winbackGapMs && gapEndDate != null && (maxDate - gapEndDate) <= winbackWindowMs);
+  let casesBeforeGap = 0;
+  if (gapEndDate != null) { for (let i = 0; i < ds.length; i++) { if (ds[i] < gapEndDate) casesBeforeGap++; } }
+  const isWinbackSegment = (
+    maxGap >= winbackGapMs &&
+    gapEndDate != null &&
+    (maxDate - gapEndDate) <= winbackWindowMs &&
+    casesBeforeGap >= 2                    // an established run, not a first order
+  );
   return {
     status, isWinbackSegment,
     firstDate, lastDate,
@@ -4350,13 +4343,10 @@ function computeDoctorStatus() {
     d.remakeRate = d.totalCases ? d.remakes / d.totalCases : 0;
     d.avgTAT = d.tatN ? d.tatSum / d.tatN : null;
 
-    // Engagement-tracker status (drives the segment counts). NEW is tested FIRST
-    // so it agrees with statusFromTimeline() above: a first case inside the
-    // new-window wins over the recency tests, instead of a briefly-quiet new
-    // doctor being mis-stamped falloff/inactive and dropped from the New segment.
-    if (sinceFirst <= D15)          d.status = 'new';
-    else if (sinceLast > D29)       d.status = 'inactive';
+    // Engagement-tracker status (drives the segment counts)
+    if (sinceLast > D29)            d.status = 'inactive';
     else if (sinceLast > D20)       d.status = 'falloff';
+    else if (sinceFirst <= D15)     d.status = 'new';
     else if (maxGap > D60 && sinceLast <= D20) d.status = 'winback';
     else                            d.status = 'current';
 
@@ -4364,10 +4354,14 @@ function computeDoctorStatus() {
     // returned within the user-controlled winback window (default 30 days).
     // This is broader than the engagement-status 'winback' so the segment
     // shows the meaningful list of recovered relationships.
+    // Same established-relationship guard as statusFromTimeline above.
+    let ddCasesBeforeGap = 0;
+    if (gapEndDate != null) { for (let i = 0; i < d.dates.length; i++) { if (d.dates[i] < gapEndDate) ddCasesBeforeGap++; } }
     d.isWinbackSegment = (
       maxGap >= winbackGapMs &&
       gapEndDate != null &&
-      (maxDate - gapEndDate) <= winbackWindowMs
+      (maxDate - gapEndDate) <= winbackWindowMs &&
+      ddCasesBeforeGap >= 2
     );
 
     // Per-practice status for this doctor. Same classifier, per-location timeline.
@@ -4424,8 +4418,8 @@ function hasBaseline() { return !!syncGet(SYNC_KEYS.baseline, null); }
    after a 45+ day gap); Current = status 'current'. */
 function inSyncSegment(d, segs) {
   if (segs.has('new')     && d.status === 'new') return true;
-  if (segs.has('winback') && (d.isWinbackSegment || d.status === 'winback')) return true;
-  if (segs.has('current') && d.status === 'current') return true;
+  if (segs.has('winback') && d.isWinbackSegment) return true;
+  if (segs.has('current') && (d.status === 'current' || (d.status === 'winback' && !d.isWinbackSegment))) return true;
   return false;
 }
 
@@ -4768,7 +4762,7 @@ function renderStatus() {
     { key: 'new',      label: 'New Doctors',     cls: 'ab', info: 'ib',
       desc: 'Doctors whose first-ever case landed within the last 15 days. Onboarding window — make sure these stick.' },
     { key: 'winback',  label: 'Winbacks',        cls: 'ap', info: 'ip',
-      desc: `Doctors who had a gap of 45+ days in their history but have returned to sending within the last ${STATUS.winbackWindow} days. These are recovered relationships worth nurturing.` },
+      desc: `Doctors with an established run of cases (2+ before the gap) who went quiet for 45+ days and have returned within the last ${STATUS.winbackWindow} days. Doctors who simply ordered once or twice are excluded — there was no relationship to recover.` },
     { key: 'falloff',  label: 'Falloff',         cls: 'aa', info: 'ia',
       desc: 'Doctors silent for 21–29 days. At-risk — call them before they become inactive.' },
     { key: 'inactive', label: 'Inactive',        cls: 'ar', info: 'ir',
@@ -6446,7 +6440,6 @@ async function sbSheetPost(cols, rows, opts) {
   const db = pgRequire();
   opts = opts || {};
   const ci = {}; (cols || PG_COLS).forEach((c, i) => ci[String(c).trim()] = i);
-  const clearIds = opts.clearStatusIds instanceof Set ? opts.clearStatusIds : new Set(opts.clearStatusIds || []);
 
   const today = new Date().toISOString().slice(0, 10);
   const recs = [];
@@ -6478,36 +6471,24 @@ async function sbSheetPost(cols, rows, opts) {
         if (m.status) r.status = m.status;
       }
     }
-
-    // Reconciled offices: their LAB note line was just stripped because the current
-    // upload no longer classifies them. Their offices.status column must be cleared
-    // too (effStatus reads the column FIRST), or Salesly would keep showing the old
-    // status. Flag them so we KEEP status:null (writing NULL) instead of dropping it.
-    const _clearThis = clearIds.has(String(r.id).trim()) && !r.status;
-
     // A null field would overwrite an existing value with NULL on upsert. Drop the
     // keys entirely when they carry no info — every record in THIS batch stays
     // the same shape, which is all PostgREST requires.
     if (r.tier === null) { delete r.tier; delete r.last_invoice_date; delete r.total_sales; }
-    if (r.status === null && !_clearThis) { delete r.status; }
-    if (_clearThis) r._clearStatus = true;   // routing flag, stripped before upsert
+    if (r.status === null) { delete r.status; }
     recs.push(r);
   });
 
-  // Three shapes now: tiered actives (status set), plain tombstones (no status key),
-  // and reconciled rows that must WRITE status=null. Batch each separately so every
-  // upsert payload is uniform.
-  const clearBatch = recs.filter(r => r._clearStatus);
-  const rest       = recs.filter(r => !r._clearStatus);
-  const tiered = rest.filter(r => r.tier !== undefined);
-  const plain  = rest.filter(r => r.tier === undefined);
-  clearBatch.forEach(r => { delete r._clearStatus; });   // strip routing flag; keep status:null
+  // Two shapes can still coexist (tiered actives vs tombstones). Send them as
+  // two batches rather than one mixed one.
+  const tiered = recs.filter(r => r.tier !== undefined);
+  const plain  = recs.filter(r => r.tier === undefined);
   if (!recs.length) return 'ok';
 
   // Chunk: a single 10k-row upsert will time out the PostgREST request.
   const CHUNK = 500;
   let done = 0;
-  for (const batch of [tiered, plain, clearBatch]) {
+  for (const batch of [tiered, plain]) {
     for (let i = 0; i < batch.length; i += CHUNK) {
       const { error } = await db.from('offices')
         .upsert(batch.slice(i, i + CHUNK), { onConflict: 'id' });
@@ -6607,39 +6588,13 @@ function sbSegsOf(d) {
   return segs;
 }
 function sbLabelOf(d) {
-  // Unchanged from the original on purpose: the LAB label a rep sees in Salesly
-  // must stay stable. The dashboard's winback LIST uses a stricter test (the gap
-  // has to have ended inside the window) to keep stale returns out of that view —
-  // that narrowing belongs there, not here.
-  if (d.isWinbackSegment || d.status === 'winback') return 'Winback';
+  if (d.isWinbackSegment) return 'Winback';
+  if (d.status === 'winback') return 'Active';   // long-ago gap, ordering now
   return SB_BASE[d.status] || 'Active';
 }
 
 /* Build the doctor rows + per-practice office info the sync needs. */
-// The sync must classify and push the ENTIRE book, not just the state/group the
-// dashboard happens to be filtered to on screen. This wrapper flips SYNC_FULL_BOOK
-// on, clears the filter-scoped caches so nothing stale leaks in, runs the real
-// builder against all offices, then restores the caches so on-screen dashboard
-// views immediately go back to respecting the user's filter. Without this, syncing
-// while filtered to (say) Illinois pushed ONLY Illinois — so every other state's
-// reps saw missing or stale data in Salesly.
 function buildBridgeData() {
-  const prevFull = SYNC_FULL_BOOK;
-  const savedRawGS = APP.derived._rawGS;
-  const savedStatusMap = APP.derived._statusMap;
-  SYNC_FULL_BOOK = true;
-  APP.derived._rawGS = null;        // force full-book recompute
-  APP.derived._statusMap = null;
-  try {
-    return _buildBridgeDataFullBook();
-  } finally {
-    SYNC_FULL_BOOK = prevFull;
-    // Restore the on-screen (filtered) caches so the UI is unaffected by the sync.
-    APP.derived._rawGS = savedRawGS;
-    APP.derived._statusMap = savedStatusMap;
-  }
-}
-function _buildBridgeDataFullBook() {
   const docs = computeDoctorStatus();          // SAME engine as the Status tab
   // Totals — the same five formulas renderStatus() uses, so the stat boxes
   // here always equal the Status tab's segment counts exactly.
@@ -7359,46 +7314,6 @@ async function sbMergeDupes() {
   }
 }
 
-/* Full-table reconcile of stale 📊 LAB lines. sbSheetGet only reads a subset of
-   offices, so stale lines on rows outside that subset are never cleared by the
-   in-loop reconcile. This walks the ENTIRE offices table, and for any row that
-   still has a LAB line but was NOT (re)written by this sync — identified by strict
-   name NOT being in keepNames — strips the LAB lines (keeping rep notes) and nulls
-   offices.status. Returns the number of offices cleaned. */
-async function sbReconcileAllLabLines(keepNames) {
-  const db = pgRequire();
-  const PAGE = 1000;
-  const toClear = [];
-  for (let from = 0; ; from += PAGE) {
-    // Only pull rows that actually carry a LAB line — keeps this cheap.
-    const { data, error } = await db.from('offices')
-      .select('id,name,notes,status,active')
-      .ilike('notes', '%LAB:%')
-      .order('id').range(from, from + PAGE - 1);
-    if (error) throw new Error(error.message);
-    const batch = data || [];
-    batch.forEach(r => {
-      const strict = sbStrict(r.name || '');
-      if (keepNames.has(strict)) return;           // written this sync — current, leave it
-      const notes = String(r.notes || '');
-      if (!/LAB:\s*[A-Za-z]/i.test(notes)) return; // no real LAB line
-      const kept = notes.split('\n').filter(l => !/LAB:\s*[A-Za-z]/i.test(l)).join('\n').replace(/^\n+|\n+$/g, '');
-      toClear.push({ id: String(r.id), notes: kept });
-    });
-    if (batch.length < PAGE) break;
-    if (from > 200000) break;                       // safety stop
-  }
-  if (!toClear.length) return 0;
-  // Write back in chunks: notes stripped, status nulled. Uniform shape per upsert.
-  const CHUNK = 500;
-  for (let i = 0; i < toClear.length; i += CHUNK) {
-    const slice = toClear.slice(i, i + CHUNK).map(r => ({ id: r.id, notes: r.notes, status: null }));
-    const { error } = await db.from('offices').upsert(slice, { onConflict: 'id' });
-    if (error) throw new Error(error.message);
-  }
-  return toClear.length;
-}
-
 async function sbSync() {
   // An automatic sync usually runs while another tab is on screen, so the Bridge
   // tab may never have rendered and BRIDGE.data would still be null. Build it on
@@ -7542,34 +7457,7 @@ async function sbSync() {
         rows.push(r); added++;
       }
     });
-    // ── Reconcile stale statuses ────────────────────────────────────────────
-    // The loop above rewrites LAB lines on every office in this sync (push). But
-    // an office that carried a LAB line from a PREVIOUS sync and no longer has any
-    // qualifying doctor this time was never touched — so its old status lingered
-    // in Salesly, which is why Salesly's dial counts drifted ABOVE the dashboard's
-    // (e.g. Inactive 356 vs the dashboard's true 268). Because the sync now
-    // classifies the FULL book (SYNC_FULL_BOOK), every office with a real current
-    // status is already in push; therefore any OTHER read-back row that still has a
-    // LAB line is stale by definition. Strip only its 📊 LAB: lines here — rep-typed
-    // notes are preserved by sbMergeNotes/stripLab — so its status reflects the
-    // current upload (i.e. "no lab status") instead of a leftover from a prior run.
-    const touchedRows = new Set();
-    push.forEach(o => { if (o._row >= 0) touchedRows.add(o._row); });
-    let cleared = 0;
-    const reconciledIds = new Set();
-    rows.forEach((r, i) => {
-      if (touchedRows.has(i)) return;                       // already rewritten this sync
-      if (String(r[ci.id]).trim() === '__reps__') return;   // reserved roster row
-      const notes = String(r[ci.notes] || '');
-      const hadLab = /LAB:\s*[A-Za-z]/i.test(notes);
-      if (!hadLab) return;                                  // no LAB line, nothing to do
-      // Drop every LAB line, keep everything a rep wrote.
-      const kept = notes.split('\n').filter(l => !/LAB:\s*[A-Za-z]/i.test(l)).join('\n').replace(/^\n+|\n+$/g, '');
-      if (kept !== notes.trim()) { r[ci.notes] = kept; cleared++; }
-      const idv = String(r[ci.id] || '').trim();
-      if (idv) reconciledIds.add(idv);                      // also null offices.status for these
-    });
-    if (cleared) sbLog('Reconciled ' + cleared + ' office' + (cleared === 1 ? '' : 's') + ' whose status is no longer current — stale lab lines removed, rep notes kept', 'ok');
+    sbLog('Writing back: ' + updated + ' updated, ' + added + ' new → marking as S-tier customers…');
     // Carry lifetime revenue + true last-case date onto each office, so S-tier
     // metrics come from the invoice data rather than a guess.
     const meta = {};
@@ -7597,20 +7485,7 @@ async function sbSync() {
       });
       meta[sbStrict(o.name)] = { rev: rev, last: last || '', status: best };
     });
-    await sbSheetPost(cols, rows, { tier: 'S', meta: meta, clearStatusIds: reconciledIds });
-    // Full-coverage reconcile: the read set above (sbSheetGet) only pulls S-tier /
-    // unpinned / visited offices, so a stale office that is none of those is NEVER
-    // seen and its old 📊 LAB line lingers — inflating Salesly's dials above the
-    // dashboard's true counts. This pass queries the WHOLE offices table for any
-    // row still carrying a LAB line that this sync did NOT just (re)write, and
-    // strips the stale line + clears offices.status, preserving rep notes.
-    try {
-      const keepNames = new Set(push.filter(o => o._row !== -2).map(o => sbStrict(o.name)));
-      const extra = await sbReconcileAllLabLines(keepNames);
-      if (extra) sbLog('Full reconcile: cleared stale status on ' + extra + ' more office' + (extra === 1 ? '' : 's') + ' outside the sync read set', 'ok');
-    } catch (e) {
-      sbLog('Full reconcile skipped (' + (e && e.message ? e.message : e) + ')', 'warn');
-    }
+    await sbSheetPost(cols, rows, { tier: 'S', meta: meta });
     const noPin = push.filter(o => !geo[sbGeoKey(o)]).length;
     sbLog('✓ Done — ' + updated + ' offices updated, ' + added + ' added' + (skippedDeleted ? ', ' + skippedDeleted + ' left deleted (respected app deletions)' : '') + ', covering ' + selected.length + ' doctors. Reps will see it within ~15 seconds.' + (noPin ? (' ' + noPin + " still have no pin (run Sync again later to retry, or pin them in the app).") : ''), 'ok');
   } catch (e) {
