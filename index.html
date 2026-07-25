@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.07.24-NEWFIX3</title>
+<title>Lab Sales Dashboard v2026.07.24-RECONCILE5</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -1455,7 +1455,15 @@ function normalizeRecords(rows) {
    Sales Hub churn) where clipping the timeline by date would distort the
    "days since last case" math. Group and State don't affect recency, so they
    still apply. Memoized per filter state. */
+// When true, rawByGroupState ignores the on-screen State/Group filter and returns
+// the WHOLE book. The Salesly sync sets this so it always pushes every state's
+// offices — a rep is scoped to their own state INSIDE Salesly (by GPS), so the
+// dashboard must send everything or that rep's state would simply be missing.
+// On-screen dashboard views leave this false and stay filter-aware as before.
+let SYNC_FULL_BOOK = false;
 function rawByGroupState() {
+  // Bypass path: never use the cached filtered set, and apply no state/group filter.
+  if (SYNC_FULL_BOOK) return APP.raw;
   if (APP.derived._rawGS) return APP.derived._rawGS;
   const f = APP.filters;
   let data = APP.raw;
@@ -6438,6 +6446,7 @@ async function sbSheetPost(cols, rows, opts) {
   const db = pgRequire();
   opts = opts || {};
   const ci = {}; (cols || PG_COLS).forEach((c, i) => ci[String(c).trim()] = i);
+  const clearIds = opts.clearStatusIds instanceof Set ? opts.clearStatusIds : new Set(opts.clearStatusIds || []);
 
   const today = new Date().toISOString().slice(0, 10);
   const recs = [];
@@ -6469,24 +6478,36 @@ async function sbSheetPost(cols, rows, opts) {
         if (m.status) r.status = m.status;
       }
     }
+
+    // Reconciled offices: their LAB note line was just stripped because the current
+    // upload no longer classifies them. Their offices.status column must be cleared
+    // too (effStatus reads the column FIRST), or Salesly would keep showing the old
+    // status. Flag them so we KEEP status:null (writing NULL) instead of dropping it.
+    const _clearThis = clearIds.has(String(r.id).trim()) && !r.status;
+
     // A null field would overwrite an existing value with NULL on upsert. Drop the
     // keys entirely when they carry no info — every record in THIS batch stays
     // the same shape, which is all PostgREST requires.
     if (r.tier === null) { delete r.tier; delete r.last_invoice_date; delete r.total_sales; }
-    if (r.status === null) { delete r.status; }
+    if (r.status === null && !_clearThis) { delete r.status; }
+    if (_clearThis) r._clearStatus = true;   // routing flag, stripped before upsert
     recs.push(r);
   });
 
-  // Two shapes can still coexist (tiered actives vs tombstones). Send them as
-  // two batches rather than one mixed one.
-  const tiered = recs.filter(r => r.tier !== undefined);
-  const plain  = recs.filter(r => r.tier === undefined);
+  // Three shapes now: tiered actives (status set), plain tombstones (no status key),
+  // and reconciled rows that must WRITE status=null. Batch each separately so every
+  // upsert payload is uniform.
+  const clearBatch = recs.filter(r => r._clearStatus);
+  const rest       = recs.filter(r => !r._clearStatus);
+  const tiered = rest.filter(r => r.tier !== undefined);
+  const plain  = rest.filter(r => r.tier === undefined);
+  clearBatch.forEach(r => { delete r._clearStatus; });   // strip routing flag; keep status:null
   if (!recs.length) return 'ok';
 
   // Chunk: a single 10k-row upsert will time out the PostgREST request.
   const CHUNK = 500;
   let done = 0;
-  for (const batch of [tiered, plain]) {
+  for (const batch of [tiered, plain, clearBatch]) {
     for (let i = 0; i < batch.length; i += CHUNK) {
       const { error } = await db.from('offices')
         .upsert(batch.slice(i, i + CHUNK), { onConflict: 'id' });
@@ -6595,7 +6616,30 @@ function sbLabelOf(d) {
 }
 
 /* Build the doctor rows + per-practice office info the sync needs. */
+// The sync must classify and push the ENTIRE book, not just the state/group the
+// dashboard happens to be filtered to on screen. This wrapper flips SYNC_FULL_BOOK
+// on, clears the filter-scoped caches so nothing stale leaks in, runs the real
+// builder against all offices, then restores the caches so on-screen dashboard
+// views immediately go back to respecting the user's filter. Without this, syncing
+// while filtered to (say) Illinois pushed ONLY Illinois — so every other state's
+// reps saw missing or stale data in Salesly.
 function buildBridgeData() {
+  const prevFull = SYNC_FULL_BOOK;
+  const savedRawGS = APP.derived._rawGS;
+  const savedStatusMap = APP.derived._statusMap;
+  SYNC_FULL_BOOK = true;
+  APP.derived._rawGS = null;        // force full-book recompute
+  APP.derived._statusMap = null;
+  try {
+    return _buildBridgeDataFullBook();
+  } finally {
+    SYNC_FULL_BOOK = prevFull;
+    // Restore the on-screen (filtered) caches so the UI is unaffected by the sync.
+    APP.derived._rawGS = savedRawGS;
+    APP.derived._statusMap = savedStatusMap;
+  }
+}
+function _buildBridgeDataFullBook() {
   const docs = computeDoctorStatus();          // SAME engine as the Status tab
   // Totals — the same five formulas renderStatus() uses, so the stat boxes
   // here always equal the Status tab's segment counts exactly.
@@ -7458,7 +7502,34 @@ async function sbSync() {
         rows.push(r); added++;
       }
     });
-    sbLog('Writing back: ' + updated + ' updated, ' + added + ' new → marking as S-tier customers…');
+    // ── Reconcile stale statuses ────────────────────────────────────────────
+    // The loop above rewrites LAB lines on every office in this sync (push). But
+    // an office that carried a LAB line from a PREVIOUS sync and no longer has any
+    // qualifying doctor this time was never touched — so its old status lingered
+    // in Salesly, which is why Salesly's dial counts drifted ABOVE the dashboard's
+    // (e.g. Inactive 356 vs the dashboard's true 268). Because the sync now
+    // classifies the FULL book (SYNC_FULL_BOOK), every office with a real current
+    // status is already in push; therefore any OTHER read-back row that still has a
+    // LAB line is stale by definition. Strip only its 📊 LAB: lines here — rep-typed
+    // notes are preserved by sbMergeNotes/stripLab — so its status reflects the
+    // current upload (i.e. "no lab status") instead of a leftover from a prior run.
+    const touchedRows = new Set();
+    push.forEach(o => { if (o._row >= 0) touchedRows.add(o._row); });
+    let cleared = 0;
+    const reconciledIds = new Set();
+    rows.forEach((r, i) => {
+      if (touchedRows.has(i)) return;                       // already rewritten this sync
+      if (String(r[ci.id]).trim() === '__reps__') return;   // reserved roster row
+      const notes = String(r[ci.notes] || '');
+      const hadLab = /LAB:\s*[A-Za-z]/i.test(notes);
+      if (!hadLab) return;                                  // no LAB line, nothing to do
+      // Drop every LAB line, keep everything a rep wrote.
+      const kept = notes.split('\n').filter(l => !/LAB:\s*[A-Za-z]/i.test(l)).join('\n').replace(/^\n+|\n+$/g, '');
+      if (kept !== notes.trim()) { r[ci.notes] = kept; cleared++; }
+      const idv = String(r[ci.id] || '').trim();
+      if (idv) reconciledIds.add(idv);                      // also null offices.status for these
+    });
+    if (cleared) sbLog('Reconciled ' + cleared + ' office' + (cleared === 1 ? '' : 's') + ' whose status is no longer current — stale lab lines removed, rep notes kept', 'ok');
     // Carry lifetime revenue + true last-case date onto each office, so S-tier
     // metrics come from the invoice data rather than a guess.
     const meta = {};
@@ -7486,7 +7557,7 @@ async function sbSync() {
       });
       meta[sbStrict(o.name)] = { rev: rev, last: last || '', status: best };
     });
-    await sbSheetPost(cols, rows, { tier: 'S', meta: meta });
+    await sbSheetPost(cols, rows, { tier: 'S', meta: meta, clearStatusIds: reconciledIds });
     const noPin = push.filter(o => !geo[sbGeoKey(o)]).length;
     sbLog('✓ Done — ' + updated + ' offices updated, ' + added + ' added' + (skippedDeleted ? ', ' + skippedDeleted + ' left deleted (respected app deletions)' : '') + ', covering ' + selected.length + ' doctors. Reps will see it within ~15 seconds.' + (noPin ? (' ' + noPin + " still have no pin (run Sync again later to retry, or pin them in the app).") : ''), 'ok');
   } catch (e) {
