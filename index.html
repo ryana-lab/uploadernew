@@ -6922,7 +6922,11 @@ async function sbGeocodeOne(o) {
 }
 
 function sbStatusLine(docRow, label) {
-  return SB_LAB_MARK + ' ' + label.toUpperCase() + ' · Dr. ' + docRow.name + ' · last case ' + sbUS(docRow.last) + ' · ' + docRow.cases + ' cases · ' + sbMoney(docRow.rev90) + ' last 90d · ' + sbMoney(docRow.rev) + ' lifetime';
+  // Single-word status labels only ("NEW", never "NEW DOCTOR") — the Salesly
+  // per-doctor parser reads the status up to the first ·, and a one-word label
+  // is unambiguous for every reader, old or new.
+  const lbl = String(label || '').toUpperCase().replace(/^NEW DOCTOR$/, 'NEW');
+  return SB_LAB_MARK + ' ' + lbl + ' · Dr. ' + docRow.name + ' · last case ' + sbUS(docRow.last) + ' · ' + docRow.cases + ' cases · ' + sbMoney(docRow.rev90) + ' last 90d · ' + sbMoney(docRow.rev) + ' lifetime';
 }
 function sbMergeNotes(existing, lines) {
   const keep = String(existing || '').split('\n').filter(l => !l.trim().startsWith(SB_LAB_MARK)).join('\n').trim();
