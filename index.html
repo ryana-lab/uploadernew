@@ -937,7 +937,10 @@ const ABBR_TO_STATE_NAME = Object.fromEntries(
 );
 
 // Known scanner brands — used to extract a clean Scanner_Brand from the messy Scanner_Source field
-const SCANNER_BRANDS = ['ITERO','3SHAPE','MEDIT','CEREC','DEXIS','DSCORE','TRIOS','PRIMESCAN','CARESTREAM','PLANSCAN','IOS','EMERALD'];
+/* THREESHAPE is the Query Studio spelling of 3Shape — listed before the other
+   brands so it is matched and folded into the same bucket instead of becoming
+   a separate "Threeshape" category alongside the historical "3Shape". */
+const SCANNER_BRANDS = ['ITERO','THREESHAPE','3SHAPE','MEDIT','CEREC','DEXIS','DSCORE','TRIOS','PRIMESCAN','CARESTREAM','PLANSCAN','IOS','EMERALD'];
 
 // Chart palette — desaturated for editorial feel
 const CHART_PALETTE = [
@@ -1118,7 +1121,7 @@ function stateAbbr(raw) {
 }
 
 const SCANNER_DISPLAY = {
-  'ITERO': 'iTero', '3SHAPE': '3Shape', 'MEDIT': 'Medit', 'CEREC': 'CEREC',
+  'ITERO': 'iTero', '3SHAPE': '3Shape', 'THREESHAPE': '3Shape', 'MEDIT': 'Medit', 'CEREC': 'CEREC',
   'DEXIS': 'Dexis', 'DSCORE': 'DSCore', 'TRIOS': 'Trios', 'PRIMESCAN': 'Primescan',
   'CARESTREAM': 'Carestream', 'PLANSCAN': 'Planscan', 'IOS': 'IOS', 'EMERALD': 'Emerald'
 };
@@ -1334,6 +1337,181 @@ function finishIngest(rawRows, fileName, freshUpload) {
 }
 
 /* ──────────────────────────────────────────
+   4b. SCHEMA COMPATIBILITY LAYER
+   ──────────────────────────────────────────
+   The lab exports have shipped under more than one column layout:
+
+     LEGACY  (33 cols, "lab_dashboard_full_dataset")
+       … Transaction_type, Remake(Y/N), Product_Remakes(TRUE/FALSE),
+         Remake_Quantity, Remake_Percent_Paid_by_Lab, email/email_1, phone/phone_1
+
+     QUERY STUDIO (31 cols, "query_studio_export_…")
+       … Transaction_Type, Remake(True/False), Product_Remake,
+         Remake_Qty, Remake_percent, single email/phone, no email_1/phone_1
+
+   Rather than branch on "which format is this", every field is read through
+   `pick()`, which tries a list of known aliases and falls back to a
+   case-insensitive lookup. That means BOTH formats — and any future export
+   that renames a column's capitalisation — load through the same path, and a
+   file containing a mix of both (after an Add Data merge) still works row by
+   row. Nothing downstream of normalizeRecords needs to know the difference. */
+
+/* Case-insensitive key index, cached per row-object shape. Papa Parse reuses
+   the same header set for every row in a file, so we memoize on the joined
+   key list and build the lowercase map at most once per file. */
+let _keyMapCache = { sig: null, map: null };
+function lowerKeyMap(obj) {
+  const keys = Object.keys(obj);
+  const sig = keys.join('\u0001');
+  if (_keyMapCache.sig === sig) return _keyMapCache.map;
+  const map = Object.create(null);
+  for (const k of keys) map[k.trim().toLowerCase()] = k;
+  _keyMapCache = { sig, map };
+  return map;
+}
+
+/* Return the first alias present on the row with a non-empty value.
+   Falls back to a case-insensitive match so `Transaction_type` and
+   `Transaction_Type` (and any future recasing) both resolve.
+
+   Convenience form, used off the hot path (merge/dedupe). Row normalization
+   uses the precompiled field map below instead — see FIELD_ALIASES. */
+function pick(row, ...aliases) {
+  for (const a of aliases) {
+    const v = row[a];
+    if (v !== undefined && v !== null && String(v).trim() !== '') return v;
+  }
+  const lk = lowerKeyMap(row);
+  for (const a of aliases) {
+    const real = lk[a.trim().toLowerCase()];
+    if (real !== undefined) {
+      const v = row[real];
+      if (v !== undefined && v !== null && String(v).trim() !== '') return v;
+    }
+  }
+  return '';
+}
+
+/* ── Precompiled field map ────────────────────────────────────────────────
+   Resolving aliases per row means ~25 lookups on every one of 180k+ rows.
+   The column layout is fixed for the lifetime of a file, so the alias list is
+   resolved ONCE per distinct row shape and reused. Each canonical field maps
+   to the actual column name(s) present on that shape, so reading a field
+   becomes a direct property access.
+
+   A merged dataset can hold rows from several exports at once, so shapes are
+   cached in a small MRU list and matched per row by a cheap fingerprint
+   (key count + presence of the resolved columns) rather than by rebuilding a
+   string signature. Alternating formats therefore cost one extra comparison,
+   not a rebuild. */
+const FIELD_ALIASES = {
+  caseNumber:     ['Case_Number', 'CaseNumber'],
+  caseStatus:     ['Case_Status', 'CaseStatus'],
+  receivedDate:   ['Case_Received_Date', 'Case_Entry_Date', 'Received_Date'],
+  invoiceDate:    ['Invoice_Date', 'Invoiced_Date'],
+  shippedDate:    ['Shipped', 'Ship_Date', 'Shipped_Date'],
+  dueDate:        ['dd', 'Due_Date', 'DD'],
+  daysOnHold:     ['Days_On_Hold', 'DaysOnHold'],
+  onHoldReason:   ['On_Hold_Reason', 'OnHoldReason'],
+  tooth:          ['Tooth_Number', 'ToothNumber'],
+  shade:          ['Shade'],
+  lastName:       ['Dentist_Last_Name', 'Doctor_Last_Name'],
+  firstName:      ['Dentist_First_Name', 'Doctor_First_Name'],
+  quantity:       ['Quantity', 'Qty'],
+  unitPrice:      ['Unit_Price', 'UnitPrice'],
+  netCost:        ['Net_Cost', 'NetCost'],
+  productId:      ['Product_ID', 'ProductID', 'Product_Id'],
+  productName:    ['Product_Name', 'ProductName'],
+  // Legacy carries email/email_1 and phone/phone_1; either may hold the value
+  email:          ['email', 'email_1', 'Email'],
+  phone:          ['phone', 'phone_1', 'Phone'],
+  address:        ['address', 'Address'],
+  scanner:        ['Scanner_Source', 'ScannerSource'],
+  transactionType:['Transaction_type', 'Transaction_Type'],
+  remake:         ['Remake'],
+  productRemake:  ['Product_Remakes', 'Product_Remake'],
+  remakeQty:      ['Remake_Quantity', 'Remake_Qty'],
+  remakeDiscount: ['Remake_Discount', 'RemakeDiscount'],
+  remakePct:      ['Remake_Percent_Paid_by_Lab', 'Remake_percent', 'Remake_Percent'],
+  remakeReason:   ['Remake_Reason', 'RemakeReason'],
+  state:          ['state', 'State'],
+  city:           ['city', 'City'],
+  practice:       ['pracname', 'Practice_Name', 'practice', 'PracName']
+};
+
+let _shapes = [];   // MRU list of { keyCount, probe:[actualKeys], map }
+
+function buildShape(row, keyCount) {
+  const lk = Object.create(null);
+  for (const k in row) lk[String(k).trim().toLowerCase()] = k;
+  const map = Object.create(null);
+  const probe = [];
+  for (const canon in FIELD_ALIASES) {
+    const aliases = FIELD_ALIASES[canon];
+    const cols = [];
+    for (let i = 0; i < aliases.length; i++) {
+      const a = aliases[i];
+      let real = (a in row) ? a : lk[a.toLowerCase()];
+      if (real !== undefined && cols.indexOf(real) === -1) cols.push(real);
+    }
+    map[canon] = cols.length ? cols : null;
+    for (let i = 0; i < cols.length; i++) {
+      if (probe.indexOf(cols[i]) === -1) probe.push(cols[i]);
+    }
+  }
+  return { keyCount, probe, map };
+}
+
+function fieldMapFor(row) {
+  let keyCount = 0;
+  for (const k in row) keyCount++;
+  for (let i = 0; i < _shapes.length; i++) {
+    const s = _shapes[i];
+    if (s.keyCount !== keyCount) continue;
+    let ok = true;
+    for (let j = 0; j < s.probe.length; j++) {
+      if (!(s.probe[j] in row)) { ok = false; break; }
+    }
+    if (ok) {
+      if (i > 0) { _shapes.splice(i, 1); _shapes.unshift(s); }  // MRU
+      return s.map;
+    }
+  }
+  const s = buildShape(row, keyCount);
+  _shapes.unshift(s);
+  if (_shapes.length > 6) _shapes.length = 6;
+  return s.map;
+}
+
+/* Read a mapped field. Single-column fields (the overwhelming majority) take
+   a direct access; only genuinely multi-column fields such as legacy
+   email/email_1 fall through to the non-empty scan. */
+function fv(row, cols) {
+  if (!cols) return '';
+  if (cols.length === 1) {
+    const v = row[cols[0]];
+    return (v === undefined || v === null) ? '' : v;
+  }
+  for (let i = 0; i < cols.length; i++) {
+    const v = row[cols[i]];
+    if (v !== undefined && v !== null && String(v).trim() !== '') return v;
+  }
+  return '';
+}
+
+/* Boolean flags arrive as Y/N (legacy) or True/False (Query Studio), and
+   occasionally as TRUE/FALSE, Yes/No or 1/0. Treat them all alike.
+   Anything unrecognised (including blank) is false — matching the previous
+   `=== 'Y'` behaviour for legacy files. */
+function truthyFlag(v) {
+  if (v === true) return true;
+  if (v === false || v == null) return false;
+  const s = String(v).trim().toLowerCase();
+  if (!s) return false;
+  return s === 'y' || s === 'yes' || s === 'true' || s === 't' || s === '1';
+}
+
+/* ──────────────────────────────────────────
    5. RECORD NORMALIZATION
    ────────────────────────────────────────── */
 
@@ -1343,12 +1521,17 @@ function normalizeRecords(rows) {
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i];
     if (!r || typeof r !== 'object') continue;
+    // Resolve this row's column layout (cached per shape — see fieldMapFor)
+    const F = fieldMapFor(r);
     // Skip totally empty rows
-    if (!r.Case_Number && !r.Product_Name && !r.Dentist_Last_Name) continue;
+    const caseNumRaw = fv(r, F.caseNumber);
+    const productRaw = fv(r, F.productName);
+    const lastRaw = fv(r, F.lastName);
+    if (!String(caseNumRaw).trim() && !String(productRaw).trim() && !String(lastRaw).trim()) continue;
 
-    const invDate = parseDate(r.Invoice_Date);
-    const recDate = parseDate(r.Case_Received_Date);
-    const shipDate = parseDate(r.Shipped);
+    const invDate = parseDate(fv(r, F.invoiceDate));
+    const recDate = parseDate(fv(r, F.receivedDate));
+    const shipDate = parseDate(fv(r, F.shippedDate));
     // Due date — from the `dd` column. Classify each case's invoice timing against
     // its promised due date by calendar day:
     //   early   = invoiced strictly before the due date (green)
@@ -1356,7 +1539,7 @@ function normalizeRecords(rows) {
     //   late    = invoiced strictly after the due date (red)
     // Comparison is by date only, not time, so timestamps within the same day
     // are still considered on-time.
-    const dueDate = parseDate(r.dd || r.Due_Date || r.due_date);
+    const dueDate = parseDate(fv(r, F.dueDate));
     let onTimeStatus = null;
     if (dueDate && invDate) {
       const dueDay = Date.UTC(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate());
@@ -1365,16 +1548,19 @@ function normalizeRecords(rows) {
       else if (invDay > dueDay) onTimeStatus = 'late';
       else                       onTimeStatus = 'ontime';
     }
-    const stateName = normalizeState(r.state);
-    const stateA = stateAbbr(r.state);
-    const lastNameRaw = (r.Dentist_Last_Name || '').trim();
-    const firstNameRaw = (r.Dentist_First_Name || '').trim();
+    const rawState = fv(r, F.state);
+    const stateName = normalizeState(rawState);
+    const stateA = stateAbbr(rawState);
+    const lastNameRaw = String(lastRaw || '').trim();
+    const firstNameRaw = String(fv(r, F.firstName) || '').trim();
     // Display name uses title-case so "kelsey maczko" and "Kelsey Maczko" render identically
     const firstName = titleCase(firstNameRaw);
     const lastName = titleCase(lastNameRaw);
     const drName = (firstName ? firstName + ' ' : '') + lastName;
-    const email = (r.email || r.email_1 || '').trim().toLowerCase();
-    const phone = (r.phone || r.phone_1 || '').trim();
+    // Query Studio ships a single email/phone column; legacy files carry
+    // email/email_1 and phone/phone_1 (either of which may be the populated one).
+    const email = String(fv(r, F.email) || '').trim().toLowerCase();
+    const phone = String(fv(r, F.phone) || '').trim();
     // Doctor id: name-based (case-insensitive), with name parts sorted to collapse first/last order swaps.
     // We previously keyed on email, but ~293 emails in this dataset are shared across multiple distinct
     // doctors (e.g. a practice email), which merged separate dentists into one account.
@@ -1386,18 +1572,40 @@ function normalizeRecords(rows) {
     const stKey = (stateA || stateName || '').toLowerCase();
     const nameParts = [fnLow, lnLow].filter(Boolean).sort();
     const doctorId = nameParts.join('|') + '|' + stKey;
-    const product = (r.Product_Name || '').trim();
-    const netCost = parseFloat(r.Net_Cost) || 0;
-    const qty = parseInt(r.Quantity, 10) || 1;
-    const unitPrice = parseFloat(r.Unit_Price) || 0;
-    const daysOnHold = parseInt(r.Days_On_Hold, 10) || 0;
-    const remake = String(r.Remake || '').toUpperCase() === 'Y';
-    const onHold = !!(r.On_Hold_Reason && String(r.On_Hold_Reason).trim());
-    const tat = (recDate && shipDate) ? daysBetween(recDate, shipDate) : null;
+    const product = String(productRaw || '').trim();
+    const netCost = parseFloat(fv(r, F.netCost)) || 0;
+    const qty = parseInt(fv(r, F.quantity), 10) || 1;
+    const unitPrice = parseFloat(fv(r, F.unitPrice)) || 0;
+    const daysOnHold = parseInt(fv(r, F.daysOnHold), 10) || 0;
+
+    /* REMAKE — case-level flag.
+       Legacy files use Y/N; Query Studio uses True/False. truthyFlag handles
+       both, so remake counts stay identical on historical data and stop
+       reading as zero on the new export. */
+    const remake = truthyFlag(fv(r, F.remake));
+    /* Product-level remake flag (Product_Remakes / Product_Remake). This marks
+       the specific line item that was remade, as opposed to the case as a
+       whole, and is narrower than the case flag. */
+    const productRemake = truthyFlag(fv(r, F.productRemake));
+
+    const onHoldReasonRaw = fv(r, F.onHoldReason);
+    const onHold = !!String(onHoldReasonRaw || '').trim();
+    const practiceRaw = String(fv(r, F.practice) || '').trim();
+
+    /* TURNAROUND TIME — case entry date → invoice date, in calendar days.
+       Previously measured entry → SHIPPED. That silently broke on the Query
+       Studio export, where the Shipped column is blank on ~60% of rows, so
+       most cases produced no TAT at all and the average was drawn from a
+       skewed minority. Invoice_Date is populated on every row in both
+       formats, and entry→invoiced is the intended definition, so it is the
+       primary measure. Shipped is kept only as a fallback for any row that
+       somehow lacks an invoice date, so no row loses its TAT. */
+    const tatEnd = invDate || shipDate;
+    const tat = (recDate && tatEnd) ? daysBetween(recDate, tatEnd) : null;
 
     out[n++] = {
-      caseNo: r.Case_Number || '',
-      status: r.Case_Status || '',
+      caseNo: caseNumRaw || '',
+      status: fv(r, F.caseStatus) || '',
       received: recDate,
       invoiced: invDate,
       shipped: shipDate,
@@ -1406,10 +1614,10 @@ function normalizeRecords(rows) {
       anchorIso: isoDate(invDate || recDate),
       anchorMonth: monthKey(invDate || recDate),
       daysOnHold,
-      onHoldReason: r.On_Hold_Reason || '',
+      onHoldReason: onHoldReasonRaw || '',
       onHold,
-      tooth: r.Tooth_Number || '',
-      shade: r.Shade || '',
+      tooth: fv(r, F.tooth) || '',
+      shade: fv(r, F.shade) || '',
       drFirst: firstName,
       drLast: lastName,
       drName,
@@ -1417,27 +1625,35 @@ function normalizeRecords(rows) {
       // Practice name (from `pracname` column) — the dental practice the
       // doctor works at. Read with fallbacks in case the column name varies
       // across CSV exports.
-      practice: titleCase((r.pracname || r.Practice_Name || r.practice || '').toString().trim()),
-      group: dentalGroupOf((r.pracname || r.Practice_Name || r.practice || '').toString().trim()),
+      practice: titleCase(practiceRaw),
+      group: dentalGroupOf(practiceRaw),
       email,
       phone,
-      address: r.address || '',
-      city: titleCase(r.city || ''),
+      address: fv(r, F.address) || '',
+      city: titleCase(fv(r, F.city) || ''),
       state: stateName,
       stateAbbr: stateA,
       product,
       productCat: productCategory(product),
-      productId: r.Product_ID || '',
+      productId: fv(r, F.productId) || '',
       qty,
       unitPrice,
       netCost,
-      scanner: normalizeScanner(r.Scanner_Source),
-      transactionType: r.Transaction_type || '',
+      scanner: normalizeScanner(fv(r, F.scanner)),
+      // Legacy header is Transaction_type, Query Studio uses Transaction_Type
+      transactionType: fv(r, F.transactionType) || '',
       remake,
-      remakeReason: r.Remake_Reason || '',
-      remakeQty: parseFloat(r.Remake_Quantity) || 0,
-      remakeDiscount: parseFloat(r.Remake_Discount) || 0,
-      remakePctLab: parseFloat(r.Remake_Percent_Paid_by_Lab) || 0,
+      productRemake,
+      remakeReason: fv(r, F.remakeReason) || '',
+      /* Remake_Quantity (legacy) was only populated on actual remake rows.
+         Its Query Studio counterpart, Remake_Qty, is populated on EVERY row
+         and simply mirrors Quantity — it is 1:1 with Quantity across the whole
+         export. Reading it verbatim would report a remake quantity for
+         thousands of ordinary line items. Gate it behind the remake flag so
+         the field keeps its original meaning in both formats. */
+      remakeQty: remake ? (parseFloat(fv(r, F.remakeQty)) || 0) : 0,
+      remakeDiscount: parseFloat(fv(r, F.remakeDiscount)) || 0,
+      remakePctLab: parseFloat(fv(r, F.remakePct)) || 0,
       tat,
       dueDate,
       onTimeStatus
@@ -1865,19 +2081,61 @@ function downloadCSV(filename, rows) {
 /* Merge two raw-row arrays, dropping duplicates by Case_Number. Used by Add Data
    so re-uploading an overlapping CSV doesn't double-count cases. Returns the
    merged array plus how many were newly added vs already present. */
+/* Build a per-LINE-ITEM signature for dedupe.
+
+   A case is not one row: it is one row per product billed on that case
+   (crown, model, shipping, reprocessing fee …). Matching on Case_Number alone
+   treated every line item after the first as a duplicate of its own case, so
+   merging a file silently discarded them — 28% of rows on a typical Query
+   Studio export, ~49% on the historical set, taking their revenue with them.
+
+   The signature therefore includes the fields that distinguish line items
+   within a case, read through pick() so it is stable across both formats. */
+function rowSignature(r) {
+  const F = fieldMapFor(r);
+  return [
+    fv(r, F.caseNumber),
+    fv(r, F.productId),
+    fv(r, F.productName),
+    fv(r, F.invoiceDate),
+    fv(r, F.tooth),
+    fv(r, F.quantity),
+    fv(r, F.netCost)
+  ].map(v => String(v == null ? '' : v).trim().toLowerCase()).join('\u0001');
+}
+
+/* Merge two raw-row arrays, dropping only genuine duplicates. Used by Add Data
+   to fold a new export into the existing dataset.
+
+   Dedupe is occurrence-aware: if a case legitimately carries the same product
+   twice as two separate rows, both are kept, because a re-uploaded file is
+   detected by the Nth occurrence of a signature already existing — not by the
+   signature existing at all. Re-adding the same export is still a clean no-op;
+   adding a genuinely new export keeps every line item. */
 function mergeRows(existingRaw, newRaw) {
-  const seen = new Set();
+  const counts = new Map();          // signature -> occurrences already held
   const merged = [];
   for (const r of existingRaw) {
-    const cn = String(r.Case_Number || '').trim();
-    if (cn) seen.add(cn);
+    if (!r || typeof r !== 'object') continue;
+    const sig = rowSignature(r);
+    counts.set(sig, (counts.get(sig) || 0) + 1);
     merged.push(r);
   }
+
+  const seenThisFile = new Map();    // signature -> occurrences seen in newRaw
   let added = 0, replaced = 0;
   for (const r of newRaw) {
-    const cn = String(r.Case_Number || '').trim();
-    if (cn && seen.has(cn)) { replaced++; continue; }
-    if (cn) seen.add(cn);
+    if (!r || typeof r !== 'object') continue;
+    // Skip blank trailing rows rather than merging them in as empty records
+    const MF = fieldMapFor(r);
+    if (!String(fv(r, MF.caseNumber)).trim() &&
+        !String(fv(r, MF.productName)).trim() &&
+        !String(fv(r, MF.lastName)).trim()) continue;
+    const sig = rowSignature(r);
+    const idx = (seenThisFile.get(sig) || 0) + 1;
+    seenThisFile.set(sig, idx);
+    // Duplicate only if the dataset already holds at least this many copies
+    if (idx <= (counts.get(sig) || 0)) { replaced++; continue; }
     merged.push(r);
     added++;
   }
