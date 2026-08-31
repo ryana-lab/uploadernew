@@ -1511,6 +1511,126 @@ function truthyFlag(v) {
   return s === 'y' || s === 'yes' || s === 'true' || s === 't' || s === '1';
 }
 
+/* ── Case identity ────────────────────────────────────────────────────────
+   A case is billed as one ROW PER LINE ITEM (crown, model, shipping,
+   reprocessing fee…), so counting rows counts line items, not cases. The two
+   export formats have different line-item density — roughly 1.9 rows per case
+   historically versus 1.3 in the Query Studio export — so a row-based "case"
+   count drops about 30% at the format boundary even when real case volume is
+   unchanged. Every case metric therefore counts DISTINCT case keys.
+
+   Case numbers never span two doctors in the data, and the legacy and Query
+   Studio numbering schemes don't collide, so the case number alone is a safe
+   key.
+
+   Rows with NO case number are not cases at all — they are financial
+   adjustments (credits and rebates posted against an invoice). In the
+   historical file all 10,117 of them carry no received date, no ship date and
+   no remake flag, and 99.8% are negative amounts. They still belong in
+   revenue, so they keep their money, but they get a null case key and are
+   excluded from every case count. Counting them as cases previously inflated
+   some months by thousands of phantom cases and dragged the revenue-per-case
+   figure down with it.
+
+   Rows with a case number but NO PRODUCT NAME are the same kind of thing:
+   billing adjustments posted against an existing case. There are 21,478 of
+   them and they net to −$526,204. They are NOT dental work, and treating them
+   as work distorted the churn analysis badly:
+
+     On 28 June 2026 — a Sunday — a batch of 425 such rows was posted, penny
+     amounts ($0.04–$0.50) with no product, against cases RECEIVED IN JULY 2025,
+     almost a year earlier. That single reconciliation run gave 129 long-dormant
+     doctors a fresh "activity" date in June 2026. They then had nothing after
+     it, so they were counted as churning in June — and because each had a
+     ~11-month gap before the penny charge, the 45-day rule filed them under
+     "Winback & Lost". That is the bulk of that bucket, and none of it is real.
+
+     115 of June's 821 doctors were touched ONLY by product-less rows.
+
+   These rows keep their money (the credits are real) but carry a null case key,
+   so they neither count as cases nor mark a doctor as active. */
+function caseKeyFor(caseNo, productName) {
+  const c = String(caseNo || '').trim().toLowerCase();
+  if (!c) return null;
+  // A case line with no product on it is a billing adjustment, not dental work
+  if (!String(productName || '').trim()) return null;
+  return c;
+}
+
+/* Add a case key to a set, ignoring adjustment rows (null key). */
+function addCase(set, key) { if (key) set.add(key); return set; }
+
+/* Count distinct cases in a set of records, ignoring adjustment rows. */
+function countCases(rows) {
+  const s = new Set();
+  for (let i = 0; i < rows.length; i++) { const k = rows[i].caseKey; if (k) s.add(k); }
+  return s.size;
+}
+
+/* ── Label canonicalization ───────────────────────────────────────────────
+   The same product and remake reason can arrive spelled slightly differently
+   across exports — curly vs straight apostrophes, spacing around hyphens,
+   trailing blanks. Left alone these split one category into several on the
+   Products and Remake Reasons charts. Canonicalize the typography, then keep
+   the first spelling seen as the display label so nothing is renamed. */
+const _labelCanon = new Map();
+function canonLabel(raw) {
+  const s = String(raw == null ? '' : raw).replace(/\u00a0/g, ' ').trim();
+  if (!s) return '';
+  const key = s.toLowerCase()
+    .replace(/[\u2018\u2019\u02bc]/g, "'")   // curly apostrophes → straight
+    .replace(/[\u2013\u2014]/g, '-')          // en/em dash → hyphen
+    .replace(/\s*-\s*/g, '-')                 // spacing around hyphens
+    .replace(/\s*\/\s*/g, '/')                // spacing around slashes
+    .replace(/\s+/g, ' ')
+    .trim();
+  const seen = _labelCanon.get(key);
+  if (seen) return seen;
+  _labelCanon.set(key, s);
+  return s;
+}
+
+/* Remake reasons come from a controlled picklist, but the new export also
+   carries free-text case notes in the same column (whole sentences describing
+   an individual case). Each unique sentence would become its own bar on the
+   Remake Reasons chart, burying the real categories under one-off entries.
+   Long free-text is therefore grouped under the existing catch-all bucket.
+   The full text is preserved on the record as `remakeReasonText`, so
+   case-level tables and exports still show exactly what was written. */
+const REMAKE_OTHER = 'Other / Reason Not Listed';
+/* The reasons the lab's picklist actually offers. Matched case- and
+   punctuation-insensitively via canonLabel's key form. */
+const REMAKE_VOCAB = new Set([
+  'other/reason not listed', 'open contact', 'shade change', 'open margin', 'shade',
+  'broken within warranty', 'lost/never received', 'instructions not followed',
+  'poor quality', 'short margin', 'adjustment', "didn't fit, too loose",
+  'add extra material', 'material change', "didn't fit, too tight",
+  'crown does not seat fully', 'made in wrong material', 'implant does not engage',
+  'bridge does not seat fully', 'complaint-not at fault', 'missed from order',
+  'wrong scan used', 'faulted scan', 'delivered to wrong practice',
+  'teeth glued on model/snapped'
+]);
+function remakeKey(s) {
+  return String(s).toLowerCase()
+    .replace(/[\u2018\u2019\u02bc]/g, "'").replace(/[\u2013\u2014]/g, '-')
+    .replace(/\s*-\s*/g, '-').replace(/\s*\/\s*/g, '/').replace(/\s+/g, ' ').trim();
+}
+/* Free-text case notes now arrive in the same column as the picklist value —
+   whole sentences describing one case. Each unique sentence would become its
+   own bar on the Remake Reasons chart, burying the real categories. Anything
+   outside the picklist that reads as free text (long, or carrying sentence
+   punctuation such as ';' or a '#' tooth reference) is folded into the
+   catch-all bucket. Short unrecognised values are left alone so a genuinely
+   new picklist entry still shows up as its own category rather than vanishing.
+   The full original wording is preserved on the record as `remakeReasonText`. */
+function canonRemakeReason(raw) {
+  const s = canonLabel(raw);
+  if (!s) return '';
+  if (REMAKE_VOCAB.has(remakeKey(s))) return s;
+  if (s.length > 32 || /[;#]|\.\s|\.$/.test(s)) return REMAKE_OTHER;
+  return s;
+}
+
 /* ──────────────────────────────────────────
    5. RECORD NORMALIZATION
    ────────────────────────────────────────── */
@@ -1572,7 +1692,7 @@ function normalizeRecords(rows) {
     const stKey = (stateA || stateName || '').toLowerCase();
     const nameParts = [fnLow, lnLow].filter(Boolean).sort();
     const doctorId = nameParts.join('|') + '|' + stKey;
-    const product = String(productRaw || '').trim();
+    const product = canonLabel(productRaw);
     const netCost = parseFloat(fv(r, F.netCost)) || 0;
     const qty = parseInt(fv(r, F.quantity), 10) || 1;
     const unitPrice = parseFloat(fv(r, F.unitPrice)) || 0;
@@ -1605,6 +1725,8 @@ function normalizeRecords(rows) {
 
     out[n++] = {
       caseNo: caseNumRaw || '',
+      // Stable per-case identity used by every "cases" count — see caseKeyFor
+      caseKey: caseKeyFor(caseNumRaw, product),
       status: fv(r, F.caseStatus) || '',
       received: recDate,
       invoiced: invDate,
@@ -1644,7 +1766,9 @@ function normalizeRecords(rows) {
       transactionType: fv(r, F.transactionType) || '',
       remake,
       productRemake,
-      remakeReason: fv(r, F.remakeReason) || '',
+      remakeReason: canonRemakeReason(fv(r, F.remakeReason)),
+      // Full original wording, kept for case-level tables and exports
+      remakeReasonText: String(fv(r, F.remakeReason) || '').trim(),
       /* Remake_Quantity (legacy) was only populated on actual remake rows.
          Its Query Studio counterpart, Remake_Qty, is populated on EVERY row
          and simply mirrors Quantity — it is 1:1 with Quantity across the whole
@@ -1750,8 +1874,10 @@ function aggKPIs() {
   return agg('kpis', data => {
     const totalRev = data.reduce((s,r) => s + r.netCost, 0);
     const totalUnits = data.reduce((s,r) => s + r.qty, 0);
-    const remakeCount = data.filter(r => r.remake).length;
-    const onHoldCount = data.filter(r => r.onHold).length;
+    // Case-level, not row-level: one case spans several line-item rows
+    const totalCases = countCases(data);
+    const remakeCount = countCases(data.filter(r => r.remake));
+    const onHoldCount = countCases(data.filter(r => r.onHold));
     const doctors = new Set(data.map(r => r.drId)).size;
     const products = new Set(data.map(r => r.product)).size;
     const states = new Set(data.map(r => r.state).filter(Boolean)).size;
@@ -1760,11 +1886,11 @@ function aggKPIs() {
       return vals.length ? vals.reduce((a,b)=>a+b,0)/vals.length : null;
     })();
     return {
-      totalRev, totalCases: data.length, totalUnits,
-      avgCase: data.length ? totalRev / data.length : 0,
-      remakeRate: data.length ? remakeCount / data.length : 0,
+      totalRev, totalCases, totalUnits,
+      avgCase: totalCases ? totalRev / totalCases : 0,
+      remakeRate: totalCases ? remakeCount / totalCases : 0,
       remakeCount,
-      onHoldRate: data.length ? onHoldCount / data.length : 0,
+      onHoldRate: totalCases ? onHoldCount / totalCases : 0,
       onHoldCount,
       doctors, products, states, avgTAT
     };
@@ -1787,10 +1913,11 @@ function aggByDoctor() {
           state: r.state,
           stateAbbr: r.stateAbbr,
           address: r.address,
-          cases: 0,
+          // Distinct cases / distinct remade cases (a case spans several rows)
+          caseSet: new Set(),
+          remakeSet: new Set(),
           revenue: 0,
           units: 0,
-          remakes: 0,
           firstDate: r.anchorDate,
           lastDate: r.anchorDate,
           products: new Map(),
@@ -1806,10 +1933,10 @@ function aggByDoctor() {
         };
         map.set(r.drId, d);
       }
-      d.cases++;
+      addCase(d.caseSet, r.caseKey);
       d.revenue += r.netCost;
       d.units += r.qty;
-      if (r.remake) d.remakes++;
+      if (r.remake) addCase(d.remakeSet, r.caseKey);
       if (r.anchorDate) {
         if (!d.firstDate || r.anchorDate < d.firstDate) d.firstDate = r.anchorDate;
         if (!d.lastDate || r.anchorDate > d.lastDate) d.lastDate = r.anchorDate;
@@ -1826,14 +1953,18 @@ function aggByDoctor() {
     }
     return Array.from(map.values()).map(d => {
       const practiceInfo = buildPracticeInfo(d.practices);
+      const cases = d.caseSet.size;
+      const remakes = d.remakeSet.size;
       return {
       ...d,
+      cases,
+      remakes,
       // `practice` stays as the PRIMARY (most-cases) practice so existing
       // references keep working; `practiceInfo` carries the full breakdown.
       practice: practiceInfo.primary || d.practice || '',
       practiceInfo,
-      avgCase: d.cases ? d.revenue / d.cases : 0,
-      remakeRate: d.cases ? d.remakes / d.cases : 0,
+      avgCase: cases ? d.revenue / cases : 0,
+      remakeRate: cases ? remakes / cases : 0,
       avgTat: d.tatN ? d.tatSum / d.tatN : null,
       earlyPct:  d.ontimeCases ? d.onTimeEarly  / d.ontimeCases : null,
       onTimePct: d.ontimeCases ? d.onTimeOnTime / d.ontimeCases : null,
@@ -1854,15 +1985,15 @@ function aggByProduct() {
       if (!r.product) continue;
       let p = map.get(r.product);
       if (!p) {
-        p = { name: r.product, category: r.productCat, cases: 0, revenue: 0, units: 0, remakes: 0, doctors: new Set(),
+        p = { name: r.product, category: r.productCat, caseSet: new Set(), revenue: 0, units: 0, remakeSet: new Set(), doctors: new Set(),
               onTimeEarly: 0, onTimeOnTime: 0, onTimeLate: 0, ontimeCases: 0,
               tatSum: 0, tatN: 0 };
         map.set(r.product, p);
       }
-      p.cases++;
+      addCase(p.caseSet, r.caseKey);
       p.revenue += r.netCost;
       p.units += r.qty;
-      if (r.remake) p.remakes++;
+      if (r.remake) addCase(p.remakeSet, r.caseKey);
       p.doctors.add(r.drId);
       if (r.tat != null && r.tat >= 0 && r.tat < 200) { p.tatSum += r.tat; p.tatN++; }
       if (r.onTimeStatus) {
@@ -1875,13 +2006,13 @@ function aggByProduct() {
     return Array.from(map.values()).map(p => ({
       name: p.name,
       category: p.category,
-      cases: p.cases,
+      cases: p.caseSet.size,
       revenue: p.revenue,
       units: p.units,
-      remakes: p.remakes,
+      remakes: p.remakeSet.size,
       doctors: p.doctors.size,
       avgPrice: p.units ? p.revenue / p.units : 0,
-      remakeRate: p.cases ? p.remakes / p.cases : 0,
+      remakeRate: p.caseSet.size ? p.remakeSet.size / p.caseSet.size : 0,
       avgTat: p.tatN ? p.tatSum / p.tatN : null,
       onTimeEarly: p.onTimeEarly, onTimeOnTime: p.onTimeOnTime, onTimeLate: p.onTimeLate, ontimeCases: p.ontimeCases,
       earlyPct:  p.ontimeCases ? p.onTimeEarly  / p.ontimeCases : null,
@@ -1897,12 +2028,13 @@ function aggByMonth() {
     for (const r of data) {
       if (!r.anchorMonth) continue;
       let m = map.get(r.anchorMonth);
-      if (!m) { m = { key: r.anchorMonth, revenue: 0, cases: 0, units: 0, remakes: 0 }; map.set(r.anchorMonth, m); }
+      if (!m) { m = { key: r.anchorMonth, revenue: 0, caseSet: new Set(), units: 0, remakeSet: new Set() }; map.set(r.anchorMonth, m); }
       m.revenue += r.netCost;
-      m.cases++;
+      addCase(m.caseSet, r.caseKey);
       m.units += r.qty;          // the "Units" series on the overview chart
-      if (r.remake) m.remakes++;
+      if (r.remake) addCase(m.remakeSet, r.caseKey);
     }
+    for (const m of map.values()) { m.cases = m.caseSet.size; m.remakes = m.remakeSet.size; }
     // Drop sparse months (under 10 records) — these are typically stray rows with
     // malformed dates that would otherwise push the real months off the visible chart.
     // We only filter when there are at least 3 substantive months so we never
@@ -1921,22 +2053,22 @@ function aggByState() {
       if (!k) continue;
       let s = map.get(k);
       if (!s) {
-        s = { name: k, abbr: r.stateAbbr, revenue: 0, cases: 0, doctors: new Set(), remakes: 0 };
+        s = { name: k, abbr: r.stateAbbr, revenue: 0, caseSet: new Set(), doctors: new Set(), remakeSet: new Set() };
         map.set(k, s);
       }
       s.revenue += r.netCost;
-      s.cases++;
-      if (r.remake) s.remakes++;
+      addCase(s.caseSet, r.caseKey);
+      if (r.remake) addCase(s.remakeSet, r.caseKey);
       s.doctors.add(r.drId);
     }
     return Array.from(map.values()).map(s => ({
       name: s.name,
       abbr: s.abbr,
       revenue: s.revenue,
-      cases: s.cases,
+      cases: s.caseSet.size,
       doctors: s.doctors.size,
-      remakes: s.remakes,
-      remakeRate: s.cases ? s.remakes / s.cases : 0
+      remakes: s.remakeSet.size,
+      remakeRate: s.caseSet.size ? s.remakeSet.size / s.caseSet.size : 0
     })).sort((a,b) => b.revenue - a.revenue);
   });
 }
@@ -1979,11 +2111,12 @@ function aggByCategory() {
     const map = new Map();
     for (const r of data) {
       let c = map.get(r.productCat);
-      if (!c) { c = { name: r.productCat, revenue: 0, cases: 0, units: 0 }; map.set(r.productCat, c); }
+      if (!c) { c = { name: r.productCat, revenue: 0, caseSet: new Set(), cases: 0, units: 0 }; map.set(r.productCat, c); }
       c.revenue += r.netCost;
-      c.cases++;
+      addCase(c.caseSet, r.caseKey);
       c.units += r.qty;
     }
+    for (const c of map.values()) c.cases = c.caseSet.size;
     return Array.from(map.values()).sort((a,b) => b.revenue - a.revenue);
   });
 }
@@ -2265,11 +2398,12 @@ function aggDoctorsWhere(predicate) {
     if (!d) {
       d = { drId: r.drId, name: r.drName, practice: r.practice || "", email: r.email, phone: r.phone,
             city: r.city, state: r.stateAbbr || r.state,
-            revenue: 0, cases: 0, units: 0, firstDate: null, lastDate: null };
+            revenue: 0, caseSet: new Set(), cases: 0, units: 0, firstDate: null, lastDate: null };
       map.set(r.drId, d);
     }
     d.revenue += r.netCost;
-    d.cases++;
+    addCase(d.caseSet, r.caseKey);
+    d.cases = d.caseSet.size;
     d.units += r.qty;
     if (r.anchorDate) {
       if (!d.firstDate || r.anchorDate < d.firstDate) d.firstDate = r.anchorDate;
@@ -3026,7 +3160,7 @@ function renderOverview() {
       <div class="kpi"><div class="kpi-label">Active Doctors</div><div class="kpi-value">${fmtN(k.doctors)}</div><div class="kpi-sub">${fmtN(k.products)} unique products</div></div>
       <div class="kpi"><div class="kpi-label">Remake Rate</div><div class="kpi-value">${fmtPct(k.remakeRate)}</div><div class="kpi-sub">${fmtN(k.remakeCount)} cases reworked</div></div>
       <div class="kpi"><div class="kpi-label">On-Hold Rate</div><div class="kpi-value">${fmtPct(k.onHoldRate)}</div><div class="kpi-sub">${fmtN(k.onHoldCount)} held cases</div></div>
-      <div class="kpi"><div class="kpi-label">Avg Turnaround</div><div class="kpi-value">${k.avgTAT == null ? '—' : k.avgTAT.toFixed(1) + '<span class="sup">days</span>'}</div><div class="kpi-sub">received → shipped</div></div>
+      <div class="kpi"><div class="kpi-label">Avg Turnaround</div><div class="kpi-value">${k.avgTAT == null ? '—' : k.avgTAT.toFixed(1) + '<span class="sup">days</span>'}</div><div class="kpi-sub">received → invoiced</div></div>
     </div>
 
     <div class="card mb20">
@@ -3200,20 +3334,30 @@ function renderSalesHub() {
     let d = docMap.get(r.drId);
     if (!d) {
       d = { drId: r.drId, name: r.drName, practice: r.practice || "", email: r.email, city: r.city, state: r.state,
-            cases: 0, rv: 0, units: 0, dates: [], products: new Set(), practices: new Map(),
+            caseSet: new Set(), cases: 0, rv: 0, units: 0, dates: [], products: new Set(), practices: new Map(),
             firstDate: null, lastDate: null,
             rangeCases: 0, rangeRev: 0, inRange: false };
       docMap.set(r.drId, d);
     }
-    d.cases++; d.rv += r.netCost; d.units += r.qty;
+    addCase(d.caseSet, r.caseKey); d.cases = d.caseSet.size; d.rv += r.netCost; d.units += r.qty;
     tallyPractice(d.practices, r.practice);
     if (r.product) d.products.add(r.product);
-    if (r.anchorDate) {
+    // Only real cases mark a doctor as ACTIVE. Credit/rebate rows carry no case
+    // number and are accounting entries, not visits — letting one set lastDate
+    // made a doctor look like they returned the month a credit was posted, which
+    // then read as a 45+ day gap followed by a return: a false "Winback & Lost".
+    if (r.anchorDate && r.caseKey) {
       d.dates.push(r.anchorDate);
       if (!d.firstDate || r.anchorDate < d.firstDate) d.firstDate = r.anchorDate;
       if (!d.lastDate || r.anchorDate > d.lastDate) d.lastDate = r.anchorDate;
       // Track activity that falls inside the selected date range (the view filter)
-      if (inRangeDate(r.anchorDate)) { d.inRange = true; d.rangeCases++; d.rangeRev += r.netCost; }
+      if (inRangeDate(r.anchorDate)) {
+        d.inRange = true;
+        if (!d._rangeSet) d._rangeSet = new Set();
+        addCase(d._rangeSet, r.caseKey);
+        d.rangeCases = d._rangeSet.size;
+        d.rangeRev += r.netCost;
+      }
     }
   }
   const docs = Array.from(docMap.values());
@@ -3341,6 +3485,35 @@ function renderSalesHub() {
     if (d.tenure >= ESTABLISHED_TENURE) return 'established';
     return 'newLost';
   };
+  /* ── Right-edge censoring ────────────────────────────────────────────────
+     Churn is attributed to the month of a doctor's LAST case, so the most
+     recent months are always overstated: a doctor whose last case was in June
+     only has to be absent for July and August to look churned, while a doctor
+     last seen in January had to survive seven months of absence. Some of those
+     recent "losses" simply haven't come back YET.
+
+     How long that takes was measured from the data itself. Taking only months
+     with full follow-up, the share of a month's active doctors still unseen
+     after N days falls 21-25% at 30 days, 12-17% at 60, 10-14% at 90, and
+     9-11% at 120 — i.e. the figure is still moving materially at 60 days and
+     only flattens out around 90. Sixty days was too short a cutoff: it left
+     June looking settled when it was still overstated by roughly half.
+
+     A month is therefore treated as settled once 90 days of follow-up have
+     been observed after its final day, and never sooner than the churn rule
+     itself plus a 60-day buffer (so raising the silence threshold in the
+     dropdown widens the provisional band rather than under-reporting).
+     Provisional months are drawn faded and marked * — they are still shown,
+     because the doctors in them are real, but they should not be read as a
+     churn spike. */
+  const CHURN_SETTLE_DAYS = Math.max(90, SILENT_DAYS + 60);
+  const settledBefore = fullMaxDate.getTime() - CHURN_SETTLE_DAYS * 864e5;
+  const isProvisionalMonth = (k) => {
+    if (!k) return false;
+    const y = +k.slice(0, 4), mo = +k.slice(5, 7);
+    return new Date(y, mo, 0).getTime() > settledBefore;   // month-end after the cutoff
+  };
+
   const acqByMonth = {};
   const churnNewByMonth = {}, churnWinbackByMonth = {}, churnEstByMonth = {};
   const churnByMonth = {}; // total churn per month — preserved so the legacy lookups still work
@@ -3376,15 +3549,20 @@ function renderSalesHub() {
     }
     const churnPct = activeAtStart > 0 ? (churn / activeAtStart * 100) : 0;
     const net = acq - churn;
-    monthlyRows.push({ month: m, acq, churn, churnPct, net, activeAtStart });
+    monthlyRows.push({ month: m, acq, churn, churnPct, net, activeAtStart, provisional: isProvisionalMonth(m) });
   }
   // Compute vs-prior
   for (let i = 0; i < monthlyRows.length; i++) {
     const prior = monthlyRows[i+1];
     monthlyRows[i].vsPrior = prior ? monthlyRows[i].net - prior.net : null;
   }
+  /* Trailing churn average uses SETTLED months only. Including the provisional
+     tail dragged the average up by several points purely from doctors who
+     hadn't had time to reorder yet, which made the whole book look like it was
+     deteriorating. Falls back to the raw window if nothing has settled. */
   const trailingChurn = (() => {
-    const sample = monthlyRows.slice(0, 6).filter(r => r.activeAtStart > 0);
+    const settled = monthlyRows.filter(r => r.activeAtStart > 0 && !r.provisional).slice(0, 6);
+    const sample = settled.length ? settled : monthlyRows.slice(0, 6).filter(r => r.activeAtStart > 0);
     if (!sample.length) return 0;
     return sample.reduce((s,r) => s + r.churnPct, 0) / sample.length;
   })();
@@ -3500,7 +3678,7 @@ function renderSalesHub() {
       <div class="sh-narrative-head">
         <div>
           <div class="sh-narrative-title">Doctor Flow: Acquisitions vs Churn by Month</div>
-          <div class="sh-narrative-sub">🟢 Acquired = first-time doctors that month. Churn below the line is split by relationship at time of loss: 🌱 New & Lost (lost within 6 months), 🔄 Winback & Lost Again (had a 45+ day gap, returned, then churned), ❤️ Established & Lost (tenured doctors who slipped away).</div>
+          <div class="sh-narrative-sub">🟢 Acquired = first-time doctors that month. Churn below the line is split by relationship at time of loss: 🌱 New & Lost (lost within 6 months), 🔄 Winback & Lost Again (had a 45+ day gap, returned, then churned), ❤️ Established & Lost (tenured doctors who slipped away). <b>Months marked * are provisional</b> — churn is attributed to a doctor's last case, so the most recent ${CHURN_SETTLE_DAYS} days are always overstated: those doctors simply haven't ordered again <i>yet</i>. Their bars are faded and will settle as more data arrives.</div>
         </div>
         <span class="sh-narrative-tag info">CLICK ANY BAR — OR A CHIP BELOW</span>
       </div>
@@ -3540,7 +3718,7 @@ function renderSalesHub() {
       <div class="sh-narrative-head">
         <div>
           <div class="sh-narrative-title">Monthly Net Doctor Change</div>
-          <div class="sh-narrative-sub">Churn % = doctors who churned that month ÷ active book at start of month. Trailing average: <b>${trailingChurn.toFixed(1)}%</b>. <span class="sh-positive">&lt;3% excellent</span> · <span style="color:#65a30d">3–5% healthy</span> · <span class="sh-warning" style="color:var(--amb)">5–8% warning</span> · <span class="sh-negative">8%+ bad</span>. Click any row to drill in.</div>
+          <div class="sh-narrative-sub">Churn % = doctors who churned that month ÷ active book at start of month. Trailing average (settled months only): <b>${trailingChurn.toFixed(1)}%</b>. Rows marked * are provisional — too recent to have settled. <span class="sh-positive">&lt;3% excellent</span> · <span style="color:#65a30d">3–5% healthy</span> · <span class="sh-warning" style="color:var(--amb)">5–8% warning</span> · <span class="sh-negative">8%+ bad</span>. Click any row to drill in.</div>
         </div>
         <span class="sh-narrative-tag ${monthlyRows[0]?.net >= 0 ? 'ok' : ''}">LAST MONTH: ${monthlyRows[0] ? (monthlyRows[0].net >= 0 ? '+' : '') + monthlyRows[0].net : '—'}</span>
       </div>
@@ -3556,8 +3734,12 @@ function renderSalesHub() {
           const vpStr = r.vsPrior == null ? '—' : (r.vsPrior > 0 ? '▲ +' + r.vsPrior : r.vsPrior < 0 ? '▼ ' + r.vsPrior : '—');
           const vpCls = r.vsPrior == null ? 'sh-neutral' : r.vsPrior > 0 ? 'sh-positive' : r.vsPrior < 0 ? 'sh-negative' : 'sh-neutral';
           const monthLabel = fmtMonthKey(r.month).replace(' ', " '");
-          return `<tr class="clk" data-month="${r.month}">
-            <td><b>${esc(monthLabel)}</b></td>
+          // Provisional months are dimmed: their churn is not yet settled
+          const provTag = r.provisional
+            ? ' <span title="Provisional — not enough follow-up time yet; churn here is overstated and will settle" style="color:var(--mut);font-weight:600">*</span>'
+            : '';
+          return `<tr class="clk${r.provisional ? ' sh-provisional' : ''}" data-month="${r.month}" style="${r.provisional ? 'opacity:.55' : ''}">
+            <td><b>${esc(monthLabel)}</b>${provTag}</td>
             <td class="num sh-positive">+${r.acq}</td>
             <td class="num ${r.churn>0?'sh-negative':'sh-positive'}">−${r.churn}</td>
             <td class="num" style="color:${r.churnPct>=8?'var(--red)':r.churnPct>=5?'var(--amb)':r.churnPct>=3?'#65a30d':'var(--grn)'}">${r.churnPct.toFixed(1)}%</td>
@@ -3683,19 +3865,23 @@ function renderSalesHub() {
     hoverBorderColor: '#0f172a',       // dark outline on hover so the active segment is unmistakable
     hoverBorderWidth: 2
   };
+  // Provisional (not-yet-settled) months get a faded fill so a short follow-up
+  // window doesn't look like a churn spike.
+  const flowProv = allMonths.map(isProvisionalMonth);
+  const flowShade = (solid, faded) => flowProv.map(p => (p ? faded : solid));
   makeChart('cShFlow', {
     type: 'bar',
     data: {
-      labels: allMonths.map(m => fmtMonthKey(m).replace(' ', " '")),
+      labels: allMonths.map((m, i) => fmtMonthKey(m).replace(' ', " '") + (flowProv[i] ? ' *' : '')),
       // Map zero counts to null so Chart.js skips them entirely. Without this,
       // `minBarLength: 8` would draw an 8px phantom bar even for 0 doctors,
       // producing misleading slivers in months with no churn of a given type
       // (e.g. Apr/May 2026 where no one is 60+ days silent yet).
       datasets: [
         { ...flowBarOpts, label: '🟢 Acquired',           data: allMonths.map(m => acqByMonth[m]               || null),          backgroundColor: '#059669' },
-        { ...flowBarOpts, label: '🌱 New & Lost',         data: allMonths.map(m => churnNewByMonth[m]     ? -churnNewByMonth[m]     : null), backgroundColor: '#2563eb' },
-        { ...flowBarOpts, label: '🔄 Winback & Lost',     data: allMonths.map(m => churnWinbackByMonth[m] ? -churnWinbackByMonth[m] : null), backgroundColor: '#7c3aed' },
-        { ...flowBarOpts, label: '❤️ Established & Lost', data: allMonths.map(m => churnEstByMonth[m]     ? -churnEstByMonth[m]     : null), backgroundColor: '#dc2626' }
+        { ...flowBarOpts, label: '🌱 New & Lost',         data: allMonths.map(m => churnNewByMonth[m]     ? -churnNewByMonth[m]     : null), backgroundColor: flowShade('#2563eb', '#a8c3f5') },
+        { ...flowBarOpts, label: '🔄 Winback & Lost',     data: allMonths.map(m => churnWinbackByMonth[m] ? -churnWinbackByMonth[m] : null), backgroundColor: flowShade('#7c3aed', '#cbb6f7') },
+        { ...flowBarOpts, label: '❤️ Established & Lost', data: allMonths.map(m => churnEstByMonth[m]     ? -churnEstByMonth[m]     : null), backgroundColor: flowShade('#dc2626', '#f3aeae') }
       ]
     },
     options: {
@@ -4155,9 +4341,10 @@ function renderDoctorDetail() {
 
   const totalRev = cases.reduce((s,r) => s + r.netCost, 0);
   const totalUnits = cases.reduce((s,r) => s + r.qty, 0);
-  const remakes = cases.filter(r => r.remake).length;
+  const caseCount = countCases(cases);
+  const remakes = countCases(cases.filter(r => r.remake));
   const onHold = cases.filter(r => r.onHold).length;
-  // Average turnaround (received → shipped) across this doctor's valid cases
+  // Average turnaround (received → invoiced) across this doctor's valid cases
   const ddTat = (() => {
     let sum = 0, n = 0;
     for (const r of cases) {
@@ -4192,10 +4379,10 @@ function renderDoctorDetail() {
   for (const r of cases) {
     if (!r.anchorMonth || !validMonths.has(r.anchorMonth)) continue;
     let m = mmap.get(r.anchorMonth);
-    if (!m) { m = { key: r.anchorMonth, revenue: 0, cases: 0, remakes: 0, tatSum: 0, tatN: 0,
+    if (!m) { m = { key: r.anchorMonth, revenue: 0, caseSet: new Set(), cases: 0, remakeSet: new Set(), remakes: 0, tatSum: 0, tatN: 0,
                     otEarly: 0, otOnTime: 0, otLate: 0, otTotal: 0 }; mmap.set(r.anchorMonth, m); }
-    m.revenue += r.netCost; m.cases++;
-    if (r.remake) m.remakes++;
+    m.revenue += r.netCost; addCase(m.caseSet, r.caseKey); m.cases = m.caseSet.size;
+    if (r.remake) { addCase(m.remakeSet, r.caseKey); m.remakes = m.remakeSet.size; }
     if (r.tat != null && r.tat >= 0 && r.tat < 200) { m.tatSum += r.tat; m.tatN++; }
     // Same on-time accumulation the Product Detail month buckets use.
     if (r.onTimeStatus) {
@@ -4269,10 +4456,10 @@ function renderDoctorDetail() {
 
     <div class="kpi-row cols-4">
       <div class="kpi"><div class="kpi-label">Revenue (filtered)</div><div class="kpi-value">${fmtUSDFull(totalRev)}</div></div>
-      <div class="kpi"><div class="kpi-label">Cases</div><div class="kpi-value">${fmtN(cases.length)}</div><div class="kpi-sub">${fmtN(totalUnits)} units</div></div>
-      <div class="kpi"><div class="kpi-label">Avg Case</div><div class="kpi-value">${fmtUSDFull(cases.length ? totalRev/cases.length : 0)}</div></div>
-      <div class="kpi"><div class="kpi-label">Remake Rate</div><div class="kpi-value">${fmtPct(remakes/cases.length)}</div><div class="kpi-sub">${remakes} of ${cases.length}</div></div>
-      <div class="kpi"><div class="kpi-label">Avg Turnaround</div><div class="kpi-value">${ddTat == null ? '—' : ddTat.toFixed(1) + '<span class="sup">days</span>'}</div><div class="kpi-sub">received → shipped</div></div>
+      <div class="kpi"><div class="kpi-label">Cases</div><div class="kpi-value">${fmtN(caseCount)}</div><div class="kpi-sub">${fmtN(totalUnits)} units</div></div>
+      <div class="kpi"><div class="kpi-label">Avg Case</div><div class="kpi-value">${fmtUSDFull(caseCount ? totalRev/caseCount : 0)}</div></div>
+      <div class="kpi"><div class="kpi-label">Remake Rate</div><div class="kpi-value">${fmtPct(caseCount ? remakes/caseCount : 0)}</div><div class="kpi-sub">${remakes} of ${caseCount}</div></div>
+      <div class="kpi"><div class="kpi-label">Avg Turnaround</div><div class="kpi-value">${ddTat == null ? '—' : ddTat.toFixed(1) + '<span class="sup">days</span>'}</div><div class="kpi-sub">received → invoiced</div></div>
       ${onTimeKpiHTML(ddOnTime)}
       <div class="kpi"><div class="kpi-label">On Hold</div><div class="kpi-value">${onHold}</div><div class="kpi-sub">cases delayed</div></div>
       <div class="kpi"><div class="kpi-label">First → Last</div><div class="kpi-value" style="font-size:15px">${fmtDateShort(first)} – ${fmtDateShort(last)}</div></div>
@@ -4335,7 +4522,7 @@ function renderDoctorDetail() {
     </div>
 
     <div class="card flush">
-      <div class="card-head"><div><div class="card-title">All Cases</div><div class="card-sub">${cases.length.toLocaleString()} rows</div></div></div>
+      <div class="card-head"><div><div class="card-title">All Cases</div><div class="card-sub">${caseCount.toLocaleString()} cases · ${cases.length.toLocaleString()} line items</div></div></div>
       <div class="table-scroll">
         <table class="dtable">
           <thead><tr>
@@ -4537,10 +4724,12 @@ function computeDoctorStatus() {
       };
       map.set(r.drId, d);
     }
-    d.totalCases++;
+    if (!d._caseSet) d._caseSet = new Set();
+    addCase(d._caseSet, r.caseKey);
+    d.totalCases = d._caseSet.size;
     d.totalRev += r.netCost;
     d.totalUnits += r.qty;
-    if (r.remake) d.remakes++;
+    if (r.remake) { if (!d._remakeSet) d._remakeSet = new Set(); addCase(d._remakeSet, r.caseKey); d.remakes = d._remakeSet.size; }
     tallyPractice(d.practices, r.practice);
     // Per-practice case timeline for THIS doctor (the Karan Varma fix): each
     // practice accumulates only the cases billed under it, so its status reflects
@@ -4550,15 +4739,16 @@ function computeDoctorStatus() {
       if (pnRaw) {
         const pk = pnRaw.toLowerCase().replace(/\s+/g,' ').trim();
         let pd = d.practiceDates.get(pk);
-        if (!pd) { pd = { name: pnRaw, dates: [], cases: 0, rev: 0, units: 0, remakes: 0, tatSum: 0, tatN: 0 }; d.practiceDates.set(pk, pd); }
-        pd.cases++; pd.rev += r.netCost; pd.units += r.qty;
-        if (r.remake) pd.remakes++;
+        if (!pd) { pd = { name: pnRaw, dates: [], caseSet: new Set(), cases: 0, rev: 0, units: 0, remakeSet: new Set(), remakes: 0, tatSum: 0, tatN: 0 }; d.practiceDates.set(pk, pd); }
+        addCase(pd.caseSet, r.caseKey); pd.cases = pd.caseSet.size; pd.rev += r.netCost; pd.units += r.qty;
+        if (r.remake) { addCase(pd.remakeSet, r.caseKey); pd.remakes = pd.remakeSet.size; }
         if (r.tat != null && r.tat >= 0 && r.tat < 200) { pd.tatSum += r.tat; pd.tatN++; }
-        if (r.anchorDate) pd.dates.push(r.anchorDate);
+        if (r.anchorDate && r.caseKey) pd.dates.push(r.anchorDate);
       }
     }
     if (r.tat != null && r.tat >= 0 && r.tat < 200) { d.tatSum += r.tat; d.tatN++; }
-    if (r.anchorDate) {
+    // Credits/rebates (no case number) are not activity — see renderSalesHub
+    if (r.anchorDate && r.caseKey) {
       d.dates.push(r.anchorDate);
       if (!d.firstDate || r.anchorDate < d.firstDate) d.firstDate = r.anchorDate;
       if (!d.lastDate || r.anchorDate > d.lastDate) d.lastDate = r.anchorDate;
@@ -5519,7 +5709,8 @@ function renderProductDetail() {
 
   const totalRev = cases.reduce((s,r) => s + r.netCost, 0);
   const totalUnits = cases.reduce((s,r) => s + r.qty, 0);
-  const remakes = cases.filter(r => r.remake).length;
+  const caseCount = countCases(cases);
+  const remakes = countCases(cases.filter(r => r.remake));
   const sample = cases[0];
 
   // Monthly: revenue, units, remake%, tat — use shared valid-month list
@@ -5528,10 +5719,10 @@ function renderProductDetail() {
   for (const r of cases) {
     if (!r.anchorMonth || !validMonths.has(r.anchorMonth)) continue;
     let m = mmap.get(r.anchorMonth);
-    if (!m) { m = { key: r.anchorMonth, revenue: 0, units: 0, cases: 0, remakes: 0, tatSum: 0, tatN: 0,
+    if (!m) { m = { key: r.anchorMonth, revenue: 0, units: 0, caseSet: new Set(), cases: 0, remakeSet: new Set(), remakes: 0, tatSum: 0, tatN: 0,
                     otEarly: 0, otOnTime: 0, otLate: 0, otTotal: 0 }; mmap.set(r.anchorMonth, m); }
-    m.revenue += r.netCost; m.units += r.qty; m.cases++;
-    if (r.remake) m.remakes++;
+    m.revenue += r.netCost; m.units += r.qty; addCase(m.caseSet, r.caseKey); m.cases = m.caseSet.size;
+    if (r.remake) { addCase(m.remakeSet, r.caseKey); m.remakes = m.remakeSet.size; }
     if (r.tat != null && r.tat >= 0 && r.tat < 200) { m.tatSum += r.tat; m.tatN++; }
     if (r.onTimeStatus) {
       m.otTotal++;
@@ -5553,8 +5744,8 @@ function renderProductDetail() {
   const dmap = new Map();
   for (const r of cases) {
     let d = dmap.get(r.drId);
-    if (!d) { d = { drId: r.drId, name: r.drName, units: 0, revenue: 0, cases: 0 }; dmap.set(r.drId, d); }
-    d.units += r.qty; d.revenue += r.netCost; d.cases++;
+    if (!d) { d = { drId: r.drId, name: r.drName, units: 0, revenue: 0, caseSet: new Set(), cases: 0 }; dmap.set(r.drId, d); }
+    d.units += r.qty; d.revenue += r.netCost; addCase(d.caseSet, r.caseKey); d.cases = d.caseSet.size;
   }
   const topDocs = Array.from(dmap.values()).sort((a,b) => b.units - a.units);
 
@@ -5605,10 +5796,10 @@ function renderProductDetail() {
 
     <div class="kpi-row">
       <div class="kpi"><div class="kpi-label">Revenue</div><div class="kpi-value">${fmtUSDFull(totalRev)}</div></div>
-      <div class="kpi"><div class="kpi-label">Cases</div><div class="kpi-value">${fmtN(cases.length)}</div></div>
+      <div class="kpi"><div class="kpi-label">Cases</div><div class="kpi-value">${fmtN(caseCount)}</div></div>
       <div class="kpi"><div class="kpi-label">Units</div><div class="kpi-value">${fmtN(totalUnits)}</div></div>
       <div class="kpi"><div class="kpi-label">Avg Unit $</div><div class="kpi-value">${fmtUSDFull(totalUnits ? totalRev/totalUnits : 0)}</div></div>
-      <div class="kpi"><div class="kpi-label">Remake Rate</div><div class="kpi-value">${fmtPct(remakes/cases.length)}</div><div class="kpi-sub">${remakes} of ${cases.length}</div></div>
+      <div class="kpi"><div class="kpi-label">Remake Rate</div><div class="kpi-value">${fmtPct(caseCount ? remakes/caseCount : 0)}</div><div class="kpi-sub">${remakes} of ${caseCount}</div></div>
       ${onTimeKpiHTML(pdOnTime)}
     </div>
 
@@ -6095,13 +6286,15 @@ function aggByCity() {
       const [lat,lng] = CITY_COORDS[key];
       const xy = albersUsaXY(lng, lat);
       if (!xy) continue;
-      o = { city: r.city.trim(), state: r.state, abbr: _abbrOf(r.state), x: xy[0], y: xy[1], revenue: 0, cases: 0, remakes: 0, _drs: new Set() };
+      o = { city: r.city.trim(), state: r.state, abbr: _abbrOf(r.state), x: xy[0], y: xy[1], revenue: 0, _cs: new Set(), cases: 0, _rs: new Set(), remakes: 0, _drs: new Set() };
       m.set(key, o);
     }
-    o.revenue += r.netCost; o.cases++; if (r.remake) o.remakes++; if (r.drId) o._drs.add(r.drId);
+    o.revenue += r.netCost; addCase(o._cs, r.caseKey); o.cases = o._cs.size;
+    if (r.remake) { addCase(o._rs, r.caseKey); o.remakes = o._rs.size; }
+    if (r.drId) o._drs.add(r.drId);
   }
   const arr = [];
-  for (const o of m.values()) { o.doctors = o._drs.size; delete o._drs; arr.push(o); }
+  for (const o of m.values()) { o.doctors = o._drs.size; delete o._drs; delete o._cs; delete o._rs; arr.push(o); }
   arr.sort((a,b) => b.revenue - a.revenue);
   return arr;
 }
@@ -6317,12 +6510,12 @@ function openStateCityModal(sd, opts) {
     if (r.state !== sd.name && r.stateAbbr !== sd.abbr) continue;
     const cityName = (r.city || '').trim() || 'Unknown city';
     let cm = cityMap.get(cityName);
-    if (!cm) { cm = { city: cityName, revenue: 0, cases: 0, offices: new Map(), drs: new Set() }; cityMap.set(cityName, cm); }
-    cm.revenue += r.netCost; cm.cases++; if (r.drId) cm.drs.add(r.drId);
+    if (!cm) { cm = { city: cityName, revenue: 0, _cs: new Set(), cases: 0, offices: new Map(), drs: new Set() }; cityMap.set(cityName, cm); }
+    cm.revenue += r.netCost; addCase(cm._cs, r.caseKey); cm.cases = cm._cs.size; if (r.drId) cm.drs.add(r.drId);
     const office = (r.practice || '').trim() || '(no practice name)';
     let om = cm.offices.get(office);
-    if (!om) { om = { office, revenue: 0, cases: 0, doctors: new Map() }; cm.offices.set(office, om); }
-    om.revenue += r.netCost; om.cases++;
+    if (!om) { om = { office, revenue: 0, _cs: new Set(), cases: 0, doctors: new Map() }; cm.offices.set(office, om); }
+    om.revenue += r.netCost; addCase(om._cs, r.caseKey); om.cases = om._cs.size;
     let dm = om.doctors.get(r.drId);
     if (!dm) { dm = { drId: r.drId, name: r.drName, revenue: 0, cases: 0, lastDate: null }; om.doctors.set(r.drId, dm); }
     dm.revenue += r.netCost; dm.cases++;
@@ -6453,11 +6646,12 @@ function openStateDoctorModal(sd) {
     if (!d) {
       d = { drId: r.drId, name: r.drName, practice: r.practice || "", email: r.email, phone: r.phone,
             city: r.city, state: r.stateAbbr || r.state,
-            revenue: 0, cases: 0, units: 0, firstDate: null, lastDate: null };
+            revenue: 0, caseSet: new Set(), cases: 0, units: 0, firstDate: null, lastDate: null };
       map.set(r.drId, d);
     }
     d.revenue += r.netCost;
-    d.cases++;
+    addCase(d.caseSet, r.caseKey);
+    d.cases = d.caseSet.size;
     d.units += r.qty;
     if (r.anchorDate) {
       if (!d.firstDate || r.anchorDate < d.firstDate) d.firstDate = r.anchorDate;
@@ -7807,12 +8001,14 @@ const RP_PERIODS = [
   { key: 'quarterly', label: 'Quarterly', n: 91, cur: [0, 90],  prev: [91, 181],  cap: 25 }
 ];
 
-function rpNewBucket() { return { rev: 0, units: 0, rows: 0, remakes: 0, tatSum: 0, tatN: 0 }; }
+function rpNewBucket() { return { rev: 0, units: 0, rows: 0, caseSet: new Set(), remakeSet: new Set(), remakes: 0, tatSum: 0, tatN: 0 }; }
 function rpAdd(b, r) {
   b.rev += r.netCost;
   b.units += r.qty;
-  b.rows++;
-  if (r.remake) b.remakes++;
+  // `rows` is the distinct CASE count (named rows for backwards compatibility)
+  addCase(b.caseSet, r.caseKey);
+  b.rows = b.caseSet.size;
+  if (r.remake) { addCase(b.remakeSet, r.caseKey); b.remakes = b.remakeSet.size; }
   if (r.tat != null && r.tat >= 0 && r.tat < 200) { b.tatSum += r.tat; b.tatN++; }
 }
 function rpMetrics(b) {
