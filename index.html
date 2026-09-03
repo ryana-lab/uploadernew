@@ -1694,7 +1694,18 @@ function normalizeRecords(rows) {
     const doctorId = nameParts.join('|') + '|' + stKey;
     const product = canonLabel(productRaw);
     const netCost = parseFloat(fv(r, F.netCost)) || 0;
-    const qty = parseInt(fv(r, F.quantity), 10) || 1;
+    /* UNITS SHIPPED.
+       Two things were inflating this. First, `|| 1` turned a legitimate
+       Quantity of 0 into 1 unit (321 rows). Second, and much larger, credit
+       and adjustment lines carry Quantity 1 even though nothing ships on them
+       — they contributed 31,954 phantom units, about 14% of the total, which
+       dragged blended revenue-per-unit down from roughly $67 to $57.
+       A row only counts units if it represents actual work (see caseKeyFor);
+       adjustments keep their money but ship nothing. */
+    const rowCaseKey = caseKeyFor(caseNumRaw, product);
+    const qtyRaw = parseInt(fv(r, F.quantity), 10);
+    const qtyParsed = Number.isFinite(qtyRaw) ? qtyRaw : 1;   // missing => assume 1
+    const qty = rowCaseKey ? qtyParsed : 0;
     const unitPrice = parseFloat(fv(r, F.unitPrice)) || 0;
     const daysOnHold = parseInt(fv(r, F.daysOnHold), 10) || 0;
 
@@ -1721,12 +1732,19 @@ function normalizeRecords(rows) {
        primary measure. Shipped is kept only as a fallback for any row that
        somehow lacks an invoice date, so no row loses its TAT. */
     const tatEnd = invDate || shipDate;
-    const tat = (recDate && tatEnd) ? daysBetween(recDate, tatEnd) : null;
+    /* Turnaround is only meaningful for actual lab work. Credit and adjustment
+       lines are posted against a case long after it was delivered — a back-post
+       in May 2026 against a case received in February carries a "turnaround" of
+       80+ days that measures bookkeeping, not production. There were 1,255 such
+       rows in May 2026 averaging 81 days, which dragged the reported month from
+       9.9 to 18.2 days and produced a spike that nothing in operations explains.
+       Adjustments keep their revenue but no longer carry a turnaround. */
+    const tat = (recDate && tatEnd && rowCaseKey) ? daysBetween(recDate, tatEnd) : null;
 
     out[n++] = {
       caseNo: caseNumRaw || '',
       // Stable per-case identity used by every "cases" count — see caseKeyFor
-      caseKey: caseKeyFor(caseNumRaw, product),
+      caseKey: rowCaseKey,
       status: fv(r, F.caseStatus) || '',
       received: recDate,
       invoiced: invDate,
@@ -1888,6 +1906,19 @@ function aggKPIs() {
     return {
       totalRev, totalCases, totalUnits,
       avgCase: totalCases ? totalRev / totalCases : 0,
+      /* Case values are heavily right-skewed: a single crown is $79, but a
+         full-arch or multi-unit implant case can run into the thousands, and
+         924 cases above $1,000 carry 11% of all revenue. The mean lands at
+         ~$134, well above anything you'd call a typical case. The median is
+         the honest headline; the mean is kept alongside it. */
+      medianCase: (() => {
+        const m = new Map();
+        for (const r of data) if (r.caseKey) m.set(r.caseKey, (m.get(r.caseKey) || 0) + r.netCost);
+        if (!m.size) return 0;
+        const v = Array.from(m.values()).sort((a, b) => a - b);
+        const h = v.length >> 1;
+        return v.length % 2 ? v[h] : (v[h - 1] + v[h]) / 2;
+      })(),
       remakeRate: totalCases ? remakeCount / totalCases : 0,
       remakeCount,
       onHoldRate: totalCases ? onHoldCount / totalCases : 0,
@@ -3156,7 +3187,7 @@ function renderOverview() {
 
     <div class="kpi-row">
       <div class="kpi"><div class="kpi-label">Total Revenue</div><div class="kpi-value">${fmtUSDFull(k.totalRev)}</div><div class="kpi-sub">${fmtN(k.totalCases)} invoiced cases</div></div>
-      <div class="kpi"><div class="kpi-label">Avg Case Value</div><div class="kpi-value">${fmtUSDFull(k.avgCase)}</div><div class="kpi-sub">${fmtN(k.totalUnits)} units shipped</div></div>
+      <div class="kpi"><div class="kpi-label">Median Case Value</div><div class="kpi-value">${fmtUSDFull(k.medianCase)}</div><div class="kpi-sub">mean ${fmtUSDFull(k.avgCase)} · ${fmtN(k.totalUnits)} units shipped</div></div>
       <div class="kpi"><div class="kpi-label">Active Doctors</div><div class="kpi-value">${fmtN(k.doctors)}</div><div class="kpi-sub">${fmtN(k.products)} unique products</div></div>
       <div class="kpi"><div class="kpi-label">Remake Rate</div><div class="kpi-value">${fmtPct(k.remakeRate)}</div><div class="kpi-sub">${fmtN(k.remakeCount)} cases reworked</div></div>
       <div class="kpi"><div class="kpi-label">On-Hold Rate</div><div class="kpi-value">${fmtPct(k.onHoldRate)}</div><div class="kpi-sub">${fmtN(k.onHoldCount)} held cases</div></div>
