@@ -1230,7 +1230,7 @@ const APP = {
 
 /* Bump when normalization logic changes, so it's possible to tell at a glance
    (bottom of the Avg Turnaround card) which build a browser is running. */
-const BUILD_ID = 'build 2026-09-10a';
+const BUILD_ID = 'build 2026-09-10b';
 
 const DB_NAME = 'LabOpsCache';
 const DB_STORE = 'datasets';
@@ -4405,7 +4405,42 @@ function renderDoctorDetail() {
     if (go) go.addEventListener('click', () => switchTab('docgrid'));
     return;
   }
-  const cases = APP.filtered.filter(r => r.drId === id);
+  /* All of this doctor's cases, before any practice filter. The practice tabs
+     are built from this so every office the doctor bills under stays visible
+     and clickable no matter which one is currently selected. */
+  const allCases = APP.filtered.filter(r => r.drId === id);
+
+  // Reset the practice tab when the doctor changes, so office A's selection
+  // doesn't carry over to a doctor who has never billed there.
+  if (APP.ddPracticeDr !== id) { APP.ddPracticeDr = id; APP.ddPractice = null; }
+
+  // Every practice this doctor bills under, ordered by case volume, with the
+  // distinct-case count each tab shows.
+  const ddPracticeTabs = (() => {
+    const m = new Map();
+    for (const r of allCases) {
+      const name = (r.practice || '').trim();
+      if (!name) continue;
+      const k = name.toLowerCase();
+      let p = m.get(k);
+      if (!p) { p = { key: k, name, caseSet: new Set() }; m.set(k, p); }
+      addCase(p.caseSet, r.caseKey);
+    }
+    return Array.from(m.values())
+      .map(p => ({ key: p.key, name: p.name, cases: p.caseSet.size }))
+      .sort((a, b) => b.cases - a.cases);
+  })();
+
+  // If the selected practice isn't one of this doctor's, fall back to all.
+  if (APP.ddPractice && !ddPracticeTabs.some(t => t.key === APP.ddPractice)) APP.ddPractice = null;
+
+  /* The whole detail view — KPIs, charts, product mix, case table — renders off
+     `cases`. Narrowing it here is what makes a practice tab reframe the entire
+     page for that office rather than just showing a summary row. */
+  const cases = APP.ddPractice
+    ? allCases.filter(r => (r.practice || '').trim().toLowerCase() === APP.ddPractice)
+    : allCases;
+
   if (!cases.length) {
     el.innerHTML = `<div class="empty-state"><div class="empty-icon">📭</div>This doctor has no cases in the current filter selection.<br><span style="font-size:12px;display:block;margin-top:8px">Try widening the date range or clearing the state filter.</span></div>`;
     return;
@@ -4509,13 +4544,18 @@ function renderDoctorDetail() {
           <span>${esc(s.drName)}</span>
           ${statusBadgeHTML(APP.selectedDoctorId, 'lg')}
         </div>
-        ${ddPracticeInfo.primary ? (ddPracticeInfo.count === 1
-            ? `<div class="detail-practice">${esc(ddPracticeInfo.primary)}</div>`
-            : `<div class="detail-practice detail-practice-multi">
-                 <span class="dp-label">${ddPracticeInfo.count} practices:</span>
-                 ${ddPracticeInfo.list.map(p => `<span class="dp-chip">${esc(p.name)} <span class="dp-count">${p.count}</span></span>`).join('')}
+        ${ddPracticeTabs.length === 1
+            ? `<div class="detail-practice">${esc(ddPracticeTabs[0].name)}</div>`
+            : ddPracticeTabs.length > 1
+            ? `<div class="detail-practice detail-practice-multi">
+                 <span class="dp-label">${ddPracticeTabs.length} practices:</span>
+                 <button class="dp-chip dp-tab${APP.ddPractice ? '' : ' is-active'}" data-prac=""
+                   title="Every location combined">All <span class="dp-count">${fmtN(countCases(allCases))}</span></button>
+                 ${ddPracticeTabs.map(t => `
+                   <button class="dp-chip dp-tab${APP.ddPractice === t.key ? ' is-active' : ''}" data-prac="${esc(t.key)}"
+                     title="${esc(t.name)} — ${fmtN(t.cases)} cases. Click to show only this office.">${esc(t.name)} <span class="dp-count">${fmtN(t.cases)}</span></button>`).join('')}
                </div>`
-          ) : ''}
+            : ''}
         <div class="detail-meta">
           ${s.email ? `<span>${esc(s.email)}</span>` : ''}
           ${s.phone ? `<span>${esc(s.phone)}</span>` : ''}
@@ -4525,6 +4565,8 @@ function renderDoctorDetail() {
       </div>
       <button class="btn-text" id="ddExport">⬇ Export Cases</button>
     </div>
+
+    ${APP.ddPractice ? `<div class="dd-scope-note">Showing <b>${esc((ddPracticeTabs.find(t => t.key === APP.ddPractice) || {}).name || '')}</b> only — every figure, chart and table below covers this office. Click <b>All</b> to go back to the combined view.</div>` : ''}
 
     <div class="kpi-row cols-4">
       <div class="kpi"><div class="kpi-label">Revenue (filtered)</div><div class="kpi-value">${fmtUSDFull(totalRev)}</div></div>
@@ -4622,8 +4664,22 @@ function renderDoctorDetail() {
   `;
 
   document.getElementById('ddBack').addEventListener('click', () => switchTab('docgrid'));
+
+  /* Practice tabs: selecting one re-renders the whole detail view scoped to that
+     office. An empty data-prac means "all practices". */
+  el.querySelectorAll('.dp-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const k = btn.getAttribute('data-prac') || '';
+      APP.ddPractice = k || null;
+      renderDoctorDetail();
+    });
+  });
   document.getElementById('ddExport').addEventListener('click', () => {
-    downloadCSV(`${s.drName.replace(/\s+/g,'_')}_cases.csv`, cases.map(r => ({
+    // Export follows the visible scope, so a practice tab exports that office only
+    const scopeTag = APP.ddPractice
+      ? '_' + (ddPracticeTabs.find(t => t.key === APP.ddPractice) || {}).name.replace(/[^\w]+/g,'_')
+      : '';
+    downloadCSV(`${s.drName.replace(/\s+/g,'_')}${scopeTag}_cases.csv`, cases.map(r => ({
       case_no: r.caseNo, date: isoDate(r.anchorDate), product: r.product, tooth: r.tooth, shade: r.shade,
       qty: r.qty, unit_price: r.unitPrice, net_cost: r.netCost, remake: r.remake ? 'Y' : 'N',
       remake_reason: r.remakeReason, on_hold: r.onHold ? 'Y' : 'N', days_on_hold: r.daysOnHold, tat_days: r.tat
@@ -9123,6 +9179,15 @@ function prPaint() {
     </tr>`).join('');
 
   document.getElementById('prTable').innerHTML = PROSPECTS.total ? `
+    <style>
+      /* Practice tabs in the doctor header — clicking one reframes the whole
+         detail page for that office. */
+      .dp-tab{cursor:pointer;font:inherit;border:1px solid #e2e8f0;background:#fff;transition:background .12s,border-color .12s}
+      .dp-tab:hover{background:#f1f5f9;border-color:#cbd5e1}
+      .dp-tab.is-active{background:var(--accent,#2563eb);border-color:var(--accent,#2563eb);color:#fff}
+      .dp-tab.is-active .dp-count{background:rgba(255,255,255,.25);color:#fff}
+      .dd-scope-note{font-size:12px;color:var(--mut);margin:-6px 0 14px}
+    </style>
     <style>#prTable table.grid th,#prTable table.grid td{padding:6px 12px;text-align:left;white-space:nowrap;border-bottom:1px solid #eef0f3;font-size:13px}#prTable table.grid th{font-weight:700;color:#475569;border-bottom:2px solid #e2e8f0}</style>
     <table class="grid" style="width:100%;border-collapse:collapse">
       <thead><tr>
