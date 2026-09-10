@@ -1065,21 +1065,56 @@ function dentalGroupOf(practice) {
      { primary, list: [{name,count}], count }   (count = # of distinct practices)
    `practiceDisplayHTML(info)` renders the primary plus a "(+N more)" badge
    whose tooltip lists every practice and its case count. ───────────────────── */
-function tallyPractice(target, practiceName) {
-  // target is a Map<name,count>; ignore blanks so they never become "primary"
+/* target is a Map<name,{count,last}>; blanks are ignored so they never become
+   the primary. `when` is the row's anchor date, which lets buildPracticeInfo
+   answer "where does this doctor bill NOW" rather than "where have they billed
+   most over all time".
+
+   Callers only tally rows that represent real work (r.caseKey). A credit posted
+   against an old invoice would otherwise stamp a fresh date on a practice the
+   doctor has not actually worked at recently, and pull the label back to it. */
+function tallyPractice(target, practiceName, when) {
   const p = (practiceName || '').trim();
   if (!p) return;
-  target.set(p, (target.get(p) || 0) + 1);
+  const cur = target.get(p);
+  const t = when ? +when : null;
+  if (cur) {
+    cur.count++;
+    if (t && (!cur.last || t > cur.last)) cur.last = t;
+  } else {
+    target.set(p, { count: 1, last: t });
+  }
 }
 
+/* A doctor who moves between locations — or covers two offices in a group —
+   was previously labelled with whichever practice had the most rows over their
+   whole history. For a third of multi-practice doctors that is not where they
+   actually bill today, so the engagement tabs named the wrong office: one
+   doctor's last 21 cases were at Comfort Dental Care while the row still read
+   Advanced Family Dental Care, because that office held more lifetime volume.
+
+   `primary` is therefore the practice of the doctor's MOST RECENT case — the
+   one a rep would call about. Ties fall back to volume. `primaryByVolume` keeps
+   the old lifetime-heaviest value for anywhere that genuinely wants it, and
+   `list` stays sorted by volume for the tooltip. */
 function buildPracticeInfo(practiceMap) {
   if (!practiceMap || practiceMap.size === 0) {
-    return { primary: '', list: [], count: 0 };
+    return { primary: '', primaryByVolume: '', list: [], count: 0 };
   }
-  const list = Array.from(practiceMap.entries())
-    .map(([name, count]) => ({ name, count }))
-    .sort((a, b) => b.count - a.count);
-  return { primary: list[0].name, list, count: list.length };
+  const entries = Array.from(practiceMap.entries()).map(([name, v]) => (
+    typeof v === 'number'
+      ? { name, count: v, last: null }              // tolerate the old shape
+      : { name, count: v.count || 0, last: v.last || null }
+  ));
+  const byVolume = entries.slice().sort((a, b) => b.count - a.count);
+  const byRecency = entries.slice().sort((a, b) =>
+    (b.last || 0) - (a.last || 0) || b.count - a.count);
+  return {
+    primary: byRecency[0].name,
+    primaryByVolume: byVolume[0].name,
+    list: byVolume,
+    count: entries.length
+  };
 }
 
 /* Render the practice line: primary name + a "(+N more)" badge when the doctor
@@ -1192,6 +1227,10 @@ const APP = {
 /* ──────────────────────────────────────────
    3. INDEXEDDB CACHE
    ────────────────────────────────────────── */
+
+/* Bump when normalization logic changes, so it's possible to tell at a glance
+   (bottom of the Avg Turnaround card) which build a browser is running. */
+const BUILD_ID = 'build 2026-09-10a';
 
 const DB_NAME = 'LabOpsCache';
 const DB_STORE = 'datasets';
@@ -1765,7 +1804,9 @@ function normalizeRecords(rows) {
       // Practice name (from `pracname` column) — the dental practice the
       // doctor works at. Read with fallbacks in case the column name varies
       // across CSV exports.
-      practice: titleCase(practiceRaw),
+      // canonLabel folds spelling variants of the same location together
+      // ("Hl Carus Dental -  Brodie Lane" vs "... - Brodie Lane")
+      practice: canonLabel(titleCase(practiceRaw)),
       group: dentalGroupOf(practiceRaw),
       email,
       phone,
@@ -1980,7 +2021,7 @@ function aggByDoctor() {
         else if (r.onTimeStatus === 'late')   d.onTimeLate++;
       }
       d.products.set(r.product, (d.products.get(r.product) || 0) + 1);
-      tallyPractice(d.practices, r.practice);
+      if (r.caseKey) tallyPractice(d.practices, r.practice, r.anchorDate);
     }
     return Array.from(map.values()).map(d => {
       const practiceInfo = buildPracticeInfo(d.practices);
@@ -3191,7 +3232,7 @@ function renderOverview() {
       <div class="kpi"><div class="kpi-label">Active Doctors</div><div class="kpi-value">${fmtN(k.doctors)}</div><div class="kpi-sub">${fmtN(k.products)} unique products</div></div>
       <div class="kpi"><div class="kpi-label">Remake Rate</div><div class="kpi-value">${fmtPct(k.remakeRate)}</div><div class="kpi-sub">${fmtN(k.remakeCount)} cases reworked</div></div>
       <div class="kpi"><div class="kpi-label">On-Hold Rate</div><div class="kpi-value">${fmtPct(k.onHoldRate)}</div><div class="kpi-sub">${fmtN(k.onHoldCount)} held cases</div></div>
-      <div class="kpi"><div class="kpi-label">Avg Turnaround</div><div class="kpi-value">${k.avgTAT == null ? '—' : k.avgTAT.toFixed(1) + '<span class="sup">days</span>'}</div><div class="kpi-sub">received → invoiced</div></div>
+      <div class="kpi"><div class="kpi-label">Avg Turnaround</div><div class="kpi-value">${k.avgTAT == null ? '—' : k.avgTAT.toFixed(1) + '<span class="sup">days</span>'}</div><div class="kpi-sub">received → invoiced · <span title="Build identifier — use this to confirm you are running the latest file.">${BUILD_ID}</span></div></div>
     </div>
 
     <div class="card mb20">
@@ -3371,7 +3412,7 @@ function renderSalesHub() {
       docMap.set(r.drId, d);
     }
     addCase(d.caseSet, r.caseKey); d.cases = d.caseSet.size; d.rv += r.netCost; d.units += r.qty;
-    tallyPractice(d.practices, r.practice);
+    if (r.caseKey) tallyPractice(d.practices, r.practice, r.anchorDate);
     if (r.product) d.products.add(r.product);
     // Only real cases mark a doctor as ACTIVE. Credit/rebate rows carry no case
     // number and are accounting entries, not visits — letting one set lastDate
@@ -4389,7 +4430,7 @@ function renderDoctorDetail() {
 
   // Practice breakdown for this doctor (a doctor may bill under multiple practices).
   const ddPracticeMap = new Map();
-  for (const r of cases) tallyPractice(ddPracticeMap, r.practice);
+  for (const r of cases) if (r.caseKey) tallyPractice(ddPracticeMap, r.practice, r.anchorDate);
   const ddPracticeInfo = buildPracticeInfo(ddPracticeMap);
 
   // Product mix + TAT per product
@@ -4761,7 +4802,7 @@ function computeDoctorStatus() {
     d.totalRev += r.netCost;
     d.totalUnits += r.qty;
     if (r.remake) { if (!d._remakeSet) d._remakeSet = new Set(); addCase(d._remakeSet, r.caseKey); d.remakes = d._remakeSet.size; }
-    tallyPractice(d.practices, r.practice);
+    if (r.caseKey) tallyPractice(d.practices, r.practice, r.anchorDate);
     // Per-practice case timeline for THIS doctor (the Karan Varma fix): each
     // practice accumulates only the cases billed under it, so its status reflects
     // that location alone — not the doctor's blanket activity everywhere.
@@ -5964,7 +6005,7 @@ function tlCompute() {
     c.cases.push({ date: r.anchorDate, product: r.product, caseNum: r.caseNo });
     if (r.city && !c.city) c.city = r.city;
     if (r.state && !c.state) c.state = r.state;
-    tallyPractice(c.practices, r.practice);
+    if (r.caseKey) tallyPractice(c.practices, r.practice, r.anchorDate);
   }
 
   TL.all = Array.from(cmap.values()).map(c => {
