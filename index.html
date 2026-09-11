@@ -1230,7 +1230,7 @@ const APP = {
 
 /* Bump when normalization logic changes, so it's possible to tell at a glance
    (bottom of the Avg Turnaround card) which build a browser is running. */
-const BUILD_ID = 'build 2026-09-10b';
+const BUILD_ID = 'build 2026-09-11b';
 
 const DB_NAME = 'LabOpsCache';
 const DB_STORE = 'datasets';
@@ -1599,6 +1599,97 @@ function caseKeyFor(caseNo, productName) {
 /* Add a case key to a set, ignoring adjustment rows (null key). */
 function addCase(set, key) { if (key) set.add(key); return set; }
 
+/* Turnaround belongs to a CASE, not to each line on the invoice. Received and
+   invoiced dates are case-level, so every line item on a case repeats the same
+   number — and a case with six lines was counting six times while a single-line
+   case counted once. That silently weighted averages toward big multi-line
+   cases, which are exactly the ones most likely to run long: one 107-day case
+   with six lines pulled a doctor's May average to 35 days when the true
+   case-level figure was 29. Each case is now counted once. */
+function addTat(bucket, r) {
+  if (!r || !r.caseKey) return;                       // adjustments have no turnaround
+  if (r.tat == null || r.tat < 0 || r.tat > 200) return;
+  if (!bucket.tatSeen) bucket.tatSeen = new Set();
+  if (bucket.tatSeen.has(r.caseKey)) return;          // already counted this case
+  bucket.tatSeen.add(r.caseKey);
+  bucket.tatSum = (bucket.tatSum || 0) + r.tat;
+  bucket.tatN = (bucket.tatN || 0) + 1;
+  (bucket.tatList || (bucket.tatList = [])).push(r.tat);
+}
+
+/* Case-level turnaround values for a set of rows (one entry per case). */
+function tatValues(rows) {
+  const seen = new Set(), out = [];
+  for (const r of rows) {
+    if (!r.caseKey || r.tat == null || r.tat < 0 || r.tat > 200) continue;
+    if (seen.has(r.caseKey)) continue;
+    seen.add(r.caseKey);
+    out.push(r.tat);
+  }
+  return out;
+}
+
+/* Contact details belong to a PRACTICE, not to a doctor.
+
+   A doctor who moves offices, or covers two, has different email / phone /
+   address on each practice's rows. The doctor record used to freeze whatever
+   contact came in on the first row processed — which, in file order, is the
+   OLDEST practice. So a doctor shown at their current office was listed with
+   the previous office's email, and a rep would mail the wrong practice.
+   231 doctors in the current data carry more than one email; 84 of those also
+   bill under more than one practice.
+
+   Contact is therefore kept per practice (most recent row wins within each),
+   and applied to match whichever practice the row is labelled with. */
+function noteContact(store, r) {
+  const key = (r.practice || '').trim().toLowerCase();
+  const when = r.anchorDate ? +r.anchorDate : 0;
+  const cur = store.get(key);
+  if (cur && cur.when >= when) return;
+  store.set(key, {
+    when,
+    email: r.email || (cur && cur.email) || '',
+    phone: r.phone || (cur && cur.phone) || '',
+    address: r.address || (cur && cur.address) || '',
+    city: r.city || (cur && cur.city) || '',
+    state: r.state || (cur && cur.state) || '',
+    stateAbbr: r.stateAbbr || (cur && cur.stateAbbr) || ''
+  });
+}
+
+/* Copy the contact for `practiceName` onto the target, falling back to the most
+   recent contact the doctor has anywhere if that practice has none. */
+function applyContact(target, store, practiceName) {
+  if (!store || !store.size) return;
+  const key = (practiceName || '').trim().toLowerCase();
+  const c = store.get(key);
+  /* No cross-practice fallback. If this office's invoices carry no email, the
+     office has no email on file — showing another practice's address would be
+     a guess, and a rep would contact the wrong place. Blank is the truth. */
+  target.email = c ? c.email : '';
+  target.phone = c ? c.phone : '';
+  target.address = c ? c.address : '';
+  if (c && c.city) target.city = c.city;
+  if (c && c.state) target.state = c.state;
+  if (c && c.stateAbbr) target.stateAbbr = c.stateAbbr;
+}
+
+/* Median turnaround.
+
+   Turnaround is heavily skewed: ~77k cases clear in 0-10 days while 51 run past
+   100. That long tail is almost entirely HOLD time rather than production —
+   92% of cases over 100 days were flagged on hold, averaging 76 days waiting on
+   the practice. A mean lets two held cases dominate a small doctor's month and
+   throw a 70-day spike onto a chart where the typical case took nine days.
+   The median describes what actually happened to a normal case. */
+function medianOf(values) {
+  if (!values || !values.length) return null;
+  const v = values.slice().sort((a, b) => a - b);
+  const h = v.length >> 1;
+  return v.length % 2 ? v[h] : (v[h - 1] + v[h]) / 2;
+}
+function tatMedian(rows) { return medianOf(tatValues(rows)); }
+
 /* Count distinct cases in a set of records, ignoring adjustment rows. */
 function countCases(rows) {
   const s = new Set();
@@ -1770,7 +1861,23 @@ function normalizeRecords(rows) {
        formats, and entry→invoiced is the intended definition, so it is the
        primary measure. Shipped is kept only as a fallback for any row that
        somehow lacks an invoice date, so no row loses its TAT. */
-    const tatEnd = invDate || shipDate;
+    /* TURNAROUND = production time, received → SHIPPED.
+
+       Measuring received → shipped conflates lab work with billing. Verified
+       against the raw invoice columns across 90,682 cases that carry all three
+       dates: 1,622 cases show a received→invoiced gap over 60 days, and 1,453
+       of them had already SHIPPED within 30 days. Case yi0-y shipped in 7 days
+       and was invoiced at 200; zbz-o shipped in 4 and was invoiced at 194 —
+       neither was on hold. Those are invoices raised months after delivery, not
+       slow cases, and they were the spikes on the monthly charts.
+
+       Lab-wide the two measures agree at the median (6 days each) and diverge
+       at the mean (7.6 vs 8.8) — the gap is entirely billing lag.
+
+       Ship date is present on ~94% of cases; the invoice date is the fallback
+       when a case has no ship date, so no case loses its turnaround. The
+       received → shipped figure is kept as `tatBilled` for billing analysis. */
+    const tatEnd = shipDate || invDate;
     /* Turnaround is only meaningful for actual lab work. Credit and adjustment
        lines are posted against a case long after it was delivered — a back-post
        in May 2026 against a case received in February carries a "turnaround" of
@@ -1779,6 +1886,8 @@ function normalizeRecords(rows) {
        9.9 to 18.2 days and produced a spike that nothing in operations explains.
        Adjustments keep their revenue but no longer carry a turnaround. */
     const tat = (recDate && tatEnd && rowCaseKey) ? daysBetween(recDate, tatEnd) : null;
+    // received → shipped, i.e. production plus billing lag
+    const tatBilled = (recDate && invDate && rowCaseKey) ? daysBetween(recDate, invDate) : null;
 
     out[n++] = {
       caseNo: caseNumRaw || '',
@@ -1838,6 +1947,7 @@ function normalizeRecords(rows) {
       remakeDiscount: parseFloat(fv(r, F.remakeDiscount)) || 0,
       remakePctLab: parseFloat(fv(r, F.remakePct)) || 0,
       tat,
+      tatBilled,
       dueDate,
       onTimeStatus
     };
@@ -1940,10 +2050,9 @@ function aggKPIs() {
     const doctors = new Set(data.map(r => r.drId)).size;
     const products = new Set(data.map(r => r.product)).size;
     const states = new Set(data.map(r => r.state).filter(Boolean)).size;
-    const avgTAT = (() => {
-      const vals = data.filter(r => r.tat != null && r.tat >= 0 && r.tat < 200).map(r => r.tat);
-      return vals.length ? vals.reduce((a,b)=>a+b,0)/vals.length : null;
-    })();
+    // One turnaround per case, not per line item
+    const _tatVals = tatValues(data);
+    const avgTAT = _tatVals.length ? _tatVals.reduce((a,b)=>a+b,0)/_tatVals.length : null;
     return {
       totalRev, totalCases, totalUnits,
       avgCase: totalCases ? totalRev / totalCases : 0,
@@ -1964,7 +2073,9 @@ function aggKPIs() {
       remakeCount,
       onHoldRate: totalCases ? onHoldCount / totalCases : 0,
       onHoldCount,
-      doctors, products, states, avgTAT
+      doctors, products, states, avgTAT,
+      // Median is the headline for turnaround — see medianOf for why
+      medTAT: medianOf(_tatVals)
     };
   });
 }
@@ -1985,6 +2096,7 @@ function aggByDoctor() {
           state: r.state,
           stateAbbr: r.stateAbbr,
           address: r.address,
+          contacts: new Map(),   // practiceKey -> most recent contact at that office
           // Distinct cases / distinct remade cases (a case spans several rows)
           caseSet: new Set(),
           remakeSet: new Set(),
@@ -2013,7 +2125,7 @@ function aggByDoctor() {
         if (!d.firstDate || r.anchorDate < d.firstDate) d.firstDate = r.anchorDate;
         if (!d.lastDate || r.anchorDate > d.lastDate) d.lastDate = r.anchorDate;
       }
-      if (r.tat != null && r.tat >= 0 && r.tat < 200) { d.tatSum += r.tat; d.tatN++; }
+      addTat(d, r);
       if (r.onTimeStatus) {
         d.ontimeCases++;
         if      (r.onTimeStatus === 'early')  d.onTimeEarly++;
@@ -2021,12 +2133,14 @@ function aggByDoctor() {
         else if (r.onTimeStatus === 'late')   d.onTimeLate++;
       }
       d.products.set(r.product, (d.products.get(r.product) || 0) + 1);
-      if (r.caseKey) tallyPractice(d.practices, r.practice, r.anchorDate);
+      if (r.caseKey) { tallyPractice(d.practices, r.practice, r.anchorDate); noteContact(d.contacts, r); }
     }
     return Array.from(map.values()).map(d => {
       const practiceInfo = buildPracticeInfo(d.practices);
       const cases = d.caseSet.size;
       const remakes = d.remakeSet.size;
+      // Contact must belong to the practice this doctor is labelled with
+      applyContact(d, d.contacts, practiceInfo.primary);
       return {
       ...d,
       cases,
@@ -2067,7 +2181,7 @@ function aggByProduct() {
       p.units += r.qty;
       if (r.remake) addCase(p.remakeSet, r.caseKey);
       p.doctors.add(r.drId);
-      if (r.tat != null && r.tat >= 0 && r.tat < 200) { p.tatSum += r.tat; p.tatN++; }
+      addTat(p, r);
       if (r.onTimeStatus) {
         p.ontimeCases++;
         if      (r.onTimeStatus === 'early')  p.onTimeEarly++;
@@ -3194,14 +3308,13 @@ function renderOverview() {
   const tatByMonth = (() => {
     const map = new Map();
     for (const r of APP.filtered) {
-      if (r.tat == null || r.tat < 0 || r.tat > 200 || !r.anchorMonth) continue;
-      if (!validMonthKeys.has(r.anchorMonth)) continue;
+      if (!r.anchorMonth || !validMonthKeys.has(r.anchorMonth)) continue;
       let m = map.get(r.anchorMonth);
-      if (!m) { m = { key: r.anchorMonth, sum: 0, n: 0 }; map.set(r.anchorMonth, m); }
-      m.sum += r.tat; m.n++;
+      if (!m) { m = { key: r.anchorMonth }; map.set(r.anchorMonth, m); }
+      addTat(m, r);   // one turnaround per case, not per line item
     }
     return Array.from(map.values()).sort((a,b) => a.key.localeCompare(b.key))
-      .map(m => ({ key: m.key, avg: m.n ? m.sum / m.n : 0 }));
+      .map(m => ({ key: m.key, avg: medianOf(m.tatList) ?? 0, mean: m.tatN ? m.tatSum / m.tatN : 0 }));
   })();
 
   // Top 8 products units by month (stacked)
@@ -3232,7 +3345,7 @@ function renderOverview() {
       <div class="kpi"><div class="kpi-label">Active Doctors</div><div class="kpi-value">${fmtN(k.doctors)}</div><div class="kpi-sub">${fmtN(k.products)} unique products</div></div>
       <div class="kpi"><div class="kpi-label">Remake Rate</div><div class="kpi-value">${fmtPct(k.remakeRate)}</div><div class="kpi-sub">${fmtN(k.remakeCount)} cases reworked</div></div>
       <div class="kpi"><div class="kpi-label">On-Hold Rate</div><div class="kpi-value">${fmtPct(k.onHoldRate)}</div><div class="kpi-sub">${fmtN(k.onHoldCount)} held cases</div></div>
-      <div class="kpi"><div class="kpi-label">Avg Turnaround</div><div class="kpi-value">${k.avgTAT == null ? '—' : k.avgTAT.toFixed(1) + '<span class="sup">days</span>'}</div><div class="kpi-sub">received → invoiced · <span title="Build identifier — use this to confirm you are running the latest file.">${BUILD_ID}</span></div></div>
+      <div class="kpi"><div class="kpi-label">Median Turnaround</div><div class="kpi-value">${k.medTAT == null ? '—' : k.medTAT.toFixed(1) + '<span class="sup">days</span>'}</div><div class="kpi-sub">received → shipped · mean ${k.avgTAT == null ? '—' : k.avgTAT.toFixed(1) + 'd'} · <span title="Build identifier — use this to confirm you are running the latest file.">${BUILD_ID}</span></div></div>
     </div>
 
     <div class="card mb20">
@@ -3246,7 +3359,7 @@ function renderOverview() {
         <div class="chart-wrap short"><canvas id="c0b"></canvas></div>
       </div>
       <div class="card flex-1">
-        <div class="chart-title">Avg Turnaround (days) — Month over Month</div>
+        <div class="chart-title">Median Turnaround (days) — Month over Month</div>
         <div class="chart-wrap short"><canvas id="c0c"></canvas></div>
       </div>
     </div>
@@ -3309,7 +3422,7 @@ function renderOverview() {
 
   makeChart('c0c', {
     type: 'line',
-    data: { labels: tatByMonth.map(m => fmtMonthKey(m.key)), datasets: [{ label: 'Avg TAT', data: tatByMonth.map(m => m.avg), borderColor: '#7c3aed', backgroundColor: 'rgba(124,58,237,.1)', borderWidth: 2.5, tension: .3, fill: true, pointRadius: 2 }] },
+    data: { labels: tatByMonth.map(m => fmtMonthKey(m.key)), datasets: [{ label: 'Median TAT', data: tatByMonth.map(m => m.avg), borderColor: '#7c3aed', backgroundColor: 'rgba(124,58,237,.1)', borderWidth: 2.5, tension: .3, fill: true, pointRadius: 2 }] },
     options: { ...co, plugins: { ...co.plugins, legend: { display: false } } }
   });
 
@@ -3406,13 +3519,14 @@ function renderSalesHub() {
     let d = docMap.get(r.drId);
     if (!d) {
       d = { drId: r.drId, name: r.drName, practice: r.practice || "", email: r.email, city: r.city, state: r.state,
+            contacts: new Map(),
             caseSet: new Set(), cases: 0, rv: 0, units: 0, dates: [], products: new Set(), practices: new Map(),
             firstDate: null, lastDate: null,
             rangeCases: 0, rangeRev: 0, inRange: false };
       docMap.set(r.drId, d);
     }
     addCase(d.caseSet, r.caseKey); d.cases = d.caseSet.size; d.rv += r.netCost; d.units += r.qty;
-    if (r.caseKey) tallyPractice(d.practices, r.practice, r.anchorDate);
+    if (r.caseKey) { tallyPractice(d.practices, r.practice, r.anchorDate); noteContact(d.contacts, r); }
     if (r.product) d.products.add(r.product);
     // Only real cases mark a doctor as ACTIVE. Credit/rebate rows carry no case
     // number and are accounting entries, not visits — letting one set lastDate
@@ -3448,6 +3562,8 @@ function renderSalesHub() {
     }
     d.maxGap = maxGap;
     d.practiceInfo = buildPracticeInfo(d.practices);
+    // Contact must match the practice this doctor is labelled with
+    applyContact(d, d.contacts, d.practiceInfo.primary);
     d.practice = d.practiceInfo.primary || d.practice || '';
   }
   // Per-doctor monthly revenue trend (used for velocity section)
@@ -4434,6 +4550,15 @@ function renderDoctorDetail() {
   // If the selected practice isn't one of this doctor's, fall back to all.
   if (APP.ddPractice && !ddPracticeTabs.some(t => t.key === APP.ddPractice)) APP.ddPractice = null;
 
+  /* Contact details follow the selected office. Each practice carries its own
+     email / phone / address, so selecting a tab shows that location's details
+     rather than whichever office happened to come first in the file. */
+  const ddContacts = new Map();
+  for (const r of allCases) if (r.caseKey) noteContact(ddContacts, r);
+  const ddContact = { email: '', phone: '', address: '', city: '', state: '' };
+  applyContact(ddContact, ddContacts,
+    APP.ddPractice ? (ddPracticeTabs.find(t => t.key === APP.ddPractice) || {}).name : ddPracticeTabs[0] && ddPracticeTabs[0].name);
+
   /* The whole detail view — KPIs, charts, product mix, case table — renders off
      `cases`. Narrowing it here is what makes a practice tab reframe the entire
      page for that office rather than just showing a summary row. */
@@ -4451,13 +4576,12 @@ function renderDoctorDetail() {
   const caseCount = countCases(cases);
   const remakes = countCases(cases.filter(r => r.remake));
   const onHold = cases.filter(r => r.onHold).length;
-  // Average turnaround (received → invoiced) across this doctor's valid cases
+  // Average turnaround (received → shipped) across this doctor's valid cases
+  // Median is the headline; held cases make the mean unrepresentative
+  const ddTatMed = tatMedian(cases);
   const ddTat = (() => {
-    let sum = 0, n = 0;
-    for (const r of cases) {
-      if (r.tat != null && r.tat >= 0 && r.tat < 200) { sum += r.tat; n++; }
-    }
-    return n ? sum / n : null;
+    const v = tatValues(cases);
+    return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
   })();
   const first = cases.reduce((m,r) => !m || (r.anchorDate && r.anchorDate < m) ? r.anchorDate : m, null);
   const last = cases.reduce((m,r) => !m || (r.anchorDate && r.anchorDate > m) ? r.anchorDate : m, null);
@@ -4474,7 +4598,7 @@ function renderDoctorDetail() {
     let p = pmap.get(r.product);
     if (!p) { p = { name: r.product, count: 0, revenue: 0, tatSum: 0, tatN: 0 }; pmap.set(r.product, p); }
     p.count++; p.revenue += r.netCost;
-    if (r.tat != null && r.tat >= 0 && r.tat < 200) { p.tatSum += r.tat; p.tatN++; }
+    addTat(p, r);
   }
   const products = Array.from(pmap.values()).sort((a,b) => b.revenue - a.revenue);
 
@@ -4490,7 +4614,7 @@ function renderDoctorDetail() {
                     otEarly: 0, otOnTime: 0, otLate: 0, otTotal: 0 }; mmap.set(r.anchorMonth, m); }
     m.revenue += r.netCost; addCase(m.caseSet, r.caseKey); m.cases = m.caseSet.size;
     if (r.remake) { addCase(m.remakeSet, r.caseKey); m.remakes = m.remakeSet.size; }
-    if (r.tat != null && r.tat >= 0 && r.tat < 200) { m.tatSum += r.tat; m.tatN++; }
+    addTat(m, r);
     // Same on-time accumulation the Product Detail month buckets use.
     if (r.onTimeStatus) {
       m.otTotal++;
@@ -4557,10 +4681,10 @@ function renderDoctorDetail() {
                </div>`
             : ''}
         <div class="detail-meta">
-          ${s.email ? `<span>${esc(s.email)}</span>` : ''}
-          ${s.phone ? `<span>${esc(s.phone)}</span>` : ''}
-          ${s.city || s.state ? `<span>${esc(s.city)}${s.city && s.state ? ', ' : ''}${esc(s.state)}</span>` : ''}
-          ${s.address ? `<span>${esc(s.address)}</span>` : ''}
+          ${(ddContact.email || s.email) ? `<span>${esc(ddContact.email || s.email)}</span>` : ''}
+          ${(ddContact.phone || s.phone) ? `<span>${esc(ddContact.phone || s.phone)}</span>` : ''}
+          ${(ddContact.city || s.city || ddContact.state || s.state) ? `<span>${esc(ddContact.city || s.city)}${(ddContact.city || s.city) && (ddContact.state || s.state) ? ', ' : ''}${esc(ddContact.state || s.state)}</span>` : ''}
+          ${(ddContact.address || s.address) ? `<span>${esc(ddContact.address || s.address)}</span>` : ''}
         </div>
       </div>
       <button class="btn-text" id="ddExport">⬇ Export Cases</button>
@@ -4573,7 +4697,7 @@ function renderDoctorDetail() {
       <div class="kpi"><div class="kpi-label">Cases</div><div class="kpi-value">${fmtN(caseCount)}</div><div class="kpi-sub">${fmtN(totalUnits)} units</div></div>
       <div class="kpi"><div class="kpi-label">Avg Case</div><div class="kpi-value">${fmtUSDFull(caseCount ? totalRev/caseCount : 0)}</div></div>
       <div class="kpi"><div class="kpi-label">Remake Rate</div><div class="kpi-value">${fmtPct(caseCount ? remakes/caseCount : 0)}</div><div class="kpi-sub">${remakes} of ${caseCount}</div></div>
-      <div class="kpi"><div class="kpi-label">Avg Turnaround</div><div class="kpi-value">${ddTat == null ? '—' : ddTat.toFixed(1) + '<span class="sup">days</span>'}</div><div class="kpi-sub">received → invoiced</div></div>
+      <div class="kpi"><div class="kpi-label">Median Turnaround</div><div class="kpi-value">${ddTatMed == null ? '—' : ddTatMed.toFixed(1) + '<span class="sup">days</span>'}</div><div class="kpi-sub">received → shipped · mean ${ddTat == null ? '—' : ddTat.toFixed(1) + 'd'}</div></div>
       ${onTimeKpiHTML(ddOnTime)}
       <div class="kpi"><div class="kpi-label">On Hold</div><div class="kpi-value">${onHold}</div><div class="kpi-sub">cases delayed</div></div>
       <div class="kpi"><div class="kpi-label">First → Last</div><div class="kpi-value" style="font-size:15px">${fmtDateShort(first)} – ${fmtDateShort(last)}</div></div>
@@ -4613,7 +4737,7 @@ function renderDoctorDetail() {
         <div class="chart-wrap short"><canvas id="ddRemake"></canvas></div>
       </div>
       <div class="card flex-1">
-        <div class="chart-title">Avg Turnaround — Month over Month</div>
+        <div class="chart-title">Median Turnaround — Month over Month</div>
         <div class="chart-wrap short"><canvas id="ddTat"></canvas></div>
       </div>
     </div>
@@ -4757,7 +4881,7 @@ function renderDoctorDetail() {
   });
   makeChart('ddTat', {
     type: 'line',
-    data: { labels: ddLabels, datasets: [{ label: 'Avg TAT', data: months.map(m => m.tatN ? m.tatSum/m.tatN : 0), borderColor: '#7c3aed', backgroundColor: 'rgba(124,58,237,.1)', borderWidth: 2.5, tension: .3, fill: true, pointRadius: 2 }] },
+    data: { labels: ddLabels, datasets: [{ label: 'Median TAT', data: months.map(m => medianOf(m.tatList) ?? 0), borderColor: '#7c3aed', backgroundColor: 'rgba(124,58,237,.1)', borderWidth: 2.5, tension: .3, fill: true, pointRadius: 2 }] },
     options: { ...co, plugins: { ...co.plugins, legend: { display: false } } }
   });
   makeChart('ddTopProd', {
@@ -4847,6 +4971,7 @@ function computeDoctorStatus() {
         totalCases: 0, totalRev: 0, totalUnits: 0, remakes: 0,
         tatSum: 0, tatN: 0,
         practices: new Map(),
+        contacts: new Map(),        // practiceKey -> most recent contact at that office
         practiceDates: new Map(),   // practiceName(normalized) -> {name, dates[], cases, rev, rev90}
         dates: [], firstDate: null, lastDate: null
       };
@@ -4858,7 +4983,7 @@ function computeDoctorStatus() {
     d.totalRev += r.netCost;
     d.totalUnits += r.qty;
     if (r.remake) { if (!d._remakeSet) d._remakeSet = new Set(); addCase(d._remakeSet, r.caseKey); d.remakes = d._remakeSet.size; }
-    if (r.caseKey) tallyPractice(d.practices, r.practice, r.anchorDate);
+    if (r.caseKey) { tallyPractice(d.practices, r.practice, r.anchorDate); noteContact(d.contacts, r); }
     // Per-practice case timeline for THIS doctor (the Karan Varma fix): each
     // practice accumulates only the cases billed under it, so its status reflects
     // that location alone — not the doctor's blanket activity everywhere.
@@ -4870,11 +4995,11 @@ function computeDoctorStatus() {
         if (!pd) { pd = { name: pnRaw, dates: [], caseSet: new Set(), cases: 0, rev: 0, units: 0, remakeSet: new Set(), remakes: 0, tatSum: 0, tatN: 0 }; d.practiceDates.set(pk, pd); }
         addCase(pd.caseSet, r.caseKey); pd.cases = pd.caseSet.size; pd.rev += r.netCost; pd.units += r.qty;
         if (r.remake) { addCase(pd.remakeSet, r.caseKey); pd.remakes = pd.remakeSet.size; }
-        if (r.tat != null && r.tat >= 0 && r.tat < 200) { pd.tatSum += r.tat; pd.tatN++; }
+        addTat(pd, r);
         if (r.anchorDate && r.caseKey) pd.dates.push(r.anchorDate);
       }
     }
-    if (r.tat != null && r.tat >= 0 && r.tat < 200) { d.tatSum += r.tat; d.tatN++; }
+    addTat(d, r);
     // Credits/rebates (no case number) are not activity — see renderSalesHub
     if (r.anchorDate && r.caseKey) {
       d.dates.push(r.anchorDate);
@@ -4906,6 +5031,8 @@ function computeDoctorStatus() {
     d.returnedDate = gapEndDate;
 
     d.practiceInfo = buildPracticeInfo(d.practices);
+    // Contact must match the practice this doctor is labelled with
+    applyContact(d, d.contacts, d.practiceInfo.primary);
     d.practice = d.practiceInfo.primary || d.practice || '';
 
     d.daysSinceLast = Math.floor(sinceLast / 864e5);
@@ -5851,7 +5978,7 @@ function renderProductDetail() {
                     otEarly: 0, otOnTime: 0, otLate: 0, otTotal: 0 }; mmap.set(r.anchorMonth, m); }
     m.revenue += r.netCost; m.units += r.qty; addCase(m.caseSet, r.caseKey); m.cases = m.caseSet.size;
     if (r.remake) { addCase(m.remakeSet, r.caseKey); m.remakes = m.remakeSet.size; }
-    if (r.tat != null && r.tat >= 0 && r.tat < 200) { m.tatSum += r.tat; m.tatN++; }
+    addTat(m, r);
     if (r.onTimeStatus) {
       m.otTotal++;
       if      (r.onTimeStatus === 'early')  m.otEarly++;
@@ -5950,7 +6077,7 @@ function renderProductDetail() {
       <div class="card flex-1"><div class="chart-title">Remake % — Month over Month</div><div class="chart-wrap short"><canvas id="pdRemake"></canvas></div></div>
     </div>
 
-    <div class="card mb20"><div class="chart-title">Avg Turnaround (days) — Month over Month</div><div class="chart-wrap short"><canvas id="pdTat"></canvas></div></div>
+    <div class="card mb20"><div class="chart-title">Median Turnaround (days) — Month over Month</div><div class="chart-wrap short"><canvas id="pdTat"></canvas></div></div>
 
     <div class="flex-row">
       <div class="card flex-1">
@@ -5995,7 +6122,7 @@ function renderProductDetail() {
   makeChart('pdRemake', { type: 'line', data: { labels, datasets: [{ label: 'Remake %', data: months.map(m => m.cases ? m.remakes/m.cases*100 : 0), borderColor: '#dc2626', backgroundColor: 'rgba(220,38,38,.1)', borderWidth: 2.5, tension: .3, fill: true, pointRadius: 2 }] },
     options: { ...co, plugins: { ...co.plugins, legend: { display: false } }, scales: { ...co.scales, y: { ...co.scales.y, ticks: { ...co.scales.y.ticks, callback: v => v.toFixed(1)+'%' } } } } });
 
-  makeChart('pdTat', { type: 'line', data: { labels, datasets: [{ label: 'Avg TAT', data: months.map(m => m.tatN ? m.tatSum/m.tatN : 0), borderColor: '#7c3aed', backgroundColor: 'rgba(124,58,237,.1)', borderWidth: 2.5, tension: .3, fill: true, pointRadius: 2 }] },
+  makeChart('pdTat', { type: 'line', data: { labels, datasets: [{ label: 'Median TAT', data: months.map(m => medianOf(m.tatList) ?? 0), borderColor: '#7c3aed', backgroundColor: 'rgba(124,58,237,.1)', borderWidth: 2.5, tension: .3, fill: true, pointRadius: 2 }] },
     options: { ...co, plugins: { ...co.plugins, legend: { display: false } } } });
 
   // On-time stacked bars: each month, show share early/ontime/late as 100%-stacked
@@ -8137,7 +8264,7 @@ function rpAdd(b, r) {
   addCase(b.caseSet, r.caseKey);
   b.rows = b.caseSet.size;
   if (r.remake) { addCase(b.remakeSet, r.caseKey); b.remakes = b.remakeSet.size; }
-  if (r.tat != null && r.tat >= 0 && r.tat < 200) { b.tatSum += r.tat; b.tatN++; }
+  addTat(b, r);
 }
 function rpMetrics(b) {
   return {
