@@ -1236,7 +1236,7 @@ const APP = {
 
 /* Bump when normalization logic changes, so it's possible to tell at a glance
    (bottom of the Avg Turnaround card) which build a browser is running. */
-const BUILD_ID = 'build 2026-09-11c';
+const BUILD_ID = 'build 2026-09-11h';
 
 const DB_NAME = 'LabOpsCache';
 const DB_STORE = 'datasets';
@@ -1869,7 +1869,7 @@ function normalizeRecords(rows) {
        somehow lacks an invoice date, so no row loses its TAT. */
     /* TURNAROUND = production time, received → SHIPPED.
 
-       Measuring received → shipped conflates lab work with billing. Verified
+       Measuring received → invoiced conflates lab work with billing. Verified
        against the raw invoice columns across 90,682 cases that carry all three
        dates: 1,622 cases show a received→invoiced gap over 60 days, and 1,453
        of them had already SHIPPED within 30 days. Case yi0-y shipped in 7 days
@@ -1882,8 +1882,8 @@ function normalizeRecords(rows) {
 
        Ship date is present on ~94% of cases; the invoice date is the fallback
        when a case has no ship date, so no case loses its turnaround. The
-       received → shipped figure is kept as `tatBilled` for billing analysis. */
-    const tatEnd = shipDate || invDate;
+       received → invoiced figure is kept as `tatBilled` for billing analysis. */
+    const tatEnd = invDate || shipDate;   // turnaround = entry date -> invoice date
     /* Turnaround is only meaningful for actual lab work. Credit and adjustment
        lines are posted against a case long after it was delivered — a back-post
        in May 2026 against a case received in February carries a "turnaround" of
@@ -1892,7 +1892,7 @@ function normalizeRecords(rows) {
        9.9 to 18.2 days and produced a spike that nothing in operations explains.
        Adjustments keep their revenue but no longer carry a turnaround. */
     const tat = (recDate && tatEnd && rowCaseKey) ? daysBetween(recDate, tatEnd) : null;
-    // received → shipped, i.e. production plus billing lag
+    // received → invoiced, i.e. production plus billing lag
     const tatBilled = (recDate && invDate && rowCaseKey) ? daysBetween(recDate, invDate) : null;
 
     out[n++] = {
@@ -2158,6 +2158,7 @@ function aggByDoctor() {
       avgCase: cases ? d.revenue / cases : 0,
       remakeRate: cases ? remakes / cases : 0,
       avgTat: d.tatN ? d.tatSum / d.tatN : null,
+      medTat: medianOf(d.tatList),
       earlyPct:  d.ontimeCases ? d.onTimeEarly  / d.ontimeCases : null,
       onTimePct: d.ontimeCases ? d.onTimeOnTime / d.ontimeCases : null,
       latePct:   d.ontimeCases ? d.onTimeLate   / d.ontimeCases : null,
@@ -2269,10 +2270,12 @@ function aggByScanner() {
   return agg('byScanner', data => {
     const map = new Map();
     for (const r of data) {
+      if (!r.caseKey) continue;                       // FIX: count cases, not line items
       const k = r.scanner;
-      map.set(k, (map.get(k) || 0) + 1);
+      if (!map.has(k)) map.set(k, new Set());
+      map.get(k).add(r.caseKey);
     }
-    return Array.from(map.entries()).map(([k,v]) => ({ name: k, count: v })).sort((a,b) => b.count - a.count);
+    return Array.from(map.entries()).map(([k,v]) => ({ name: k, count: v.size })).sort((a,b) => b.count - a.count);
   });
 }
 
@@ -2280,10 +2283,11 @@ function aggHoldReasons() {
   return agg('holdReasons', data => {
     const map = new Map();
     for (const r of data) {
-      if (!r.onHold) continue;
-      map.set(r.onHoldReason, (map.get(r.onHoldReason) || 0) + 1);
+      if (!r.onHold || !r.caseKey) continue;          // FIX: count cases, not line items
+      if (!map.has(r.onHoldReason)) map.set(r.onHoldReason, new Set());
+      map.get(r.onHoldReason).add(r.caseKey);
     }
-    return Array.from(map.entries()).map(([k,v]) => ({ name: k, count: v })).sort((a,b) => b.count - a.count);
+    return Array.from(map.entries()).map(([k,v]) => ({ name: k, count: v.size })).sort((a,b) => b.count - a.count);
   });
 }
 
@@ -2291,10 +2295,12 @@ function aggRemakeReasons() {
   return agg('remakeReasons', data => {
     const map = new Map();
     for (const r of data) {
-      if (!r.remake) continue;
-      map.set(r.remakeReason || 'Unspecified', (map.get(r.remakeReason || 'Unspecified') || 0) + 1);
+      if (!r.remake || !r.caseKey) continue;          // FIX: count cases, not line items
+      const k = r.remakeReason || 'Unspecified';
+      if (!map.has(k)) map.set(k, new Set());
+      map.get(k).add(r.caseKey);
     }
-    return Array.from(map.entries()).map(([k,v]) => ({ name: k, count: v })).sort((a,b) => b.count - a.count);
+    return Array.from(map.entries()).map(([k,v]) => ({ name: k, count: v.size })).sort((a,b) => b.count - a.count);
   });
 }
 
@@ -3320,7 +3326,11 @@ function renderOverview() {
       addTat(m, r);   // one turnaround per case, not per line item
     }
     return Array.from(map.values()).sort((a,b) => a.key.localeCompare(b.key))
-      .map(m => ({ key: m.key, avg: medianOf(m.tatList) ?? 0, mean: m.tatN ? m.tatSum / m.tatN : 0 }));
+      .map(m => {
+        const v = (m.tatList || []).slice().sort((a, b) => a - b);
+        const q = p => v.length ? v[Math.min(v.length - 1, Math.floor(p * v.length))] : null;
+        return { key: m.key, avg: m.tatN ? m.tatSum / m.tatN : null, median: medianOf(m.tatList), p90: q(0.9) };
+      });
   })();
 
   // Top 8 products units by month (stacked)
@@ -3351,7 +3361,7 @@ function renderOverview() {
       <div class="kpi"><div class="kpi-label">Active Doctors</div><div class="kpi-value">${fmtN(k.doctors)}</div><div class="kpi-sub">${fmtN(k.products)} unique products</div></div>
       <div class="kpi"><div class="kpi-label">Remake Rate</div><div class="kpi-value">${fmtPct(k.remakeRate)}</div><div class="kpi-sub">${fmtN(k.remakeCount)} cases reworked</div></div>
       <div class="kpi"><div class="kpi-label">On-Hold Rate</div><div class="kpi-value">${fmtPct(k.onHoldRate)}</div><div class="kpi-sub">${fmtN(k.onHoldCount)} held cases</div></div>
-      <div class="kpi"><div class="kpi-label">Median Turnaround</div><div class="kpi-value">${k.medTAT == null ? '—' : k.medTAT.toFixed(1) + '<span class="sup">days</span>'}</div><div class="kpi-sub">received → shipped · mean ${k.avgTAT == null ? '—' : k.avgTAT.toFixed(1) + 'd'} · <span title="Build identifier — use this to confirm you are running the latest file.">${BUILD_ID}</span></div></div>
+      <div class="kpi"><div class="kpi-label">Avg Turnaround</div><div class="kpi-value">${k.avgTAT == null ? '—' : k.avgTAT.toFixed(1) + '<span class="sup">days</span>'}</div><div class="kpi-sub">entry → invoiced · <span title="Build identifier — use this to confirm you are running the latest file.">${BUILD_ID}</span></div></div>
     </div>
 
     <div class="card mb20">
@@ -3365,7 +3375,7 @@ function renderOverview() {
         <div class="chart-wrap short"><canvas id="c0b"></canvas></div>
       </div>
       <div class="card flex-1">
-        <div class="chart-title">Median Turnaround (days) — Month over Month</div>
+        <div class="chart-title">Avg Turnaround (days) — Month over Month</div>
         <div class="chart-wrap short"><canvas id="c0c"></canvas></div>
       </div>
     </div>
@@ -3399,7 +3409,10 @@ function renderOverview() {
   `;
 
   const co = commonChartOpts();
-  const labels = months.map(m => fmtMonthKey(m.key));
+  // FIX: the newest month is usually incomplete — label it so it doesn't read as a drop
+  const _mx = getMaxDate();
+  const _partialKey = (_mx && _mx.getDate() < new Date(_mx.getFullYear(), _mx.getMonth() + 1, 0).getDate()) ? monthKey(_mx) : null;
+  const labels = months.map(m => fmtMonthKey(m.key) + (m.key === _partialKey ? ' (MTD)' : ''));
 
   makeChart('c0a', {
     type: 'bar',
@@ -3428,7 +3441,7 @@ function renderOverview() {
 
   makeChart('c0c', {
     type: 'line',
-    data: { labels: tatByMonth.map(m => fmtMonthKey(m.key)), datasets: [{ label: 'Median TAT', data: tatByMonth.map(m => m.avg), borderColor: '#7c3aed', backgroundColor: 'rgba(124,58,237,.1)', borderWidth: 2.5, tension: .3, fill: true, pointRadius: 2 }] },
+    data: { labels: tatByMonth.map(m => fmtMonthKey(m.key)), datasets: [{ label: 'Avg TAT', spanGaps: true, data: tatByMonth.map(m => m.avg == null ? null : +m.avg.toFixed(1)), borderColor: '#7c3aed', backgroundColor: 'rgba(124,58,237,.1)', borderWidth: 2.5, tension: .3, fill: true, pointRadius: 2 }] },
     options: { ...co, plugins: { ...co.plugins, legend: { display: false } } }
   });
 
@@ -4582,7 +4595,7 @@ function renderDoctorDetail() {
   const caseCount = countCases(cases);
   const remakes = countCases(cases.filter(r => r.remake));
   const onHold = cases.filter(r => r.onHold).length;
-  // Average turnaround (received → shipped) across this doctor's valid cases
+  // Average turnaround (received → invoiced) across this doctor's valid cases
   // Median is the headline; held cases make the mean unrepresentative
   const ddTatMed = tatMedian(cases);
   const ddTat = (() => {
@@ -4703,7 +4716,7 @@ function renderDoctorDetail() {
       <div class="kpi"><div class="kpi-label">Cases</div><div class="kpi-value">${fmtN(caseCount)}</div><div class="kpi-sub">${fmtN(totalUnits)} units</div></div>
       <div class="kpi"><div class="kpi-label">Avg Case</div><div class="kpi-value">${fmtUSDFull(caseCount ? totalRev/caseCount : 0)}</div></div>
       <div class="kpi"><div class="kpi-label">Remake Rate</div><div class="kpi-value">${fmtPct(caseCount ? remakes/caseCount : 0)}</div><div class="kpi-sub">${remakes} of ${caseCount}</div></div>
-      <div class="kpi"><div class="kpi-label">Median Turnaround</div><div class="kpi-value">${ddTatMed == null ? '—' : ddTatMed.toFixed(1) + '<span class="sup">days</span>'}</div><div class="kpi-sub">received → shipped · mean ${ddTat == null ? '—' : ddTat.toFixed(1) + 'd'}</div></div>
+      <div class="kpi"><div class="kpi-label">Avg Turnaround</div><div class="kpi-value">${ddTat == null ? '—' : ddTat.toFixed(1) + '<span class="sup">days</span>'}</div><div class="kpi-sub">entry → invoiced</div></div>
       ${onTimeKpiHTML(ddOnTime)}
       <div class="kpi"><div class="kpi-label">On Hold</div><div class="kpi-value">${onHold}</div><div class="kpi-sub">cases delayed</div></div>
       <div class="kpi"><div class="kpi-label">First → Last</div><div class="kpi-value" style="font-size:15px">${fmtDateShort(first)} – ${fmtDateShort(last)}</div></div>
@@ -4743,7 +4756,7 @@ function renderDoctorDetail() {
         <div class="chart-wrap short"><canvas id="ddRemake"></canvas></div>
       </div>
       <div class="card flex-1">
-        <div class="chart-title">Median Turnaround — Month over Month</div>
+        <div class="chart-title">Avg Turnaround — Month over Month</div>
         <div class="chart-wrap short"><canvas id="ddTat"></canvas></div>
       </div>
     </div>
@@ -4887,7 +4900,7 @@ function renderDoctorDetail() {
   });
   makeChart('ddTat', {
     type: 'line',
-    data: { labels: ddLabels, datasets: [{ label: 'Median TAT', data: months.map(m => medianOf(m.tatList) ?? 0), borderColor: '#7c3aed', backgroundColor: 'rgba(124,58,237,.1)', borderWidth: 2.5, tension: .3, fill: true, pointRadius: 2 }] },
+    data: { labels: ddLabels, datasets: [{ label: 'Avg TAT', spanGaps: true, data: months.map(m => m.tatN ? +(m.tatSum / m.tatN).toFixed(1) : null), borderColor: '#7c3aed', backgroundColor: 'rgba(124,58,237,.1)', borderWidth: 2.5, tension: .3, fill: true, pointRadius: 2 }] },
     options: { ...co, plugins: { ...co.plugins, legend: { display: false } } }
   });
   makeChart('ddTopProd', {
@@ -6083,7 +6096,7 @@ function renderProductDetail() {
       <div class="card flex-1"><div class="chart-title">Remake % — Month over Month</div><div class="chart-wrap short"><canvas id="pdRemake"></canvas></div></div>
     </div>
 
-    <div class="card mb20"><div class="chart-title">Median Turnaround (days) — Month over Month</div><div class="chart-wrap short"><canvas id="pdTat"></canvas></div></div>
+    <div class="card mb20"><div class="chart-title">Avg Turnaround (days) — Month over Month</div><div class="chart-wrap short"><canvas id="pdTat"></canvas></div></div>
 
     <div class="flex-row">
       <div class="card flex-1">
@@ -6128,7 +6141,7 @@ function renderProductDetail() {
   makeChart('pdRemake', { type: 'line', data: { labels, datasets: [{ label: 'Remake %', data: months.map(m => m.cases ? m.remakes/m.cases*100 : 0), borderColor: '#dc2626', backgroundColor: 'rgba(220,38,38,.1)', borderWidth: 2.5, tension: .3, fill: true, pointRadius: 2 }] },
     options: { ...co, plugins: { ...co.plugins, legend: { display: false } }, scales: { ...co.scales, y: { ...co.scales.y, ticks: { ...co.scales.y.ticks, callback: v => v.toFixed(1)+'%' } } } } });
 
-  makeChart('pdTat', { type: 'line', data: { labels, datasets: [{ label: 'Median TAT', data: months.map(m => medianOf(m.tatList) ?? 0), borderColor: '#7c3aed', backgroundColor: 'rgba(124,58,237,.1)', borderWidth: 2.5, tension: .3, fill: true, pointRadius: 2 }] },
+  makeChart('pdTat', { type: 'line', data: { labels, datasets: [{ label: 'Avg TAT', spanGaps: true, data: months.map(m => m.tatN ? +(m.tatSum / m.tatN).toFixed(1) : null), borderColor: '#7c3aed', backgroundColor: 'rgba(124,58,237,.1)', borderWidth: 2.5, tension: .3, fill: true, pointRadius: 2 }] },
     options: { ...co, plugins: { ...co.plugins, legend: { display: false } } } });
 
   // On-time stacked bars: each month, show share early/ontime/late as 100%-stacked
