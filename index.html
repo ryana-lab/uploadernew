@@ -477,22 +477,28 @@ html, body {
 .tl-client-card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; box-shadow: var(--shadow-sm); transition: box-shadow .2s, border-color .2s; display: flex; flex-direction: column; }
 .tl-client-card:hover { box-shadow: var(--shadow-md); border-color: var(--accent); }
 .tl-card-header { display: flex; align-items: flex-start; justify-content: space-between; padding: 18px 18px 10px; gap: 10px; }
-.tl-card-header .tl-cname { font-weight: 700; font-size: 15px; color: var(--ink); line-height: 1.2; }
+/* The name block must be allowed to shrink. Without min-width:0 a long name
+   ("Somayeh Jahedi-O'Leary") or a long practice line pushed the status badges
+   past the card's edge, where overflow:hidden clipped them to "Acti…"/"5 ga…". */
+.tl-card-header .tl-cinfo { min-width: 0; flex: 1 1 auto; }
+.tl-card-header .tl-cname { font-weight: 700; font-size: 15px; color: var(--ink); line-height: 1.25; overflow-wrap: anywhere; }
 .tl-card-header .tl-cpractice { font-size: 12px; color: var(--ink); font-weight: 600; margin-top: 3px; opacity: 0.78; line-height: 1.25; display: flex; align-items: center; min-width: 0; }
 .tl-card-header .tl-cpractice > .practice-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .tl-card-header .tl-cloc { font-size: 11px; color: var(--mut); margin-top: 3px; }
-.tl-card-badges { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; flex-shrink: 0; }
+.tl-card-badges { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; flex-shrink: 0; white-space: nowrap; }
 .tl-badge-active { display: inline-flex; align-items: center; gap: 5px; padding: 4px 11px; border-radius: 20px; font-size: 11px; font-weight: 600; background: var(--grn-soft); color: var(--grn); }
 .tl-badge-inactive { display: inline-flex; align-items: center; gap: 5px; padding: 4px 11px; border-radius: 20px; font-size: 11px; font-weight: 600; background: var(--red-soft); color: var(--red); }
 .tl-badge-active::before, .tl-badge-inactive::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 .tl-badge-gap { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 20px; font-size: 10px; font-weight: 600; background: var(--amb-soft); color: var(--amb); }
 .tl-card-body { padding: 0 18px 14px; flex: 1; }
-.tl-card-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; margin-bottom: 10px; align-items: start; }
+.tl-card-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px 14px; margin-bottom: 12px; align-items: start; }
 .tl-card-row > div { min-width: 0; }
 .tl-cf-label { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--mut); font-weight: 600; margin-bottom: 3px; }
 .tl-cf-value { font-size: 12px; color: var(--text); font-weight: 500; }
 .tl-cf-mono { font-variant-numeric: tabular-nums; }
-.tl-product-tag { display: inline-block; padding: 2px 9px; border-radius: 20px; font-size: 10px; font-weight: 500; background: var(--accent-soft); color: var(--accent); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: top; }
+/* Product names are long; a single truncated line ("Vitality Custom Abutmen…")
+   reads worse than two wrapped lines. Allow up to two, then ellipsis. */
+.tl-product-tag { display: inline-block; padding: 3px 9px; border-radius: 12px; font-size: 10px; font-weight: 500; line-height: 1.35; background: var(--accent-soft); color: var(--accent); max-width: 100%; vertical-align: top; white-space: normal; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .tl-card-divider { height: 1px; background: var(--border); margin: 10px 0; }
 .tl-card-gaps { padding: 0; }
 .tl-cg-title { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--mut); font-weight: 600; margin-bottom: 6px; }
@@ -1230,7 +1236,7 @@ const APP = {
 
 /* Bump when normalization logic changes, so it's possible to tell at a glance
    (bottom of the Avg Turnaround card) which build a browser is running. */
-const BUILD_ID = 'build 2026-09-11b';
+const BUILD_ID = 'build 2026-09-11c';
 
 const DB_NAME = 'LabOpsCache';
 const DB_STORE = 'datasets';
@@ -6394,7 +6400,7 @@ function tlRenderCards() {
     return `
       <div class="tl-client-card">
         <div class="tl-card-header">
-          <div>
+          <div class="tl-cinfo">
             <div class="tl-cname">${esc(c.name)}</div>
             ${practiceDisplayHTML(c.practiceInfo, 'tl-cpractice')}
             <div class="tl-cloc">${esc(c.city)}${c.city && c.state ? ', ' : ''}${c.state ? `<a class="tl-state-link" href="#" data-state="${esc(c.state)}">${esc(c.state)}</a>` : ''}</div>
