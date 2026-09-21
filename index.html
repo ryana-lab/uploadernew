@@ -7460,6 +7460,7 @@ function renderBridge() {
         <div class="section-sub">Pushes each doctor's engagement status into the reps' Salesly app via Supabase.</div>
       </div>
       <div class="section-actions">
+        <button class="btn-text" id="sbLabPush">🗄 Save invoices to database</button>
         <button class="btn-text" id="sbDl">⬇ Download Master CSV</button>
       </div>
     </div>
@@ -7579,6 +7580,66 @@ function renderBridge() {
       st.style.color = 'var(--grn)';
     } catch (e) { st.textContent = '✗ ' + e.message; st.style.color = 'var(--red)'; }
   };
+  /* ══ RAW INVOICES → lab.invoices ═══════════════════════════════════════════
+     The dashboard normally sends only DERIVED values (status, tier, last
+     invoice date) to public.offices; the 190k raw rows never leave this tab.
+     This pushes the raw rows too, so reporting can be done in SQL instead of
+     re-uploading the same CSV by hand.
+
+     Sent in chunks through public.lab_stage_rows(): one request per few
+     thousand rows, because a single 190k-row payload exceeds the API limit.
+     Rows already loaded are skipped server-side by fingerprint, so re-running
+     this after a partial failure is safe and cannot double-count. */
+  const LAB_CHUNK = 2000;
+  async function labPushRaw() {
+    const db = PG;
+    if (!db) { sbLog('Connect to Supabase first (Test connection).', 'warn'); return; }
+    const rows = (APP && APP.rawRows) || [];
+    if (!rows.length) { sbLog('No CSV loaded — upload your export first.', 'warn'); return; }
+
+    const btn = document.getElementById('sbLabPush');
+    if (btn) { btn.disabled = true; btn.textContent = '🗄 Saving…'; }
+    sbLog('Saving ' + rows.length.toLocaleString() + ' invoice rows to the database…');
+    try {
+      const { error: rErr } = await db.rpc('lab_stage_reset');
+      if (rErr) throw new Error(rErr.message);
+
+      let sent = 0;
+      for (let i = 0; i < rows.length; i += LAB_CHUNK) {
+        const chunk = rows.slice(i, i + LAB_CHUNK);
+        const { error } = await db.rpc('lab_stage_rows', { p_rows: chunk });
+        if (error) throw new Error(error.message);
+        sent += chunk.length;
+        if (btn) btn.textContent = '🗄 ' + Math.round(sent / rows.length * 100) + '%';
+        if (sent % (LAB_CHUNK * 10) === 0 || sent === rows.length) {
+          sbLog('  staged ' + sent.toLocaleString() + ' / ' + rows.length.toLocaleString());
+        }
+      }
+
+      sbLog('  loading (this pass only processes rows that are new)…');
+      const { data, error: lErr } = await db.rpc('lab_load',
+        { p_source: (APP.meta && APP.meta.fileName) || 'dashboard upload' });
+      if (lErr) throw new Error(lErr.message);
+      const d = data || {};
+      sbLog('✓ batch ' + d.batch_id + ': ' + Number(d.loaded || 0).toLocaleString() + ' new rows, ' +
+            Number(d.skipped || 0).toLocaleString() + ' already present' +
+            (d.from ? ' (' + d.from + ' → ' + d.to + ')' : ''), 'ok');
+    } catch (e) {
+      const m = (e && e.message) || String(e);
+      sbLog('✗ ' + m, 'err');
+      if (/Admins only/i.test(m)) {
+        sbLog('   This login is not marked role=\'admin\' in the reps table, so the', 'warn');
+        sbLog('   database refused the load. Fix that row, or load from the SQL editor.', 'warn');
+      } else if (/lab_stage_rows|lab_load|function/i.test(m)) {
+        sbLog('   Run salesly_lab_bridge.sql in Supabase first — these functions are missing.', 'warn');
+      }
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = '🗄 Save invoices to database'; }
+    }
+  }
+  const lp = document.getElementById('sbLabPush');
+  if (lp) lp.onclick = labPushRaw;
+
   document.getElementById('sbDl').onclick = () => {
     const geo = sbLoadGeo();
     const q = v => { v = String(v == null ? '' : v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
