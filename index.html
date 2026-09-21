@@ -6997,8 +6997,14 @@ const SB_CFG_KEY = 'labbridge_cfg';
    ══════════════════════════════════════════════════════════════════════════ */
 
 // The canonical column order the bridge has always used.
+/* "visits" and "visited" are REP-OWNED and deliberately absent from this list.
+   The sync reads rows at the start and writes them back minutes later (after
+   geocoding); any visit logged by a rep inside that window used to be
+   overwritten with the stale copy. Columns not named here are left untouched
+   by the upsert, so a rep's visit history can no longer be lost to a sync.
+   Deletions still work: the app soft-deletes via active=false. */
 const PG_COLS = ["id","name","addr","city","zip","lat","lng","phone","email","scanner",
-                 "lab","drs","hours","visitDay","visited","notes","visits",
+                 "lab","drs","hours","visitDay","notes",
                  "starterKit","welcomeEmail","pricelist"];
 
 let PG = null;
@@ -7681,6 +7687,111 @@ function sbStrict(s) {
 // so "100 Main St" and "900 Main St" never collapse together.
 function sbHouseNo(a){ const m=String(a||'').match(/\d+/); return m?m[0]:''; }
 const SB_ADDR_MAP = { street:'st', avenue:'ave', av:'ave', road:'rd', drive:'dr', boulevard:'blvd', lane:'ln', court:'ct', place:'pl', circle:'cir', highway:'hwy', hw:'hwy', parkway:'pkwy', trail:'trl', terrace:'ter', square:'sq', suite:'ste', unit:'ste', north:'n', south:'s', east:'e', west:'w', first:'1st', second:'2nd', third:'3rd', fourth:'4th', fifth:'5th' };
+/* ══ ADDRESS-CORE MATCHING ═══════════════════════════════════════════════
+   sbStrictAddr keeps the suite, so "100 Main St" and "100 Main St Ste 200"
+   look like different places and the sync creates a DUPLICATE office. The
+   core drops the suite so they match. Address alone is NOT enough to merge
+   (845 N Michigan Ave is a tower), so sbSamepractice below demands a second
+   signal — matching phone, or one practice name sitting inside the other. */
+const SB_UNIT_RE = /\b(ste|suite|unit|apt|apartment|fl|floor|rm|room|bldg|building)\b/;
+function sbAddrCore(s) {
+  let b = String(s == null ? '' : s).toLowerCase().replace(/#/g, ' ')
+            .replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!b) return '';
+  const m = SB_UNIT_RE.exec(b); if (m) b = b.slice(0, m.index).trim();
+  return b.split(' ').map(t => SB_ADDR_MAP[t] || t).join(' ').trim();
+}
+function sbPhoneKey(s){ const d=String(s==null?'':s).replace(/\D/g,''); return d.length>=10?d.slice(-10):''; }
+/* The suite/unit itself. In a tower or a medical building this is the real
+   identifier — 845 N Michigan Ave Ste 900 and Ste 1200 are different tenants,
+   full stop. Handles "Ste 900", "Suite 900", "#900", "Unit B", "Fl 3".
+   Caveat worth remembering: only about a third of practice addresses carry a
+   suite at all, so this settles a minority of cases outright and the name /
+   phone checks below still have to carry the rest. */
+const SB_SUITE_RE = /(?:\b(?:ste|suite|unit|apt|apartment|fl|floor|rm|room|bldg|building)\b\.?\s*([a-z0-9\-]+))|(?:#\s*([a-z0-9\-]+))/i;
+/* FULL address key: house number + street + the unit, all normalised. This is
+   the practice's real identity — the lab record carries an exact address per
+   practice, so two practices never legitimately share one. Compared before any
+   name test, because names drift ("Dental" -> "Dentistry", a doctor's name
+   appended) while the address of a physical practice does not. */
+function sbAddrFull(s) {
+  const core = sbAddrCore(s), ste = sbSuite(s);
+  return core ? (ste ? core + ' ste ' + ste : core) : '';
+}
+function sbSuite(s){
+  const m = SB_SUITE_RE.exec(String(s == null ? '' : s));
+  if (!m) return '';
+  return String(m[1] || m[2] || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+// Category words carry no identity. Neither do the city or the street name:
+// "Bloomingdale Dental Center" and "My Bloomingdale Dentist" are two different
+// practices ON Bloomingdale Rd.
+const SB_GENERIC = {dental:1,dentistry:1,dentist:1,family:1,smiles:1,smile:1,care:1,center:1,centre:1,
+  group:1,associates:1,office:1,clinic:1,the:1,and:1,doctor:1,health:1,modern:1,advanced:1,
+  complete:1,general:1,comprehensive:1,new:1,our:1};
+/* Town names appearing INSIDE a practice name are location labels, not
+   identity: "MB2 Dental Care of Mid Florida Sebring" and "… Avon Park" are two
+   branches that share one billing address and one phone. If the two names point
+   at different towns, never auto-merge them. Populated from the cities already
+   present in the book, so it needs no external list. */
+let SB_PLACES = new Set();
+function sbLearnPlaces(cityList) {
+  (cityList || []).forEach(c => { const k = sbNorm(c); if (k) SB_PLACES.add(k); });
+}
+function sbPlaceTokens(name) {
+  const toks = sbNorm(name).split(' ').filter(Boolean);
+  const hits = new Set();
+  toks.forEach((t, i) => {
+    if (SB_PLACES.has(t)) hits.add(t);
+    if (i < toks.length - 1 && SB_PLACES.has(t + ' ' + toks[i + 1])) { hits.add(t); hits.add(toks[i + 1]); }
+  });
+  return hits;
+}
+function sbDistinctive(name, city, addr) {
+  const stop = new Set();
+  String(sbNorm(city)||'').split(' ').forEach(t => t && stop.add(t));
+  String(sbAddrCore(addr)||'').split(' ').forEach(t => t && stop.add(t));
+  return new Set(
+    String(name==null?'':name).toLowerCase().replace(/&/g,' and ')
+      .replace(/[^a-z0-9]+/g,' ').split(' ')
+      .filter(t => t.length>2 && !SB_GENERIC[t] && !stop.has(t) && !SB_SUFFIXES[t]));
+}
+/* 'same' | 'review' | 'different' — only 'same' may auto-merge. */
+function sbSamePractice(a, b) {
+  const ac = sbAddrCore(a.addr);
+  if (!ac || ac !== sbAddrCore(b.addr)) return 'different';
+  if (sbNorm(a.city) !== sbNorm(b.city)) return 'different';
+  // ── Suite first: when BOTH addresses name a unit, the unit decides. ──
+  const sa = sbSuite(a.addr), sb2 = sbSuite(b.addr);
+  if (sa && sb2) {
+    if (sa !== sb2) return 'different';   // different doors = different practices
+    return 'same';                         // same building AND same door
+  }
+  // Two different TOWNS named in the two practice names => different branches,
+  // however well the phone or the rest of the name agrees.
+  const ownCity = new Set(sbNorm(a.city).split(' ').filter(Boolean));
+  const strip = set => new Set([...set].filter(t => !ownCity.has(t)));
+  const la = strip(sbPlaceTokens(a.name)), lb = strip(sbPlaceTokens(b.name));
+  if ((la.size || lb.size) &&
+      ([...la].some(t => !lb.has(t)) || [...lb].some(t => !la.has(t)))) return 'review';
+  // Only one side (or neither) has a suite — fall through to corroboration.
+  const A = sbDistinctive(a.name, a.city, a.addr), B = sbDistinctive(b.name, b.city, b.addr);
+  let inter = 0; A.forEach(t => { if (B.has(t)) inter++; });
+  const contained = A.size && B.size && inter > 0 && (inter === A.size || inter === B.size);
+  const pa = sbPhoneKey(a.phone), pb = sbPhoneKey(b.phone);
+  const samePhone = pa && pb && pa === pb;
+  const diffPhone = pa && pb && pa !== pb;
+  // Different phone numbers AND nothing shared in the names: two practices that
+  // happen to share a street address. (Neither name may have any identifying
+  // word left once the town and street are stripped — that is itself a signal
+  // they are named after the location, not after each other.)
+  if (diffPhone && !inter) return 'different';
+  if (!A.size || !B.size) return 'review';
+  if (samePhone && inter > 0) return 'same';
+  if (contained) return 'same';
+  if (samePhone || inter > 0) return 'review';
+  return 'different';
+}
 function sbStrictAddr(s) {
   const base = String(s == null ? '' : s).toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
   if (!base) return '';
@@ -8124,13 +8235,27 @@ async function sbSync() {
     // index existing rows by strict name+city, strict name+address, and strict name
     // (sbStrict ignores punctuation and business suffixes so "Smile Dental, PC"
     //  matches "Smile Dental" instead of creating a duplicate)
-    const byNC = {}, byNA = {}, byN = {};
+    const byNC = {}, byNA = {}, byN = {}, byAC = {}, byFull = {};
+    sbLearnPlaces(rows.map(r => r[ci.city]));
+    sbLearnPlaces(push.map(o => o.city));
+    // Pairs that look related but aren't safe to merge automatically. Surfaced
+    // in the sync log so a human can decide instead of the sync guessing.
+    const SB_REVIEW = [];
     rows.forEach((r, i) => {
       const isDel = sbNorm(r[ci.visited]) === 'deleted'; if (isDel) return;
       if (String(r[ci.id]).trim() === '__reps__') return;   // reserved roster row
       const n = sbStrict(r[ci.name]); if (!n) return;
-      byNC[n + '|' + sbNorm(r[ci.city])] = i;
+      // name+city: track collisions instead of letting the last row win. Two
+      // branches of one practice in one city used to silently overwrite each
+      // other here, so the invoice landed on whichever was indexed last.
+      const nck = n + '|' + sbNorm(r[ci.city]);
+      if (byNC[nck] == null) byNC[nck] = i; else byNC[nck] = -1;   /* ambiguous */
       const ad = sbStrictAddr(r[ci.addr]); if (ad) byNA[n + '|' + ad] = i;
+      const ac = sbAddrCore(r[ci.addr]);
+      if (ac) { const k = ac + '|' + sbNorm(r[ci.city]); (byAC[k] = byAC[k] || []).push(i); }
+      const af = sbAddrFull(r[ci.addr]);
+      if (af) { const k2 = af + '|' + sbNorm(r[ci.city]);
+        if (byFull[k2] == null) byFull[k2] = i; else byFull[k2] = -1; }
       if (byN[n] == null) byN[n] = i; else byN[n] = -1; /* ambiguous */
     });
     // geocode plan: cache + already-pinned rows never geocode
@@ -8141,8 +8266,35 @@ async function sbSync() {
       // don't re-add. It stays gone until it's un-deleted in the app.
       if (sbIsTombstoned(tomb, o, ci)) { o._row = -2; skippedDeleted++; return; }
       const n = sbStrict(o.name);
-      let i = byNC[n + '|' + sbNorm(o.city)];
+      let i;
+      /* ══ MATCH ORDER: EXACT ADDRESS WINS ═══════════════════════════════════
+         The lab record is authoritative and holds one exact address per
+         practice, suite included, so that address identifies the practice
+         better than its name ever will. Name-based matching now runs only
+         AFTER the address has failed, and only when it is unambiguous.
+           1. exact address + suite + city
+           2. address core + city, corroborated (rename / suite added later)
+           3. name + exact address
+           4. name + city         (only if that pair is unique)
+           5. name alone          (only if that name is unique) */
+      const af = sbAddrFull(o.addr);
+      if (af) { const hit = byFull[af + '|' + sbNorm(o.city)]; if (hit != null && hit >= 0) i = hit; }
+      // NEW: address-core + city, for a practice that was RENAMED or whose
+      // suite number changed. Every candidate at that address is checked with
+      // sbSamePractice, so a shared building never collapses two tenants.
+      if (i == null) {
+        const list = byAC[sbAddrCore(o.addr) + '|' + sbNorm(o.city)];
+        if (list && list.length) {
+          for (const cand of list) {
+            const r = rows[cand];
+            const verdict = sbSamePractice(o, { name: r[ci.name], addr: r[ci.addr], city: r[ci.city], phone: r[ci.phone] });
+            if (verdict === 'same') { i = cand; break; }
+            if (verdict === 'review') SB_REVIEW.push({ invoice: o.name, office: r[ci.name], addr: o.addr, city: o.city });
+          }
+        }
+      }
       if (i == null) { const ad = sbStrictAddr(o.addr); if (ad && byNA[n + '|' + ad] != null) i = byNA[n + '|' + ad]; }
+      if (i == null) { const hit = byNC[n + '|' + sbNorm(o.city)]; if (hit != null && hit >= 0) i = hit; }
       if (i == null) i = (byN[n] >= 0) ? byN[n] : undefined;
       o._row = (i == null ? -1 : i);
       if (o._row >= 0) {
@@ -8184,14 +8336,23 @@ async function sbSync() {
       if (o._row >= 0) {
         const r = rows[o._row];
         r[ci.notes] = sbMergeNotes(r[ci.notes], lines);
-        // Dashboard is authoritative for LOCATION: overwrite address/city/zip/pin
-        // when we have real values (fixes offices geocoded to the wrong spot).
+        /* ══ LAB MANAGEMENT SOFTWARE IS THE SOURCE OF TRUTH ════════════════
+           These fields come from the practice record in the lab system, which
+           is always more accurate than a value typed on a phone, so they are
+           OVERWRITTEN rather than merged. Contact fields used to only fill
+           blanks, which meant a stale phone number entered once in the app
+           outranked the lab's corrected one forever.
+           NOT touched here (rep-owned, and clobbering them loses real work):
+             visits · claim/closed columns · the app's onboarding checkboxes.
+           Notes are merged line-by-line above, never replaced. */
         const setAuth = (c, v) => { if (v != null && String(v).trim() !== '') r[ci[c]] = v; };
         setAuth('addr', o.addr); setAuth('city', o.city); setAuth('zip', g.zip);
         setAuth('lat', g.lat); setAuth('lng', g.lng);
-        // Contact fields only fill blanks (rep edits win there).
-        setIfBlank(r, 'phone', o.phone); setIfBlank(r, 'email', o.email);
-        setIfBlank(r, 'scanner', o.scan); setIfBlank(r, 'drs', o.drs);
+        setAuth('phone', o.phone); setAuth('email', o.email);
+        setAuth('scanner', o.scan); setAuth('drs', o.drs);
+        // Keep the office NAME in step with the lab record, so a rename there
+        // stops spawning a second office here on the next sync.
+        setAuth('name', o.name);
         updated++;
       } else {
         const r = new Array(cols.length).fill('');   // all blanks — email flags stay empty
@@ -8238,6 +8399,14 @@ async function sbSync() {
     (BRIDGE.data.rows || []).forEach(r => { const n = sbStrict(r.practice); if (n) invoiced.add(n); });
     BRIDGE.data.offices.forEach(info => { const n = sbStrict(info.name); if (n) invoiced.add(n); });
     await sbSheetPost(cols, rows, { tier: 'S', meta: meta, invoiced: invoiced });
+    if (SB_REVIEW.length) {
+      const seen = new Set(); const uniq = SB_REVIEW.filter(x => {
+        const k = x.invoice + '|' + x.office; if (seen.has(k)) return false; seen.add(k); return true; });
+      sbLog('⚠ ' + uniq.length + ' possible duplicate' + (uniq.length === 1 ? '' : 's') +
+            ' at a shared address — NOT merged, please review:', 'warn');
+      uniq.slice(0, 25).forEach(x => sbLog('    "' + x.invoice + '"  vs office  "' + x.office + '"  @ ' + x.addr + ', ' + x.city));
+      if (uniq.length > 25) sbLog('    …and ' + (uniq.length - 25) + ' more');
+    }
     const noPin = push.filter(o => !geo[sbGeoKey(o)]).length;
     sbLog('✓ Done — ' + updated + ' offices updated, ' + added + ' added' + (skippedDeleted ? ', ' + skippedDeleted + ' left deleted (respected app deletions)' : '') + ', covering ' + selected.length + ' doctors. Reps will see it within ~15 seconds.' + (noPin ? (' ' + noPin + " still have no pin (run Sync again later to retry, or pin them in the app).") : ''), 'ok');
   } catch (e) {
