@@ -2694,6 +2694,19 @@ document.addEventListener('DOMContentLoaded', () => {
    sign-in lives inside the Bridge tab. This puts it on the front door instead:
    sign in, and the data loads straight away. Returns true if the banner was
    shown, so startup can stop there. */
+function dbBootNote(msg) {
+  try {
+    const b = document.getElementById('db-signin-banner');
+    if (!b) { console.warn('[dashboard]', msg); return; }
+    b.style.display = 'flex';
+    const meta = document.getElementById('dbSignMeta');
+    const err = document.getElementById('dbSignErr');
+    if (meta) meta.textContent = 'Could not load from the database.';
+    if (err) { err.textContent = msg; err.style.display = 'block'; }
+    console.warn('[dashboard]', msg);
+  } catch (e) { console.warn('[dashboard]', msg); }
+}
+
 async function offerDbSignIn() {
   const banner = document.getElementById('db-signin-banner');
   if (!banner) return false;
@@ -2740,17 +2753,29 @@ async function checkCache() {
      wasteful. Failures here are silent by design — no Supabase config, not
      signed in, or an empty lab table all just leave the normal upload screen. */
   if (!cached || !cached.rows || !cached.rows.length) {
+    /* Say WHY when the database route can't be used. Silently showing the
+       upload screen gave no clue whether the URL was missing, the SQL wasn't
+       installed, the account wasn't an admin, or the table was empty. */
     try {
-      const db = pgClient();
-      if (db) {
-        await pgSession();                       // restore a saved session if there is one
+      const cfg = sbCfg();
+      if (!cfg.url || !cfg.token) {
+        dbBootNote('No Supabase connection configured in this browser. Fill in SB_DEFAULT_URL and ' +
+                   'SB_DEFAULT_KEY at the top of this file, or enter them under the Salesly Bridge tab.');
+      } else if (!pgClient()) {
+        dbBootNote('Could not create the Supabase client — check the URL and key are correct.');
+      } else {
+        await pgSession();
         if (pgUser) {
-          if (await labPullAll({ silent: true })) return;   // signed in: just load
+          const r = await labPullAll({ diagnose: true });
+          if (r === true) return;
+          dbBootNote(r || 'Signed in, but no invoices were returned.');
         } else if (await offerDbSignIn()) {
-          return;                                 // banner shown; it loads once they sign in
+          return;
         }
       }
-    } catch (e) {}
+    } catch (e) {
+      dbBootNote('Startup error: ' + ((e && e.message) || e));
+    }
   }
   if (cached && cached.rows && cached.rows.length) {
     const banner = document.getElementById('cached-banner');
@@ -7112,13 +7137,21 @@ async function labPullAll(opts) {
   opts = opts || {};
   const db = pgClient();
   const log = (m, c) => { try { sbLog(m, c); } catch (e) {} };
-  if (!db) { if (!opts.silent) log('Connect to Supabase first (Test connection).', 'warn'); return false; }
+  if (!db) {
+    if (opts.diagnose) return 'No Supabase client — URL or key missing.';
+    if (!opts.silent) log('Connect to Supabase first (Test connection).', 'warn');
+    return false;
+  }
   const btn = document.getElementById('sbLabPull');
   try {
     const { data: sum, error: sErr } = await db.rpc('lab_summary');
     if (sErr) throw new Error(sErr.message);
     const total = Number((sum && sum.rows) || 0);
-    if (!total) { if (!opts.silent) log('The database has no invoices yet — push some first.', 'warn'); return false; }
+    if (!total) {
+      if (opts.diagnose) return 'Connected, but lab.invoices is empty — load the CSV into the database first.';
+      if (!opts.silent) log('The database has no invoices yet — push some first.', 'warn');
+      return false;
+    }
     if (opts.confirm && !confirm('Load ' + total.toLocaleString() + ' invoice rows from the database?' +
         (sum.to ? '\n\nCovering ' + sum.from + ' to ' + sum.to + '.' : '') +
         '\n\nThis replaces whatever is currently loaded in the dashboard.')) return false;
@@ -7150,6 +7183,13 @@ async function labPullAll(opts) {
   } catch (e) {
     const m = (e && e.message) || String(e);
     try { hideProgress(); } catch (x) {}
+    if (opts.diagnose) {
+      if (/Admins only/i.test(m))
+        return 'Signed in, but this account is not role=\'admin\' in the reps table, so the database refused the request.';
+      if (/lab_fetch_rows|lab_summary|Could not find the function|does not exist/i.test(m))
+        return 'The database functions are missing — run salesly_lab_bridge.sql in Supabase. (' + m + ')';
+      return m;
+    }
     if (opts.silent) return false;          // startup: stay quiet, show upload UI
     log('✗ ' + m, 'err');
     if (/Admins only/i.test(m)) {
@@ -7435,8 +7475,8 @@ function sbScanner(v) {
    require an admin login — so a stranger with this file still sees nothing.
    They would have to sign in, and only accounts marked role='admin' in the
    reps table can read lab data.                                              */
-const SB_DEFAULT_URL = '';   // e.g. 'https://abcdefgh.supabase.co'
-const SB_DEFAULT_KEY = '';   // the anon / publishable key
+const SB_DEFAULT_URL = 'https://hfzizrzqrneuciykpuez.supabase.co';
+const SB_DEFAULT_KEY = 'sb_publishable_Pfa_bgXEA8y0Bvs5rNHXdA_CiMX2bBZ';
 
 function sbCfg() {
   let c = {};
