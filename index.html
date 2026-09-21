@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.09.21-DB1</title>
+<title>Lab Sales Dashboard v2026.09.21-DB2</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -1379,7 +1379,9 @@ function finishIngest(rawRows, fileName, freshUpload) {
     // For very large files we cache only if reasonable
     if (records.length <= 200000) {
       // Reconstruct compact CSV from the original via Papa.unparse would be slow; cache the parsed rows instead
-      dbPut({ rows: rawRows, meta: APP.meta });
+      // Store the database fingerprint alongside the rows, so the next visit can
+      // spot a newer sync. Empty when the data came from a plain CSV upload.
+      dbPut({ rows: rawRows, meta: APP.meta, labStamp: LAB_LAST_STAMP || '' });
     }
     showProgress('Building views', 96, records.length.toLocaleString() + ' rows', '96%');
     setTimeout(() => {
@@ -2777,7 +2779,30 @@ async function checkCache() {
       dbBootNote('Startup error: ' + ((e && e.message) || e));
     }
   }
+  /* A cached copy exists. It is instant, so it normally wins — but one person
+     syncs each day and everyone else must see that sync. Ask the database for
+     its fingerprint (one tiny query, no download): if it differs from what this
+     cache was built from, pull the new data instead of showing stale numbers.
+     Any failure here just falls through to the cached copy. */
   if (cached && cached.rows && cached.rows.length) {
+    try {
+      const db = pgClient();
+      if (db) {
+        await pgSession();
+        if (pgUser) {
+          const { data: sum, error } = await db.rpc('lab_summary');
+          if (!error && sum && Number(sum.rows) > 0) {
+            const serverStamp = labStamp(sum);
+            const cachedStamp = cached.labStamp || '';
+            if (serverStamp && serverStamp !== cachedStamp) {
+              console.log('[dashboard] newer data in the database — refreshing',
+                          { cached: cachedStamp || '(from CSV upload)', server: serverStamp });
+              if (await labPullAll({ silent: true })) return;
+            }
+          }
+        }
+      }
+    } catch (e) { /* offline or not signed in: use the cached copy */ }
     const banner = document.getElementById('cached-banner');
     const meta = cached.meta || {};
     document.getElementById('cbMeta').textContent =
@@ -7133,6 +7158,14 @@ function pgReset() { PG = null; }
    opts.confirm  ask before downloading (the manual button does; startup does not)
    opts.silent   fail quietly and leave the upload screen alone (startup does)  */
 const LAB_PAGE = 5000;
+/* A cheap fingerprint of the database's contents: row count + latest invoice
+   date. Comparing this against what the cached copy was built from tells us
+   whether the local data is stale WITHOUT downloading anything. */
+function labStamp(sum) {
+  if (!sum) return '';
+  return String(sum.rows || 0) + '|' + String(sum.to || '') + '|' + String(sum.from || '');
+}
+let LAB_LAST_STAMP = '';
 async function labPullAll(opts) {
   opts = opts || {};
   const db = pgClient();
@@ -7178,6 +7211,9 @@ async function labPullAll(opts) {
     log('✓ ' + rows.length.toLocaleString() + ' rows loaded — rebuilding…', 'ok');
     // `false` for freshUpload: this data CAME from the database, so pushing it
     // straight back to Salesly would be pointless churn.
+    // Remember the database's fingerprint at the moment of this pull, so a
+    // later visit can tell in one cheap query whether it has gone stale.
+    try { LAB_LAST_STAMP = labStamp(sum); } catch (e) {}
     finishIngest(rows, 'database (' + rows.length.toLocaleString() + ' rows)', false);
     return true;
   } catch (e) {
@@ -7828,6 +7864,15 @@ function renderBridge() {
       sbLog('✓ batch ' + d.batch_id + ': ' + Number(d.loaded || 0).toLocaleString() + ' new rows, ' +
             Number(d.skipped || 0).toLocaleString() + ' already present' +
             (d.from ? ' (' + d.from + ' → ' + d.to + ')' : ''), 'ok');
+      /* Stamp our own cache with the database's NEW fingerprint. Without this
+         the person who just uploaded would look stale to the freshness check on
+         their next visit, and re-download the 190k rows they just sent up. */
+      try {
+        const { data: sum2 } = await db.rpc('lab_summary');
+        LAB_LAST_STAMP = labStamp(sum2);
+        const cached = await dbGet();
+        if (cached && cached.rows) { cached.labStamp = LAB_LAST_STAMP; await dbPut(cached); }
+      } catch (e) {}
     } catch (e) {
       const m = (e && e.message) || String(e);
       sbLog('✗ ' + m, 'err');
