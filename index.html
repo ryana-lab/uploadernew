@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.07.24-REVERT2</title>
+<title>Lab Sales Dashboard v2026.09.21-DB1</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -9807,6 +9807,10 @@ function prPaint() {
    version lives ONLY in the <title>, so it cannot drift. */
 (function autoUpdate(){
   const RUNNING = (String(document.title).match(/\bv[\w.\-]+/) || [""])[0];
+  // Print the running build on every load. If a redeploy "does nothing", this
+  // line is the fastest way to tell whether the new file is actually being
+  // served or the browser/CDN is still handing back the old one.
+  try{ console.log("%c[dashboard] build " + RUNNING, "font-weight:bold"); }catch(_){}
   // Paint the header stamp from the SAME source the update check uses, so the
   // two can never disagree. The version now lives only in the <title>.
   try{ const vEl=document.getElementById("appVer"); if(vEl) vEl.textContent=RUNNING; }catch(_){}
