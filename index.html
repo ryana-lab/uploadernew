@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.09.21-DB2</title>
+<title>Lab Sales Dashboard v2026.09.21-DB3</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -7856,11 +7856,32 @@ function renderBridge() {
         }
       }
 
-      sbLog('  loading (this pass only processes rows that are new)…');
-      const { data, error: lErr } = await db.rpc('lab_load',
-        { p_source: (APP.meta && APP.meta.fileName) || 'dashboard upload' });
-      if (lErr) throw new Error(lErr.message);
-      const d = data || {};
+      /* Load in slices. Supabase gives `authenticated` an 8 SECOND statement
+         timeout and a first load of ~190k rows takes ~25s, so doing it in one
+         statement was cancelled halfway — staging full, lab.invoices empty.
+         Raising the limit from inside a function does not work (the timer is
+         armed before the function is entered), so each call drains a slice
+         instead: ~1.5s per 20k rows, comfortably inside any timeout. */
+      sbLog('  loading (only rows that are new get processed)…');
+      let batchId = null, totalLoaded = 0, guard = 0;
+      const source = (APP.meta && APP.meta.fileName) || 'dashboard upload';
+      for (;;) {
+        const { data: ch, error: cErr } = await db.rpc('lab_load_chunk',
+          { p_batch: batchId, p_source: source, p_limit: 20000 });
+        if (cErr) throw new Error(cErr.message);
+        batchId = ch.batch_id;
+        totalLoaded += Number(ch.loaded || 0);
+        const remaining = Number(ch.remaining || 0);
+        if (btn) btn.textContent = '🗄 loading… ' + remaining.toLocaleString() + ' left';
+        sbLog('  loaded ' + totalLoaded.toLocaleString() +
+              (remaining ? ' · ' + remaining.toLocaleString() + ' to go' : ''));
+        if (ch.done) break;
+        if (++guard > 200) throw new Error('load did not finish after 200 passes');
+      }
+      const { data: sumAfter } = await db.rpc('lab_summary');
+      const d = { batch_id: batchId, loaded: totalLoaded,
+                  skipped: Math.max(rows.length - totalLoaded, 0),
+                  from: sumAfter && sumAfter.from, to: sumAfter && sumAfter.to };
       sbLog('✓ batch ' + d.batch_id + ': ' + Number(d.loaded || 0).toLocaleString() + ' new rows, ' +
             Number(d.skipped || 0).toLocaleString() + ' already present' +
             (d.from ? ' (' + d.from + ' → ' + d.to + ')' : ''), 'ok');
