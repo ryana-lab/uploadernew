@@ -2676,6 +2676,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
 async function checkCache() {
   const cached = await dbGet();
+  /* No cached copy on THIS browser (new machine, cleared data, someone else's
+     laptop) — try the database before falling back to "upload a CSV". This is
+     what makes the dashboard travel with its link. A cached copy still wins:
+     it is instant, and re-downloading 190k rows on every refresh would be
+     wasteful. Failures here are silent by design — no Supabase config, not
+     signed in, or an empty lab table all just leave the normal upload screen. */
+  if (!cached || !cached.rows || !cached.rows.length) {
+    try { if (await labPullAll({ silent: true })) return; } catch (e) {}
+  }
   if (cached && cached.rows && cached.rows.length) {
     const banner = document.getElementById('cached-banner');
     const meta = cached.meta || {};
@@ -7018,6 +7027,74 @@ function pgClient() {
   return PG;
 }
 function pgReset() { PG = null; }
+
+/* ══ DATABASE → DASHBOARD ═══════════════════════════════════════════════════
+   Rebuilds the entire dataset from lab.invoices, so the dashboard works on a
+   machine that has never seen the CSV — the link alone is enough.
+
+   Rows come back in the export's original shape (same column names, MM/DD/YYYY
+   dates, True/False text), so they feed the normal parser unchanged.
+
+   Paged by keyset (last row id) rather than OFFSET: OFFSET re-scans everything
+   already read, which costs minutes at 190k rows instead of seconds.
+
+   opts.confirm  ask before downloading (the manual button does; startup does not)
+   opts.silent   fail quietly and leave the upload screen alone (startup does)  */
+const LAB_PAGE = 5000;
+async function labPullAll(opts) {
+  opts = opts || {};
+  const db = pgClient();
+  const log = (m, c) => { try { sbLog(m, c); } catch (e) {} };
+  if (!db) { if (!opts.silent) log('Connect to Supabase first (Test connection).', 'warn'); return false; }
+  const btn = document.getElementById('sbLabPull');
+  try {
+    const { data: sum, error: sErr } = await db.rpc('lab_summary');
+    if (sErr) throw new Error(sErr.message);
+    const total = Number((sum && sum.rows) || 0);
+    if (!total) { if (!opts.silent) log('The database has no invoices yet — push some first.', 'warn'); return false; }
+    if (opts.confirm && !confirm('Load ' + total.toLocaleString() + ' invoice rows from the database?' +
+        (sum.to ? '\n\nCovering ' + sum.from + ' to ' + sum.to + '.' : '') +
+        '\n\nThis replaces whatever is currently loaded in the dashboard.')) return false;
+
+    if (btn) { btn.disabled = true; btn.textContent = '⬇ 0%'; }
+    log('Loading ' + total.toLocaleString() + ' invoice rows from the database…');
+    try { showProgress('Loading from database', 5, total.toLocaleString() + ' rows', '5%'); } catch (e) {}
+
+    const rows = []; let after = 0;
+    for (;;) {
+      const { data, error } = await db.rpc('lab_fetch_rows', { p_after: after, p_limit: LAB_PAGE });
+      if (error) throw new Error(error.message);
+      const got = (data && data.rows) || [];
+      if (!got.length) break;
+      for (let i = 0; i < got.length; i++) rows.push(got[i]);
+      after = Number(data.last_id) || after;
+      const pct = Math.min(90, Math.round(rows.length / total * 90));
+      if (btn) btn.textContent = '⬇ ' + Math.round(rows.length / total * 100) + '%';
+      try { showProgress('Loading from database', pct,
+            rows.length.toLocaleString() + ' / ' + total.toLocaleString() + ' rows', pct + '%'); } catch (e) {}
+      if (got.length < LAB_PAGE) break;
+    }
+
+    log('✓ ' + rows.length.toLocaleString() + ' rows loaded — rebuilding…', 'ok');
+    // `false` for freshUpload: this data CAME from the database, so pushing it
+    // straight back to Salesly would be pointless churn.
+    finishIngest(rows, 'database (' + rows.length.toLocaleString() + ' rows)', false);
+    return true;
+  } catch (e) {
+    const m = (e && e.message) || String(e);
+    try { hideProgress(); } catch (x) {}
+    if (opts.silent) return false;          // startup: stay quiet, show upload UI
+    log('✗ ' + m, 'err');
+    if (/Admins only/i.test(m)) {
+      log('   This login is not role=\'admin\' in the reps table.', 'warn');
+    } else if (/lab_fetch_rows|lab_summary|function/i.test(m)) {
+      log('   Run the latest salesly_lab_bridge.sql — the pull functions are missing.', 'warn');
+    }
+    return false;
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '⬇ Load invoices from database'; }
+  }
+}
 let pgUser = null;
 
 /* Same story as the PWA: RLS is keyed on auth.uid(). The dashboard's policies
@@ -7281,7 +7358,26 @@ function sbScanner(v) {
   return 'Other';
 }
 
-function sbCfg() { try { return JSON.parse(localStorage.getItem(SB_CFG_KEY) || '{}'); } catch (e) { return {}; } }
+/* ══ BUILT-IN CONNECTION (optional) ═════════════════════════════════════════
+   Fill these two in and the dashboard connects on ANY machine straight from
+   the link — no settings to re-enter. A device that has been configured by
+   hand still wins; these are only the fallback.
+
+   The anon key is safe to put here: it is public by design and grants nothing
+   on its own. Every table is behind RLS, and the invoice functions additionally
+   require an admin login — so a stranger with this file still sees nothing.
+   They would have to sign in, and only accounts marked role='admin' in the
+   reps table can read lab data.                                              */
+const SB_DEFAULT_URL = '';   // e.g. 'https://abcdefgh.supabase.co'
+const SB_DEFAULT_KEY = '';   // the anon / publishable key
+
+function sbCfg() {
+  let c = {};
+  try { c = JSON.parse(localStorage.getItem(SB_CFG_KEY) || '{}'); } catch (e) { c = {}; }
+  if (!c.url && SB_DEFAULT_URL) c.url = SB_DEFAULT_URL;
+  if (!c.token && SB_DEFAULT_KEY) c.token = SB_DEFAULT_KEY;
+  return c;
+}
 function sbSaveCfgObj(patch) {
   const c = sbCfg();
   Object.assign(c, patch);
@@ -7649,57 +7745,8 @@ function renderBridge() {
 
      Paged with a keyset (last row id), not OFFSET: OFFSET re-scans everything
      already read, which turns into minutes at 190k rows. */
-  const LAB_PAGE = 5000;
-  async function labPullRaw() {
-    const db = PG;
-    if (!db) { sbLog('Connect to Supabase first (Test connection).', 'warn'); return; }
-    const btn = document.getElementById('sbLabPull');
-    try {
-      const { data: sum, error: sErr } = await db.rpc('lab_summary');
-      if (sErr) throw new Error(sErr.message);
-      const total = Number((sum && sum.rows) || 0);
-      if (!total) { sbLog('The database has no invoices yet — push some first.', 'warn'); return; }
-      if (!confirm('Load ' + total.toLocaleString() + ' invoice rows from the database?' +
-                   (sum.to ? '\n\nCovering ' + sum.from + ' to ' + sum.to + '.' : '') +
-                   '\n\nThis replaces whatever is currently loaded in the dashboard.')) return;
-
-      if (btn) { btn.disabled = true; btn.textContent = '⬇ 0%'; }
-      sbLog('Loading ' + total.toLocaleString() + ' invoice rows from the database…');
-
-      const rows = []; let after = 0;
-      for (;;) {
-        const { data, error } = await db.rpc('lab_fetch_rows', { p_after: after, p_limit: LAB_PAGE });
-        if (error) throw new Error(error.message);
-        const got = (data && data.rows) || [];
-        if (!got.length) break;
-        for (let i = 0; i < got.length; i++) rows.push(got[i]);
-        after = Number(data.last_id) || after;
-        if (btn) btn.textContent = '⬇ ' + Math.round(rows.length / total * 100) + '%';
-        if (rows.length % (LAB_PAGE * 5) === 0) {
-          sbLog('  ' + rows.length.toLocaleString() + ' / ' + total.toLocaleString());
-        }
-        if (got.length < LAB_PAGE) break;
-      }
-
-      sbLog('✓ ' + rows.length.toLocaleString() + ' rows loaded — rebuilding the dashboard…', 'ok');
-      // Hand off to the same path an upload uses. `false` for freshUpload so it
-      // does NOT immediately fire a push back to Salesly: we just read this
-      // data from the database, so pushing it straight back is pointless churn.
-      finishIngest(rows, 'database (' + rows.length.toLocaleString() + ' rows)', false);
-    } catch (e) {
-      const m = (e && e.message) || String(e);
-      sbLog('✗ ' + m, 'err');
-      if (/Admins only/i.test(m)) {
-        sbLog('   This login is not role=\'admin\' in the reps table.', 'warn');
-      } else if (/lab_fetch_rows|lab_summary|function/i.test(m)) {
-        sbLog('   Run the latest salesly_lab_bridge.sql — the pull functions are missing.', 'warn');
-      }
-    } finally {
-      if (btn) { btn.disabled = false; btn.textContent = '⬇ Load invoices from database'; }
-    }
-  }
   const lpull = document.getElementById('sbLabPull');
-  if (lpull) lpull.onclick = labPullRaw;
+  if (lpull) lpull.onclick = () => labPullAll({ confirm: true });
 
   document.getElementById('sbDl').onclick = () => {
     const geo = sbLoadGeo();
