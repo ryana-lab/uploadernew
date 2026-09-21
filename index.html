@@ -781,6 +781,21 @@ html, body {
       <input type="file" id="fileInput" accept=".csv,text/csv" style="display:none">
     </div>
 
+    <div id="db-signin-banner" style="display:none;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
+         background:#eef4ff;border:1px solid #c7d9ff;border-radius:10px;padding:12px 14px;margin-bottom:12px;">
+      <div>
+        <b>Sign in to load your data</b>
+        <div class="cb-meta" id="dbSignMeta">This dashboard can load everything from the database — no file needed.</div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <input id="dbSignEmail" type="email" placeholder="email" autocomplete="username"
+               style="padding:7px 9px;border:1px solid #c7d9ff;border-radius:7px;font:inherit;font-size:13px">
+        <input id="dbSignPass" type="password" placeholder="password" autocomplete="current-password"
+               style="padding:7px 9px;border:1px solid #c7d9ff;border-radius:7px;font:inherit;font-size:13px">
+        <button class="primary" id="dbSignGo">Sign in &amp; load</button>
+      </div>
+      <div id="dbSignErr" style="flex:1 1 100%;color:#b3402f;font-size:12.5px;display:none"></div>
+    </div>
     <div id="cached-banner">
       <div>
         <b>Cached data available</b>
@@ -2674,6 +2689,48 @@ document.addEventListener('DOMContentLoaded', () => {
   checkCache();
 });
 
+/* A fresh browser has no session, so the invoice RPCs refuse and the pull
+   falls through to the upload screen — leaving no visible way in, because the
+   sign-in lives inside the Bridge tab. This puts it on the front door instead:
+   sign in, and the data loads straight away. Returns true if the banner was
+   shown, so startup can stop there. */
+async function offerDbSignIn() {
+  const banner = document.getElementById('db-signin-banner');
+  if (!banner) return false;
+  banner.style.display = 'flex';
+  const err = document.getElementById('dbSignErr');
+  const go = document.getElementById('dbSignGo');
+  const submit = async () => {
+    const email = (document.getElementById('dbSignEmail') || {}).value || '';
+    const pass  = (document.getElementById('dbSignPass')  || {}).value || '';
+    if (!email || !pass) { err.textContent = 'Enter your email and password.'; err.style.display = 'block'; return; }
+    err.style.display = 'none';
+    go.disabled = true; go.textContent = 'Signing in…';
+    try {
+      await pgSignIn(email, pass);
+      banner.style.display = 'none';
+      const ok = await labPullAll({});
+      if (!ok) {
+        banner.style.display = 'flex';
+        err.textContent = 'Signed in, but no invoices came back. This account may not be an admin, ' +
+                          'or the database may be empty. You can still upload a CSV below.';
+        err.style.display = 'block';
+      }
+    } catch (e) {
+      err.textContent = (e && e.message) || 'Sign-in failed.';
+      err.style.display = 'block';
+    } finally {
+      go.disabled = false; go.textContent = 'Sign in & load';
+    }
+  };
+  go.onclick = submit;
+  ['dbSignEmail', 'dbSignPass'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
+  });
+  return true;
+}
+
 async function checkCache() {
   const cached = await dbGet();
   /* No cached copy on THIS browser (new machine, cleared data, someone else's
@@ -2683,7 +2740,17 @@ async function checkCache() {
      wasteful. Failures here are silent by design — no Supabase config, not
      signed in, or an empty lab table all just leave the normal upload screen. */
   if (!cached || !cached.rows || !cached.rows.length) {
-    try { if (await labPullAll({ silent: true })) return; } catch (e) {}
+    try {
+      const db = pgClient();
+      if (db) {
+        await pgSession();                       // restore a saved session if there is one
+        if (pgUser) {
+          if (await labPullAll({ silent: true })) return;   // signed in: just load
+        } else if (await offerDbSignIn()) {
+          return;                                 // banner shown; it loads once they sign in
+        }
+      }
+    } catch (e) {}
   }
   if (cached && cached.rows && cached.rows.length) {
     const banner = document.getElementById('cached-banner');
