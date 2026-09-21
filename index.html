@@ -7461,6 +7461,7 @@ function renderBridge() {
       </div>
       <div class="section-actions">
         <button class="btn-text" id="sbLabPush">🗄 Save invoices to database</button>
+        <button class="btn-text" id="sbLabPull">⬇ Load invoices from database</button>
         <button class="btn-text" id="sbDl">⬇ Download Master CSV</button>
       </div>
     </div>
@@ -7639,6 +7640,66 @@ function renderBridge() {
   }
   const lp = document.getElementById('sbLabPush');
   if (lp) lp.onclick = labPushRaw;
+
+  /* ══ DATABASE → DASHBOARD ═════════════════════════════════════════════════
+     Rebuilds the whole dataset from lab.invoices, so the dashboard works on a
+     machine that has never seen the CSV. The rows come back in the export's
+     original shape (same column names, MM/DD/YYYY dates), so they go straight
+     through the normal parser with no special handling.
+
+     Paged with a keyset (last row id), not OFFSET: OFFSET re-scans everything
+     already read, which turns into minutes at 190k rows. */
+  const LAB_PAGE = 5000;
+  async function labPullRaw() {
+    const db = PG;
+    if (!db) { sbLog('Connect to Supabase first (Test connection).', 'warn'); return; }
+    const btn = document.getElementById('sbLabPull');
+    try {
+      const { data: sum, error: sErr } = await db.rpc('lab_summary');
+      if (sErr) throw new Error(sErr.message);
+      const total = Number((sum && sum.rows) || 0);
+      if (!total) { sbLog('The database has no invoices yet — push some first.', 'warn'); return; }
+      if (!confirm('Load ' + total.toLocaleString() + ' invoice rows from the database?' +
+                   (sum.to ? '\n\nCovering ' + sum.from + ' to ' + sum.to + '.' : '') +
+                   '\n\nThis replaces whatever is currently loaded in the dashboard.')) return;
+
+      if (btn) { btn.disabled = true; btn.textContent = '⬇ 0%'; }
+      sbLog('Loading ' + total.toLocaleString() + ' invoice rows from the database…');
+
+      const rows = []; let after = 0;
+      for (;;) {
+        const { data, error } = await db.rpc('lab_fetch_rows', { p_after: after, p_limit: LAB_PAGE });
+        if (error) throw new Error(error.message);
+        const got = (data && data.rows) || [];
+        if (!got.length) break;
+        for (let i = 0; i < got.length; i++) rows.push(got[i]);
+        after = Number(data.last_id) || after;
+        if (btn) btn.textContent = '⬇ ' + Math.round(rows.length / total * 100) + '%';
+        if (rows.length % (LAB_PAGE * 5) === 0) {
+          sbLog('  ' + rows.length.toLocaleString() + ' / ' + total.toLocaleString());
+        }
+        if (got.length < LAB_PAGE) break;
+      }
+
+      sbLog('✓ ' + rows.length.toLocaleString() + ' rows loaded — rebuilding the dashboard…', 'ok');
+      // Hand off to the same path an upload uses. `false` for freshUpload so it
+      // does NOT immediately fire a push back to Salesly: we just read this
+      // data from the database, so pushing it straight back is pointless churn.
+      finishIngest(rows, 'database (' + rows.length.toLocaleString() + ' rows)', false);
+    } catch (e) {
+      const m = (e && e.message) || String(e);
+      sbLog('✗ ' + m, 'err');
+      if (/Admins only/i.test(m)) {
+        sbLog('   This login is not role=\'admin\' in the reps table.', 'warn');
+      } else if (/lab_fetch_rows|lab_summary|function/i.test(m)) {
+        sbLog('   Run the latest salesly_lab_bridge.sql — the pull functions are missing.', 'warn');
+      }
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = '⬇ Load invoices from database'; }
+    }
+  }
+  const lpull = document.getElementById('sbLabPull');
+  if (lpull) lpull.onclick = labPullRaw;
 
   document.getElementById('sbDl').onclick = () => {
     const geo = sbLoadGeo();
