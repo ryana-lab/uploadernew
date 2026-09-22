@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.09.21-DB3</title>
+<title>Lab Sales Dashboard v2026.09.22-DB4</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -1382,6 +1382,16 @@ function finishIngest(rawRows, fileName, freshUpload) {
       // Store the database fingerprint alongside the rows, so the next visit can
       // spot a newer sync. Empty when the data came from a plain CSV upload.
       dbPut({ rows: rawRows, meta: APP.meta, labStamp: LAB_LAST_STAMP || '' });
+      /* A fresh upload is the ONLY moment new invoices enter the system, so
+         push them to the database right here instead of relying on someone
+         remembering the button. Skipped when the data came FROM the database
+         (freshUpload false) — that would just send it straight back. */
+      if (freshUpload) {
+        setTimeout(() => {
+          try { if (typeof window.__labPushRaw === 'function') window.__labPushRaw({ auto: true }); }
+          catch (e) {}
+        }, 1200);
+      }
     }
     showProgress('Building views', 96, records.length.toLocaleString() + ' rows', '96%');
     setTimeout(() => {
@@ -7831,16 +7841,50 @@ function renderBridge() {
      Rows already loaded are skipped server-side by fingerprint, so re-running
      this after a partial failure is safe and cannot double-count. */
   const LAB_CHUNK = 2000;
-  async function labPushRaw() {
-    const db = PG;
-    if (!db) { sbLog('Connect to Supabase first (Test connection).', 'warn'); return; }
-    const rows = (APP && APP.rawRows) || [];
-    if (!rows.length) { sbLog('No CSV loaded — upload your export first.', 'warn'); return; }
+  // Rows are skipped server-side by fingerprint, so re-sending old ones is
+  // harmless — but uploading 190k rows to add a few hundred wastes a minute of
+  // every single day. Ask the database how far it has got and send only from
+  // that date back a few days (late-arriving invoices land inside that window).
+  const LAB_OVERLAP_DAYS = 10;
+  function labRowDate(r) {
+    const v = r && (r.Invoice_Date || r.invoice_date);
+    if (!v) return null;
+    const m = String(v).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (m) return new Date(+m[3], +m[1] - 1, +m[2]);
+    const d = new Date(v);
+    return isNaN(d) ? null : d;
+  }
+  async function labPushRaw(opts) {
+    opts = opts || {};
+    const db = pgClient();
+    if (!db) { if (!opts.auto) sbLog('Connect to Supabase first (Test connection).', 'warn'); return; }
+    const all = (APP && APP.rawRows) || [];
+    if (!all.length) { if (!opts.auto) sbLog('No CSV loaded — upload your export first.', 'warn'); return; }
 
     const btn = document.getElementById('sbLabPush');
     if (btn) { btn.disabled = true; btn.textContent = '🗄 Saving…'; }
-    sbLog('Saving ' + rows.length.toLocaleString() + ' invoice rows to the database…');
     try {
+      // Work out the cutoff. No data yet, or "send everything" asked for, means
+      // the whole file goes.
+      let rows = all, cutoff = null;
+      if (!opts.full) {
+        try {
+          const { data: sum } = await db.rpc('lab_summary');
+          if (sum && Number(sum.rows) > 0 && sum.to) {
+            cutoff = new Date(sum.to + 'T00:00:00');
+            cutoff.setDate(cutoff.getDate() - LAB_OVERLAP_DAYS);
+            const filtered = all.filter(r => { const d = labRowDate(r); return !d || d >= cutoff; });
+            // Only worth it if it actually saves something meaningful.
+            if (filtered.length && filtered.length < all.length * 0.9) rows = filtered;
+          }
+        } catch (e) { /* fall back to sending everything */ }
+      }
+      if (rows.length < all.length) {
+        sbLog('Saving ' + rows.length.toLocaleString() + ' recent rows (of ' +
+              all.length.toLocaleString() + ') — the rest is already in the database…');
+      } else {
+        sbLog('Saving ' + rows.length.toLocaleString() + ' invoice rows to the database…');
+      }
       const { error: rErr } = await db.rpc('lab_stage_reset');
       if (rErr) throw new Error(rErr.message);
 
@@ -7908,7 +7952,9 @@ function renderBridge() {
     }
   }
   const lp = document.getElementById('sbLabPush');
-  if (lp) lp.onclick = labPushRaw;
+  if (lp) lp.onclick = () => labPushRaw({});
+  // expose for the automatic push after an upload
+  window.__labPushRaw = labPushRaw;
 
   /* ══ DATABASE → DASHBOARD ═════════════════════════════════════════════════
      Rebuilds the whole dataset from lab.invoices, so the dashboard works on a
