@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.09.22-DB4</title>
+<title>Lab Sales Dashboard v2026.09.28-EMP1</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -880,6 +880,8 @@ html, body {
       <button class="tab-btn" data-tab="proddetail">📈 Product Detail</button>
       <button class="tab-btn" data-tab="timeline">🕐 Client Timeline</button>
       <button class="tab-btn" data-tab="map">🗺️ State Map</button>
+      <button class="tab-btn" data-tab="empgrid">🧑‍🔧 Employee Grid</button>
+      <button class="tab-btn" data-tab="empdetail">🔬 Employee Detail</button>
       <button class="tab-btn" data-tab="status">📋 Current / New / Winback / Falloff / Inactive</button>
       <button class="tab-btn" data-tab="bridge">🔗 Salesly Bridge</button>
       <button class="tab-btn" data-tab="reports">📧 Reports</button>
@@ -893,6 +895,8 @@ html, body {
     <div class="tab-panel" id="panel-sales"></div>
     <div class="tab-panel" id="panel-docgrid"></div>
     <div class="tab-panel" id="panel-docdetail"></div>
+    <div class="tab-panel" id="panel-empgrid"></div>
+    <div class="tab-panel" id="panel-empdetail"></div>
     <div class="tab-panel" id="panel-status"></div>
     <div class="tab-panel" id="panel-prodgrid"></div>
     <div class="tab-panel" id="panel-proddetail"></div>
@@ -1364,6 +1368,23 @@ function ingestText(csvText, fileName) {
 }
 
 function finishIngest(rawRows, fileName, freshUpload) {
+  /* A production export is a completely different dataset (employees,
+     workstations, units) and shares no columns with the invoice file. Detect it
+     from the headers, send it to its own table, and leave the sales dashboard
+     exactly as it was — parsing it as invoices would wipe the screen. */
+  try {
+    if (freshUpload && looksLikeProductionCSV(rawRows)) {
+      showProgress('Production export', 40, rawRows.length.toLocaleString() + ' rows', '40%');
+      prodPushRows(rawRows, fileName || 'dashboard upload').then(ok => {
+        try { hideProgress(); } catch (e) {}
+        toast(ok ? 'Production data saved — see the Employee Grid tab'
+                 : 'Could not save the production data (see the Salesly Bridge log)',
+              ok ? 'ok' : 'err');
+        if (ok) { PROD.loaded = false; if (APP.tab === 'empgrid' || APP.tab === 'empdetail') renderTab(APP.tab, true); }
+      });
+      return;
+    }
+  } catch (e) { /* fall through and treat it as an invoice file */ }
   try {
     const records = normalizeRecords(rawRows);
     APP.raw = records;
@@ -3158,7 +3179,8 @@ function switchTab(tab) {
 
 /* Detail tabs depend on the current selection, so they must re-render on every
    visit — never serve them from the rendered-cache. */
-const ALWAYS_RENDER = { docdetail: 1, proddetail: 1, bridge: 1, reports: 1, prospects: 1, queue: 1 };
+const ALWAYS_RENDER = { docdetail: 1, proddetail: 1, bridge: 1, reports: 1, prospects: 1, queue: 1,
+                        empgrid: 1, empdetail: 1 };
 
 function renderTab(tab, force) {
   if (!force && !ALWAYS_RENDER[tab] && APP.rendered[tab]) return;
@@ -3169,6 +3191,8 @@ function renderTab(tab, force) {
     case 'docgrid':   renderDoctorGrid(); break;
     case 'docdetail': renderDoctorDetail(); break;
     case 'status':    renderStatus(); break;
+    case 'empgrid':   renderEmployeeGrid(); break;
+    case 'empdetail': renderEmployeeDetail(); break;
     case 'prodgrid':  renderProductGrid(); break;
     case 'proddetail':renderProductDetail(); break;
     case 'bridge':    renderBridge(); break;
@@ -5979,6 +6003,381 @@ function drawStatusBody(docs, segs) {
 
   body.querySelectorAll('tr.clk').forEach(tr => {
     tr.addEventListener('click', () => { APP.selectedDoctorId = tr.dataset.id; switchTab('docdetail'); });
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   EMPLOYEE PRODUCTION  (grid + detail)
+
+   A different dataset from the invoice export: production-side, one row per
+   person / day / workstation / product. The export only ever covers ONE DAY,
+   so history lives in lab.production and these tabs read it from there rather
+   than from whatever CSV happens to be loaded.
+
+   Deliberately NO minutes-based efficiency figure: in the export,
+   planned_minutes is exactly tasks_scanned_in * 60 on every row, so anything
+   derived from it would just restate the task count.
+   ═══════════════════════════════════════════════════════════════ */
+
+const PROD = { rows: [], loaded: false, loading: false, from: '', to: '',
+               query: '', dept: 'all', sort: 'units', employee: '' };
+
+function prodNum(v) { const n = parseFloat(v); return isNaN(n) ? 0 : n; }
+
+/* Is this uploaded CSV a PRODUCTION export rather than the invoice one? They
+   share no columns, so the headers tell us unambiguously and the user never has
+   to pick a file type. */
+function looksLikeProductionCSV(rows) {
+  if (!rows || !rows.length) return false;
+  const keys = Object.keys(rows[0] || {}).map(k => String(k).trim().toLowerCase());
+  const need = ['employee', 'scan_in_date', 'total_units'];
+  return need.every(k => keys.includes(k));
+}
+
+/* Push a production export to the database. Days are small (one day, a handful
+   of people), so this goes up in one or two chunks and the loader UPSERTS:
+   re-exporting the same day later, once tasks_completed has filled in, updates
+   that day instead of duplicating it. */
+async function prodPushRows(rows, label) {
+  const db = pgClient();
+  if (!db) { sbLog('Connect to Supabase first — production data is stored there.', 'warn'); return false; }
+  try {
+    sbLog('Saving ' + rows.length.toLocaleString() + ' production rows to the database…');
+    const { error: rErr } = await db.rpc('prod_stage_reset');
+    if (rErr) throw new Error(rErr.message);
+    const CH = 2000;
+    for (let i = 0; i < rows.length; i += CH) {
+      const { error } = await db.rpc('prod_stage_rows', { p_rows: rows.slice(i, i + CH) });
+      if (error) throw new Error(error.message);
+    }
+    const { data, error: lErr } = await db.rpc('prod_load', { p_source: label || 'dashboard upload' });
+    if (lErr) throw new Error(lErr.message);
+    const d = data || {};
+    sbLog('✓ production: ' + Number(d.rows || 0).toLocaleString() + ' rows for ' +
+          (d.from === d.to ? d.from : d.from + ' → ' + d.to), 'ok');
+    PROD.loaded = false;                       // force a refresh next time a tab opens
+    return true;
+  } catch (e) {
+    const m = (e && e.message) || String(e);
+    sbLog('✗ production: ' + m, 'err');
+    if (/Admins only/i.test(m)) sbLog('   This login is not role=\'admin\' in the reps table.', 'warn');
+    else if (/prod_stage_rows|prod_load|schema cache|does not exist/i.test(m))
+      sbLog('   Run salesly_production_schema.sql in Supabase first.', 'warn');
+    return false;
+  }
+}
+function prodDate(v) {
+  if (!v) return null;
+  const m = String(v).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  return m ? new Date(+m[3], +m[1]-1, +m[2]) : (isNaN(new Date(v)) ? null : new Date(v));
+}
+function prodInRange(r) {
+  if (!PROD.from && !PROD.to) return true;
+  const d = prodDate(r.scan_in_date); if (!d) return true;
+  if (PROD.from && d < new Date(PROD.from + 'T00:00:00')) return false;
+  if (PROD.to   && d > new Date(PROD.to   + 'T23:59:59')) return false;
+  return true;
+}
+
+async function prodLoadAll(force) {
+  if (PROD.loading || (PROD.loaded && !force)) return PROD.loaded;
+  const db = pgClient();
+  if (!db) return false;
+  PROD.loading = true;
+  try {
+    const rows = []; let after = 0;
+    for (;;) {
+      const { data, error } = await db.rpc('prod_fetch_rows', { p_after: after, p_limit: 5000 });
+      if (error) throw new Error(error.message);
+      const got = (data && data.rows) || [];
+      if (!got.length) break;
+      for (let i = 0; i < got.length; i++) rows.push(got[i]);
+      after = Number(data.last_id) || after;
+      if (got.length < 5000) break;
+    }
+    PROD.rows = rows; PROD.loaded = true;
+    return true;
+  } catch (e) {
+    PROD.error = (e && e.message) || String(e);
+    return false;
+  } finally { PROD.loading = false; }
+}
+
+// Roll the raw rows up per person, honouring the date filter.
+function prodByEmployee() {
+  const by = {};
+  PROD.rows.filter(prodInRange).forEach(r => {
+    const k = String(r.employee || '').trim(); if (!k) return;
+    const e = by[k] || (by[k] = { employee: k, units: 0, cases: 0, tasksIn: 0, tasksDone: 0,
+                                  days: new Set(), products: {}, stations: {}, depts: {} });
+    e.units     += prodNum(r.total_units);
+    e.cases     += prodNum(r.cases_touched);
+    e.tasksIn   += prodNum(r.tasks_scanned_in);
+    e.tasksDone += prodNum(r.tasks_completed);
+    if (r.scan_in_date) e.days.add(r.scan_in_date);
+    const pn = (r.product_name || '(unnamed)').trim();
+    e.products[pn] = (e.products[pn] || 0) + prodNum(r.total_units);
+    if (r.workstation) e.stations[r.workstation] = (e.stations[r.workstation] || 0) + prodNum(r.total_units);
+    if (r.department)  e.depts[r.department]     = (e.depts[r.department]     || 0) + prodNum(r.total_units);
+  });
+  return Object.values(by).map(e => {
+    const top = Object.entries(e.products).sort((a,b) => b[1]-a[1]);
+    return Object.assign(e, {
+      dayCount:   e.days.size,
+      topProduct: top.length ? top[0][0] : '—',
+      topShare:   top.length && e.units ? top[0][1] / e.units : 0,
+      mix:        top,
+      dept:       Object.keys(e.depts).sort((a,b) => e.depts[b]-e.depts[a])[0] || '—',
+      station:    Object.keys(e.stations).sort((a,b) => e.stations[b]-e.stations[a])[0] || '—',
+      unitsPerDay:  e.days.size ? e.units / e.days.size : 0,
+      casesPerDay:  e.days.size ? e.cases / e.days.size : 0,
+      unitsPerCase: e.cases ? e.units / e.cases : 0,
+      donePct:      e.tasksIn ? e.tasksDone / e.tasksIn : 0
+    });
+  });
+}
+
+function prodEmptyState(el, title) {
+  el.innerHTML = `
+    <div class="section-header"><div>
+      <div class="section-title">${title}</div>
+      <div class="section-sub">Production data lives in the database, separate from the invoice export.</div>
+    </div></div>
+    <div class="empty-state"><div class="empty-icon">🧑‍🔧</div>
+      ${PROD.error ? esc(PROD.error) : 'No production data yet.'}<br>
+      <span class="text-mut" style="font-size:13px">
+        Upload a production export (employee, workstation, product, units) on any tab —
+        it is detected automatically and saved to the database.
+      </span>
+    </div>`;
+}
+
+async function renderEmployeeGrid() {
+  const el = document.getElementById('panel-empgrid');
+  el.innerHTML = '<div class="empty-state"><div class="empty-icon">⏳</div>Loading production data…</div>';
+  await prodLoadAll();
+  const all = prodByEmployee();
+  if (!all.length) return prodEmptyState(el, 'Employee Grid');
+
+  const depts = Array.from(new Set(PROD.rows.map(r => r.department).filter(Boolean))).sort();
+  const dates = PROD.rows.map(r => r.scan_in_date).filter(Boolean).sort();
+  const span  = dates.length ? dates[0] + ' → ' + dates[dates.length-1] : '';
+
+  el.innerHTML = `
+    <div class="section-header">
+      <div>
+        <div class="section-title">Employee Grid</div>
+        <div class="section-sub">${all.length} people${span ? ' · ' + esc(span) : ''} · ${PROD.rows.length.toLocaleString()} production rows.</div>
+      </div>
+      <div class="section-actions">
+        <button class="btn-text" id="egReload">↻ Reload</button>
+        <button class="btn-text" id="egExport">⬇ Export Visible</button>
+      </div>
+    </div>
+
+    <div class="filter-bar">
+      <div class="search-wrap"><input type="text" class="search-input" id="egQuery" placeholder="Search people or products…"></div>
+      <select class="gf-select" id="egDept">
+        <option value="all">All departments</option>
+        ${depts.map(d => `<option value="${esc(d)}">${esc(d)}</option>`).join('')}
+      </select>
+      <div class="pill-group" id="egSort">
+        <button class="pill active" data-sort="units">Units</button>
+        <button class="pill" data-sort="cases">Cases</button>
+        <button class="pill" data-sort="unitsPerDay">Units / day</button>
+        <button class="pill" data-sort="unitsPerCase">Units / case</button>
+        <button class="pill" data-sort="donePct">Completed %</button>
+      </div>
+      <div class="text-mut" style="font-size:12px;margin-left:auto" id="egCount"></div>
+    </div>
+
+    <div id="egGrid" class="dr-grid"></div>`;
+
+  document.getElementById('egQuery').addEventListener('input', e => { PROD.query = e.target.value.toLowerCase().trim(); drawEGrid(); });
+  document.getElementById('egDept').addEventListener('change', e => { PROD.dept = e.target.value; drawEGrid(); });
+  document.querySelectorAll('#egSort .pill').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('#egSort .pill').forEach(x => x.classList.remove('active'));
+    b.classList.add('active'); PROD.sort = b.dataset.sort; drawEGrid();
+  }));
+  document.getElementById('egReload').addEventListener('click', async () => { await prodLoadAll(true); renderEmployeeGrid(); });
+  document.getElementById('egExport').addEventListener('click', () => {
+    downloadCSV('employee-production.csv', egFiltered().map(e => ({
+      employee: e.employee, department: e.dept, main_workstation: e.station,
+      days: e.dayCount, units: e.units, cases: e.cases,
+      units_per_day: Math.round(e.unitsPerDay*10)/10,
+      units_per_case: Math.round(e.unitsPerCase*100)/100,
+      tasks_scanned_in: e.tasksIn, tasks_completed: e.tasksDone,
+      main_product: e.topProduct, main_product_share: Math.round(e.topShare*100) + '%'
+    })));
+  });
+
+  drawEGrid();
+}
+
+function egFiltered() {
+  let list = prodByEmployee();
+  if (PROD.dept !== 'all') list = list.filter(e => e.depts && e.depts[PROD.dept]);
+  if (PROD.query) {
+    list = list.filter(e => e.employee.toLowerCase().includes(PROD.query)
+                         || Object.keys(e.products).some(p => p.toLowerCase().includes(PROD.query)));
+  }
+  list.sort((a,b) => (b[PROD.sort] || 0) - (a[PROD.sort] || 0));
+  return list;
+}
+
+function drawEGrid() {
+  const list = egFiltered();
+  const cnt = document.getElementById('egCount');
+  if (cnt) cnt.textContent = `${list.length} people · ${list.reduce((s,e)=>s+e.units,0).toLocaleString()} units`;
+  const grid = document.getElementById('egGrid');
+  if (!grid) return;
+  if (!list.length) {
+    grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><div class="empty-icon">🧑‍🔧</div>Nobody matches those filters.</div>';
+    return;
+  }
+  grid.innerHTML = list.map(e => {
+    // Product mix ranked first, because that is what the grid is for.
+    const mix = e.mix.slice(0,3).map(([name, u]) => {
+      const pct = e.units ? Math.round(u / e.units * 100) : 0;
+      return `<div style="display:flex;align-items:center;gap:8px;margin-top:5px">
+        <div style="flex:1;min-width:0;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(name)}</div>
+        <div style="width:78px;height:6px;background:#eef1f5;border-radius:3px;overflow:hidden;flex:0 0 auto">
+          <div style="width:${pct}%;height:100%;background:#4361ee"></div></div>
+        <div class="text-mut" style="font-size:11px;width:34px;text-align:right">${pct}%</div>
+      </div>`;
+    }).join('');
+    const more = e.mix.length > 3 ? `<div class="text-mut" style="font-size:11px;margin-top:4px">+${e.mix.length-3} more products</div>` : '';
+    return `<div class="dr-card clk" data-emp="${esc(e.employee)}" style="cursor:pointer">
+      <div style="display:flex;align-items:baseline;gap:8px">
+        <div class="dr-name" style="flex:1">${esc(e.employee)}</div>
+        <span class="tag">${esc(e.dept)}</span>
+      </div>
+      <div class="text-mut" style="font-size:12px;margin-bottom:8px">${esc(e.station)} · ${e.dayCount} day${e.dayCount===1?'':'s'}</div>
+      <div style="display:flex;gap:14px;margin-bottom:8px;flex-wrap:wrap">
+        <div><div class="text-mut" style="font-size:10px;text-transform:uppercase">Units</div>
+             <div style="font-size:17px;font-weight:700">${e.units.toLocaleString()}</div></div>
+        <div><div class="text-mut" style="font-size:10px;text-transform:uppercase">Cases</div>
+             <div style="font-size:17px;font-weight:700">${e.cases.toLocaleString()}</div></div>
+        <div><div class="text-mut" style="font-size:10px;text-transform:uppercase">Units / day</div>
+             <div style="font-size:17px;font-weight:700">${(Math.round(e.unitsPerDay*10)/10).toLocaleString()}</div></div>
+        <div><div class="text-mut" style="font-size:10px;text-transform:uppercase">Units / case</div>
+             <div style="font-size:17px;font-weight:700">${(Math.round(e.unitsPerCase*100)/100).toLocaleString()}</div></div>
+      </div>
+      <div class="text-mut" style="font-size:10px;text-transform:uppercase;letter-spacing:.4px">Product mix</div>
+      ${mix}${more}
+    </div>`;
+  }).join('');
+
+  grid.querySelectorAll('.clk').forEach(c => c.addEventListener('click', () => {
+    PROD.employee = c.dataset.emp; switchTab('empdetail');
+  }));
+}
+
+async function renderEmployeeDetail() {
+  const el = document.getElementById('panel-empdetail');
+  el.innerHTML = '<div class="empty-state"><div class="empty-icon">⏳</div>Loading…</div>';
+  await prodLoadAll();
+  const all = prodByEmployee();
+  if (!all.length) return prodEmptyState(el, 'Employee Detail');
+
+  if (!PROD.employee || !all.some(e => e.employee === PROD.employee)) {
+    PROD.employee = all.sort((a,b) => b.units - a.units)[0].employee;
+  }
+  const e = all.find(x => x.employee === PROD.employee);
+  const mine = PROD.rows.filter(r => String(r.employee||'').trim() === PROD.employee && prodInRange(r));
+
+  // per day
+  const byDay = {};
+  mine.forEach(r => { const d = r.scan_in_date || '—';
+    const o = byDay[d] || (byDay[d] = { units:0, cases:0, tasksIn:0, tasksDone:0 });
+    o.units += prodNum(r.total_units); o.cases += prodNum(r.cases_touched);
+    o.tasksIn += prodNum(r.tasks_scanned_in); o.tasksDone += prodNum(r.tasks_completed); });
+  const days = Object.entries(byDay).sort((a,b) => (prodDate(b[0])||0) - (prodDate(a[0])||0));
+  const maxDayUnits = Math.max(1, ...days.map(d => d[1].units));
+
+  // per workstation
+  const byStation = {};
+  mine.forEach(r => { const k = (r.workstation || '—') + ' · ' + (r.department || '—');
+    byStation[k] = (byStation[k] || 0) + prodNum(r.total_units); });
+  const stations = Object.entries(byStation).sort((a,b) => b[1]-a[1]);
+
+  el.innerHTML = `
+    <div class="section-header">
+      <div>
+        <div class="section-title">${esc(e.employee)}</div>
+        <div class="section-sub">${esc(e.dept)} · ${esc(e.station)} · ${e.dayCount} day${e.dayCount===1?'':'s'} of production.</div>
+      </div>
+      <div class="section-actions">
+        <select class="gf-select" id="edPick">
+          ${all.sort((a,b)=>b.units-a.units).map(x => `<option value="${esc(x.employee)}"${x.employee===e.employee?' selected':''}>${esc(x.employee)}</option>`).join('')}
+        </select>
+        <button class="btn-text" id="edExport">⬇ Export</button>
+      </div>
+    </div>
+
+    <div class="kpi-row" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
+      ${[['Total units', e.units.toLocaleString()],
+         ['Total cases', e.cases.toLocaleString()],
+         ['Units / day', (Math.round(e.unitsPerDay*10)/10).toLocaleString()],
+         ['Units / case', (Math.round(e.unitsPerCase*100)/100).toLocaleString()],
+         ['Tasks scanned', e.tasksIn.toLocaleString()],
+         ['Tasks completed', e.tasksDone.toLocaleString() + (e.tasksIn ? ' · ' + Math.round(e.donePct*100) + '%' : '')]
+        ].map(([l,v]) => `<div class="kpi-card" style="flex:1 1 150px;padding:12px 14px;border:1px solid var(--line,#e6e9ee);border-radius:10px">
+            <div class="text-mut" style="font-size:10px;text-transform:uppercase;letter-spacing:.4px">${l}</div>
+            <div style="font-size:21px;font-weight:700;margin-top:2px">${v}</div></div>`).join('')}
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:16px">
+      <div class="card" style="padding:14px;border:1px solid var(--line,#e6e9ee);border-radius:12px">
+        <div style="font-weight:700;margin-bottom:10px">Product mix</div>
+        ${e.mix.map(([name,u]) => { const pct = e.units ? Math.round(u/e.units*100) : 0;
+          return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:7px">
+            <div style="flex:1;min-width:0;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(name)}</div>
+            <div style="width:110px;height:7px;background:#eef1f5;border-radius:4px;overflow:hidden;flex:0 0 auto">
+              <div style="width:${pct}%;height:100%;background:#4361ee"></div></div>
+            <div style="font-size:12px;width:62px;text-align:right">${u.toLocaleString()} <span class="text-mut">${pct}%</span></div>
+          </div>`; }).join('') || '<div class="text-mut">No products recorded.</div>'}
+      </div>
+
+      <div class="card" style="padding:14px;border:1px solid var(--line,#e6e9ee);border-radius:12px">
+        <div style="font-weight:700;margin-bottom:10px">Workstations</div>
+        ${stations.map(([name,u]) => { const pct = e.units ? Math.round(u/e.units*100) : 0;
+          return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:7px">
+            <div style="flex:1;min-width:0;font-size:12.5px">${esc(name)}</div>
+            <div style="width:110px;height:7px;background:#eef1f5;border-radius:4px;overflow:hidden;flex:0 0 auto">
+              <div style="width:${pct}%;height:100%;background:#2a9d8f"></div></div>
+            <div style="font-size:12px;width:62px;text-align:right">${u.toLocaleString()} <span class="text-mut">${pct}%</span></div>
+          </div>`; }).join('') || '<div class="text-mut">No workstations recorded.</div>'}
+      </div>
+    </div>
+
+    <div class="card" style="padding:14px;border:1px solid var(--line,#e6e9ee);border-radius:12px;margin-top:16px">
+      <div style="font-weight:700;margin-bottom:10px">Daily production</div>
+      <table class="tbl" style="width:100%;font-size:13px;border-collapse:collapse">
+        <thead><tr style="text-align:left">
+          <th style="padding:6px 4px">Date</th><th style="padding:6px 4px">Units</th>
+          <th style="padding:6px 4px">Cases</th><th style="padding:6px 4px">Scanned</th>
+          <th style="padding:6px 4px">Completed</th><th style="padding:6px 4px;width:34%"></th>
+        </tr></thead>
+        <tbody>${days.map(([d,o]) => `<tr style="border-top:1px solid var(--line,#eef1f5)">
+          <td style="padding:6px 4px">${esc(d)}</td>
+          <td style="padding:6px 4px;font-weight:600">${o.units.toLocaleString()}</td>
+          <td style="padding:6px 4px">${o.cases.toLocaleString()}</td>
+          <td style="padding:6px 4px">${o.tasksIn.toLocaleString()}</td>
+          <td style="padding:6px 4px">${o.tasksDone.toLocaleString()}</td>
+          <td style="padding:6px 4px"><div style="height:7px;background:#eef1f5;border-radius:4px;overflow:hidden">
+            <div style="width:${Math.round(o.units/maxDayUnits*100)}%;height:100%;background:#4361ee"></div></div></td>
+        </tr>`).join('')}</tbody>
+      </table>
+    </div>`;
+
+  document.getElementById('edPick').addEventListener('change', ev => { PROD.employee = ev.target.value; renderEmployeeDetail(); });
+  document.getElementById('edExport').addEventListener('click', () => {
+    downloadCSV((e.employee.replace(/[^a-z0-9]+/gi,'-').toLowerCase()) + '-production.csv',
+      mine.map(r => ({ date: r.scan_in_date, employee: r.employee, department: r.department,
+        workstation: r.workstation, product: r.product_name, attribution: r.attribution,
+        tasks_scanned_in: r.tasks_scanned_in, tasks_completed: r.tasks_completed,
+        units: r.total_units, cases: r.cases_touched })));
   });
 }
 
