@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.09.28-OT2</title>
+<title>Lab Sales Dashboard v2026.09.28-OT3</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -5241,6 +5241,8 @@ function computeDoctorStatus() {
 
   const map = new Map();
   for (const r of rawByGroupState()) {
+    // Rewound view: a case invoiced AFTER the as-of date has not happened yet.
+    if (asOfCut && r.anchorDate && r.anchorDate > asOfCut) continue;
     let d = map.get(r.drId);
     if (!d) {
       d = {
@@ -9532,8 +9534,11 @@ const RP_CATS = [
   { key: 'c', label: '✅ Current (Active)', color: '#059669', test: d => d.status === 'current' }
 ];
 function rpCatCode(d) { return RP_CATS.filter(c => c.test(d)).map(c => c.key).join(''); }
-function rpLoadSnap() { try { return JSON.parse(localStorage.getItem(RP_SNAP_KEY) || 'null'); } catch (e) { return null; } }
-function rpSaveSnap(s) { try { localStorage.setItem(RP_SNAP_KEY, JSON.stringify(s)); } catch (e) {} }
+/* Retained only to clear the old key. The status baseline is no longer stored:
+   keeping it in localStorage meant the report's idea of "yesterday" depended on
+   which browser last generated it. */
+function rpClearOldSnap() { try { localStorage.removeItem(RP_SNAP_KEY); } catch (e) {} }
+rpClearOldSnap();
 
 function rpBuildStatusReport() {
   const docs = computeDoctorStatus();
@@ -9550,21 +9555,25 @@ function rpBuildStatusReport() {
   const curMap = {};
   docs.forEach(d => { const c = rpCatCode(d); if (c) curMap[d.drId] = c; });
 
-  // Roll the snapshot: keep a previous copy so re-generating on the same data
-  // date stays stable, and only advance when the dataset's max date advances.
-  let snap = rpLoadSnap();
-  let baseMap = null, baseAsOf = null, baseline = false, baseCats = 'nwfi';
-  const CUR_CATS = RP_CATS.map(c => c.key).join('');
-  if (!snap) {
-    baseline = true;
-    rpSaveSnap({ asOf, map: curMap, cats: CUR_CATS, prevAsOf: null, prevMap: null, prevCats: null });
-  } else if (snap.asOf === asOf) {
-    baseMap = snap.prevMap; baseAsOf = snap.prevAsOf; baseCats = snap.prevCats || 'nwfi';
-    if (!baseMap) baseline = true;
-  } else {
-    baseMap = snap.map; baseAsOf = snap.asOf; baseCats = snap.cats || 'nwfi';
-    rpSaveSnap({ asOf, map: curMap, cats: CUR_CATS, prevAsOf: snap.asOf, prevMap: snap.map, prevCats: snap.cats || 'nwfi' });
-  }
+  /* ── The baseline is COMPUTED, not stored ─────────────────────────────────
+     This used to diff against a snapshot kept in localStorage. That snapshot
+     belonged to one browser, so it drifted: whoever generated the report last
+     set the baseline, a new machine or a cleared cache reset it entirely, and
+     it only advanced when the max data date moved. The result was a report
+     headed "added today" that was actually measuring 23 days of additions
+     against a stale Sep 3 baseline.
+
+     The data already contains the history, so the previous day's roster can
+     simply be recomputed: run the same status engine as of yesterday and diff.
+     That makes "added today" mean exactly one day, every time, on any machine,
+     and it cannot be knocked out by a deploy or a cache clear. */
+  const prevDate = new Date(maxDate.getTime() - 864e5);
+  const baseMap = {};
+  computeDoctorStatus(prevDate).forEach(d => { const c = rpCatCode(d); if (c) baseMap[d.drId] = c; });
+  const baseAsOf = isoDate(prevDate);
+  const baseCats = RP_CATS.map(c => c.key).join('');
+  const baseline = false;
+  const CUR_CATS = baseCats;
 
   let h = rpHead('🔔 Status Changes Report', 'Daily additions + full rosters — New / Winback / Falloff / Inactive / Current', maxDate);
 
@@ -9573,7 +9582,9 @@ function rpBuildStatusReport() {
       '<b>Baseline established.</b> This is the first snapshot of every doctor\'s status (data through ' + esc(fmtDate(maxDate)) + '). ' +
       'From the next data update on, this report lists only the doctors newly added to each category. Current totals are below.</div>';
   } else {
-    h += '<div style="' + RP_F + 'font-size:12px;color:#64748b;margin-bottom:14px">Additions since the previous snapshot (data through <b>' + esc(baseAsOf) + '</b>).</div>';
+    h += '<div style="' + RP_F + 'font-size:12px;color:#64748b;margin-bottom:14px">Additions in the last day — ' +
+         'the roster as of <b>' + esc(fmtDate(maxDate)) + '</b> compared with <b>' + esc(fmtDate(prevDate)) + '</b>, ' +
+         'both recomputed from the same data.</div>';
   }
 
   const rpDocRow = d =>
@@ -9973,7 +9984,9 @@ async function rpPost(action) {
       rpLog('✓ Stored for tonight — routing:\n' + routeNote + '\nRe-push after each data refresh to keep them current.', 'ok');
       toast('Reports stored for tonight');
     }
-    rpSaveSnap(built.snap);
+    // No snapshot to save any more: the status baseline is recomputed from the
+    // data each time (see rpBuildStatusReport), so pushing a report no longer
+    // has a side effect on what the NEXT report will call "added today".
   } catch (e) {
     rpLog('✗ ' + e.message, 'err');
     toast('Reports failed: ' + e.message);
