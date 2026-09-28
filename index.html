@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.09.28-OT1</title>
+<title>Lab Sales Dashboard v2026.09.28-OT2</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -9730,6 +9730,164 @@ async function rpBuildVisitReport(forDate) {
   return { html: h, count: total };
 }
 
+
+/* ══ EMPLOYEE PRODUCTION REPORT ═════════════════════════════════════════════
+   Same daily / weekly / monthly / quarterly shape as the Customer and Product
+   reports, but built from lab.production rather than the invoice rows — a
+   different dataset with its own grain (person / day / workstation / product).
+
+   Two differences from the sales reports, both forced by the data:
+   • Periods are counted in CALENDAR days, not invoiced business days. The
+     production export is pulled per day and a day with no scanning is a real
+     zero, not a gap to skip.
+   • No revenue column. Production rows carry units and cases, never money.
+   ═══════════════════════════════════════════════════════════════════════════ */
+function rpEmpWindows(maxDate) {
+  const d0 = new Date(maxDate.getFullYear(), maxDate.getMonth(), maxDate.getDate());
+  const back = n => new Date(d0.getTime() - n * 864e5);
+  return RP_PERIODS.map(p => ({
+    key: p.key, label: p.label, n: p.n, cap: p.cap,
+    curFrom: back(p.cur[1]), curTo: back(p.cur[0]),
+    prvFrom: back(p.prev[1]), prvTo: back(p.prev[0])
+  }));
+}
+
+function rpEmpAggregate(rows, from, to) {
+  const by = {};
+  rows.forEach(r => {
+    const d = prodDate(r.scan_in_date); if (!d) return;
+    if (d < from || d > to) return;
+    const name = String(r.employee || '').trim(); if (!name) return;
+    const e = by[name] || (by[name] = { employee: name, units: 0, cases: 0, tasksIn: 0,
+                                        tasksDone: 0, days: new Set(), products: {}, depts: {} });
+    e.units     += prodNum(r.total_units);
+    e.cases     += prodNum(r.cases_touched);
+    e.tasksIn   += prodNum(r.tasks_scanned_in);
+    e.tasksDone += prodNum(r.tasks_completed);
+    if (r.scan_in_date) e.days.add(r.scan_in_date);
+    const pn = (r.product_name || '(unnamed)').trim();
+    const pv = e.products[pn] || (e.products[pn] = { units: 0, cases: 0 });
+    pv.units += prodNum(r.total_units); pv.cases += prodNum(r.cases_touched);
+    if (r.department) e.depts[r.department] = (e.depts[r.department] || 0) + prodNum(r.total_units);
+  });
+  return by;
+}
+
+function rpEmpDelta(cur, prv) {
+  if (!prv) return '<span style="color:#64748b">—</span>';
+  const d = cur - prv;
+  if (!d) return '<span style="color:#64748b">no change</span>';
+  const pct = prv ? Math.round(d / prv * 100) : null;
+  const up = d > 0;
+  return '<span style="color:' + (up ? '#059669' : '#dc2626') + ';font-weight:700">' +
+         (up ? '▲' : '▼') + ' ' + Math.abs(d).toLocaleString() +
+         (pct !== null ? ' (' + (up ? '+' : '') + pct + '%)' : '') + '</span>';
+}
+
+function rpEmpSection(w, rows) {
+  const cur = rpEmpAggregate(rows, w.curFrom, w.curTo);
+  const prv = rpEmpAggregate(rows, w.prvFrom, w.prvTo);
+  const list = Object.values(cur).sort((a, b) => b.units - a.units);
+
+  const tUnits = list.reduce((s, e) => s + e.units, 0);
+  const tCases = list.reduce((s, e) => s + e.cases, 0);
+  const pUnits = Object.values(prv).reduce((s, e) => s + e.units, 0);
+  const pCases = Object.values(prv).reduce((s, e) => s + e.cases, 0);
+
+  const window = w.key === 'daily'
+    ? fmtDate(w.curTo) + ' vs ' + fmtDate(w.prvTo)
+    : 'last ' + w.n + ' days (' + fmtDate(w.curFrom) + ' – ' + fmtDate(w.curTo) + ') vs prior ' + w.n;
+
+  let h = '<div style="' + RP_F + 'margin:22px 0 8px">' +
+    '<div style="font-size:16px;font-weight:800;color:#0f172a">' + w.label + '</div>' +
+    '<div style="font-size:12px;color:#64748b">' + esc(window) + '</div></div>';
+
+  if (!list.length) {
+    return h + '<div style="' + RP_F + 'padding:14px;background:#f8fafc;border:1px solid #e2e8f0;' +
+      'border-radius:10px;color:#64748b;font-size:13px">No production scanned in this period.</div>';
+  }
+
+  // headline strip
+  h += '<table role="presentation" style="' + RP_F + 'width:100%;border-collapse:separate;border-spacing:8px 0;margin-bottom:10px"><tr>' +
+    [['People', list.length, null],
+     ['Units', tUnits, pUnits],
+     ['Cases', tCases, pCases]
+    ].map(([l, v, p]) =>
+      '<td style="background:#f1f5f9;border-radius:10px;padding:10px 12px;width:33%">' +
+      '<div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#64748b;font-weight:700">' + l + '</div>' +
+      '<div style="font-size:20px;font-weight:800;color:#0f172a">' + v.toLocaleString() + '</div>' +
+      (p !== null ? '<div style="font-size:11px">' + rpEmpDelta(v, p) + '</div>' : '') +
+      '</td>').join('') + '</tr></table>';
+
+  // per-employee, each with its own product breakdown
+  h += '<table role="presentation" style="' + RP_F + 'width:100%;border-collapse:collapse;font-size:13px">' +
+    '<thead><tr style="background:#0f172a;color:#fff">' +
+    ['Employee', 'Units', 'vs prior', 'Cases', 'Days', 'Scanned', 'Done'].map((c, i) =>
+      '<th style="padding:8px 10px;text-align:' + (i ? 'right' : 'left') + ';font-size:11px;' +
+      'text-transform:uppercase;letter-spacing:.06em">' + c + '</th>').join('') +
+    '</tr></thead><tbody>';
+
+  list.slice(0, w.cap).forEach((e, i) => {
+    const p = prv[e.employee];
+    const dept = Object.keys(e.depts).sort((a, b) => e.depts[b] - e.depts[a])[0] || '';
+    const bg = i % 2 ? '#f8fafc' : '#fff';
+    h += '<tr style="background:' + bg + ';border-top:1px solid #e2e8f0">' +
+      '<td style="padding:9px 10px"><b>' + esc(e.employee) + '</b>' +
+        (dept ? '<div style="font-size:11px;color:#64748b">' + esc(dept) + '</div>' : '') + '</td>' +
+      '<td style="padding:9px 10px;text-align:right;font-weight:800">' + e.units.toLocaleString() + '</td>' +
+      '<td style="padding:9px 10px;text-align:right">' + rpEmpDelta(e.units, p ? p.units : null) + '</td>' +
+      '<td style="padding:9px 10px;text-align:right">' + e.cases.toLocaleString() + '</td>' +
+      '<td style="padding:9px 10px;text-align:right">' + e.days.size + '</td>' +
+      '<td style="padding:9px 10px;text-align:right">' + e.tasksIn.toLocaleString() + '</td>' +
+      '<td style="padding:9px 10px;text-align:right">' + e.tasksDone.toLocaleString() + '</td></tr>';
+
+    // product breakdown, indented under the person
+    const mix = Object.entries(e.products).sort((a, b) => b[1].units - a[1].units);
+    h += '<tr style="background:' + bg + '"><td colspan="7" style="padding:0 10px 10px 22px">' +
+      '<table role="presentation" style="width:100%;border-collapse:collapse;font-size:12px">' +
+      mix.map(([name, v]) => {
+        const pct = e.units ? Math.round(v.units / e.units * 100) : 0;
+        return '<tr>' +
+          '<td style="padding:2px 0;color:#334155;width:52%">' + esc(name) + '</td>' +
+          '<td style="padding:2px 0;width:28%">' +
+            '<div style="background:#e2e8f0;border-radius:3px;height:6px;width:100%">' +
+            '<div style="background:#4361ee;height:6px;border-radius:3px;width:' + pct + '%"></div></div></td>' +
+          '<td style="padding:2px 0;text-align:right;color:#0f172a;font-weight:600;width:12%">' + v.units.toLocaleString() + '</td>' +
+          '<td style="padding:2px 0;text-align:right;color:#64748b;width:8%">' + pct + '%</td>' +
+          '</tr>';
+      }).join('') + '</table></td></tr>';
+  });
+
+  h += '</tbody></table>';
+  if (list.length > w.cap) {
+    h += '<div style="' + RP_F + 'font-size:12px;color:#64748b;margin-top:6px">' +
+         'Showing the top ' + w.cap + ' of ' + list.length + ' people by units.</div>';
+  }
+  return h;
+}
+
+async function rpBuildEmployeeReport() {
+  await prodLoadAll();
+  const rows = PROD.rows || [];
+  if (!rows.length) {
+    return rpHead('🧑‍🔧 Daily Employee Production', 'Units, cases and product mix per person', new Date()) +
+      '<div style="' + RP_F + 'padding:16px;background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;font-size:13px">' +
+      'No production data in the database yet. Upload a production export — it is detected automatically and saved.</div>';
+  }
+  // The report is anchored on the latest day the PRODUCTION data reaches, which
+  // is usually a day or two behind the invoice data.
+  let maxD = null;
+  rows.forEach(r => { const d = prodDate(r.scan_in_date); if (d && (!maxD || d > maxD)) maxD = d; });
+  maxD = maxD || new Date();
+
+  let h = rpHead('🧑‍🔧 Daily Employee Production',
+                 'Units, cases and product mix per person', maxD);
+  h = h.replace('Invoiced business days only (Mon–Fri)', 'Calendar days · production scans');
+
+  rpEmpWindows(maxD).forEach(w => { h += rpEmpSection(w, rows); });
+  return h;
+}
+
 async function rpBuildAll() {
   const asOf = isoDate(getMaxDate() || new Date());
   return {
@@ -9738,7 +9896,8 @@ async function rpBuildAll() {
       { key: 'doctors',  subject: '📋 Daily Customer Report',   html: rpBuildDoctorReport() },
       { key: 'products', subject: '📦 Daily Product Report',    html: rpBuildProductReport() },
       { key: 'status',   subject: '🔔 Status Changes Report',   html: rpBuildStatusReport() },
-      { key: 'visits',   subject: '🚗 Daily Visit Report',      html: (await rpBuildVisitReport(isoDate(new Date()))).html }
+      { key: 'visits',   subject: '🚗 Daily Visit Report',      html: (await rpBuildVisitReport(isoDate(new Date()))).html },
+      { key: 'employees', subject: '🧑‍🔧 Daily Employee Production', html: await rpBuildEmployeeReport() }
     ]
   };
 }
@@ -9754,7 +9913,7 @@ function rpLog(msg, cls) {
 async function rpPost(action) {
   const recipients = (document.getElementById('rpRcpt').value || '').trim();
   const perReport = {};
-  ['doctors', 'products', 'status'].forEach(k => {
+  ['doctors', 'products', 'status', 'visits', 'employees'].forEach(k => {
     const el = document.getElementById('rpRcpt_' + k);
     const v = el ? el.value.trim() : '';
     if (v) perReport[k] = v;
@@ -9764,7 +9923,8 @@ async function rpPost(action) {
     rcptDoctors: (document.getElementById('rpRcpt_doctors') || {}).value || '',
     rcptProducts: (document.getElementById('rpRcpt_products') || {}).value || '',
     rcptStatus: (document.getElementById('rpRcpt_status') || {}).value || '',
-    rcptVisits: (document.getElementById('rpRcpt_visits') || {}).value || ''
+    rcptVisits: (document.getElementById('rpRcpt_visits') || {}).value || '',
+    rcptEmployees: (document.getElementById('rpRcpt_employees') || {}).value || ''
   });
   const db = pgClient();
   if (!db) { rpLog('✗ Set your Supabase URL and anon key on the Salesly Bridge tab first', 'err'); return; }
@@ -9829,6 +9989,14 @@ async function rpPreview(which) {
   if (which === 'visits') {
     box.innerHTML = '<div style="padding:18px;color:#64748b;font-size:13px">Loading visits…</div>';
     try { box.innerHTML = (await rpBuildVisitReport(isoDate(new Date()))).html; }
+    catch (e) { box.innerHTML = '<div style="padding:18px;color:#dc2626;font-size:13px">' + esc(e.message) + '</div>'; }
+    box.scrollTop = 0;
+    return;
+  }
+  // Employee production also reads from the database, not the uploaded file.
+  if (which === 'employees') {
+    box.innerHTML = '<div style="padding:18px;color:#64748b;font-size:13px">Loading production…</div>';
+    try { box.innerHTML = await rpBuildEmployeeReport(); }
     catch (e) { box.innerHTML = '<div style="padding:18px;color:#dc2626;font-size:13px">' + esc(e.message) + '</div>'; }
     box.scrollTop = 0;
     return;
@@ -9902,6 +10070,8 @@ function renderReports() {
       <input class="sync-input" id="rpRcpt_status" placeholder="e.g. owner@lab.com, reps@lab.com" value="${esc(cfg.rcptStatus || '')}">
       <label class="sb-label">🚗 Daily visits → </label>
       <input class="sync-input" id="rpRcpt_visits" placeholder="e.g. owner@lab.com" value="${esc(cfg.rcptVisits || '')}">
+      <label class="sb-label">🧑‍🔧 Employee production → </label>
+      <input class="sync-input" id="rpRcpt_employees" placeholder="e.g. production-manager@lab.com" value="${esc(cfg.rcptEmployees || '')}">
       <div id="rpSaveNote" style="margin-top:10px;font-size:12px;font-weight:600"></div>
     </div>
 
@@ -9913,6 +10083,7 @@ function renderReports() {
         <button class="btn-text" id="rpPrevProd">📦 Product report</button>
         <button class="btn-text" id="rpPrevStat">🔔 Status changes</button>
         <button class="btn-text" id="rpPrevVisits">🚗 Daily visits</button>
+        <button class="btn-text" id="rpPrevEmp">🧑‍🔧 Employee production</button>
       </div>
       <div class="rp-preview" id="rpPreview"></div>
     </div>
@@ -9929,6 +10100,7 @@ function renderReports() {
   document.getElementById('rpPrevProd').onclick = () => rpPreview('products');
   document.getElementById('rpPrevStat').onclick = () => rpPreview('status');
   document.getElementById('rpPrevVisits').onclick = () => rpPreview('visits');
+  document.getElementById('rpPrevEmp').onclick = () => rpPreview('employees');
   document.getElementById('rpPush').onclick = () => rpPost('saveReports');
   document.getElementById('rpSend').onclick = () => rpPost('sendNow');
   /* Save the recipient boxes. The old handler read rpUrl/rpToken, which were
@@ -9940,7 +10112,8 @@ function renderReports() {
   const rpRead = id => { const el = document.getElementById(id); return el ? el.value.trim() : null; };
   const rpSaveRecipients = () => {
     const patch = {};
-    const map = { rpRcpt: 'rcpt', rpRcpt_doctors: 'rcptDoctors', rpRcpt_products: 'rcptProducts', rpRcpt_status: 'rcptStatus', rpRcpt_visits: 'rcptVisits' };
+    const map = { rpRcpt: 'rcpt', rpRcpt_doctors: 'rcptDoctors', rpRcpt_products: 'rcptProducts',
+                  rpRcpt_status: 'rcptStatus', rpRcpt_visits: 'rcptVisits', rpRcpt_employees: 'rcptEmployees' };
     Object.keys(map).forEach(id => { const v = rpRead(id); if (v !== null) patch[map[id]] = v; });
     if (!Object.keys(patch).length) return;
     const res = sbSaveCfgObj(patch);
