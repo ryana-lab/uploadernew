@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.09.28-OT6</title>
+<title>Lab Sales Dashboard v2026.09.28-OT7</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -9660,9 +9660,9 @@ function rpBuildStatusReport() {
       '<b>Baseline established.</b> This is the first snapshot of every doctor\'s status (data through ' + esc(fmtDate(maxDate)) + '). ' +
       'From the next data update on, this report lists only the doctors newly added to each category. Current totals are below.</div>';
   } else {
-    h += '<div style="' + RP_F + 'font-size:12px;color:#64748b;margin-bottom:14px">Additions in the last day — ' +
-         'the roster as of <b>' + esc(fmtDate(maxDate)) + '</b> compared with <b>' + esc(fmtDate(prevDate)) + '</b>, ' +
-         'both recomputed from the same data.</div>';
+    h += '<div style="' + RP_F + 'font-size:12px;color:#64748b;margin-bottom:14px">' +
+         'Additions dated <b>' + esc(fmtDate(maxDate)) + '</b> — each doctor\'s entry date is derived from ' +
+         'their own case history, so a falloff or inactive counts on the day it actually happened.</div>';
   }
 
   const rpDocRow = d =>
