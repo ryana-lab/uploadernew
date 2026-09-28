@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.09.28-EMP1</title>
+<title>Lab Sales Dashboard v2026.09.28-EMP2</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -2993,6 +2993,24 @@ function initDashboard() {
       skipEmptyLines: true,
       complete: (res) => {
         try {
+          /* A production export must NOT be merged into the invoice rows — it
+             shares no columns with them, so mergeRows would fold junk into the
+             sales dataset and the Employee tabs would stay empty. This path
+             bypasses finishIngest entirely, which is why the check has to be
+             repeated here rather than living in one place. */
+          if (looksLikeProductionCSV(res.data)) {
+            showProgress('Production export', 40, res.data.length.toLocaleString() + ' rows', '40%');
+            prodPushRows(res.data, file.name).then(ok => {
+              try { hideProgress(); } catch (x) {}
+              toast(ok ? 'Production data saved — see the Employee Grid tab'
+                       : 'Could not save the production data (see the Salesly Bridge log)',
+                    ok ? 'ok' : 'err');
+              if (ok) { PROD.loaded = false;
+                if (APP.tab === 'empgrid' || APP.tab === 'empdetail') renderTab(APP.tab, true); }
+            });
+            addFi.value = '';
+            return;
+          }
           const { merged, added, replaced } = mergeRows(APP.rawRows || [], res.data);
           APP.rawRows = merged;
           showProgress('Merging', 60, added.toLocaleString() + ' new rows', '60%');
