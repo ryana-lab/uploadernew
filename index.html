@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.09.28-EMP2</title>
+<title>Lab Sales Dashboard v2026.09.28-OT1</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -1844,14 +1844,13 @@ function normalizeRecords(rows) {
     // Comparison is by date only, not time, so timestamps within the same day
     // are still considered on-time.
     const dueDate = parseDate(fv(r, F.dueDate));
+    /* onTimeStatus is NO LONGER derived from the due date. The `dd` column is
+       unreliable in the current export, which made early/on-time/late
+       meaningless. It is now set in a second pass below, comparing each case's
+       actual turnaround against the ALL-TIME AVERAGE TURNAROUND FOR THAT
+       PRODUCT — so the product's own normal delivery time plays the role the
+       promised due date used to. See applyProductBaselines(). */
     let onTimeStatus = null;
-    if (dueDate && invDate) {
-      const dueDay = Date.UTC(dueDate.getFullYear(), dueDate.getMonth(), dueDate.getDate());
-      const invDay = Date.UTC(invDate.getFullYear(), invDate.getMonth(), invDate.getDate());
-      if      (invDay < dueDay) onTimeStatus = 'early';
-      else if (invDay > dueDay) onTimeStatus = 'late';
-      else                       onTimeStatus = 'ontime';
-    }
     const rawState = fv(r, F.state);
     const stateName = normalizeState(rawState);
     const stateA = stateAbbr(rawState);
@@ -2006,7 +2005,89 @@ function normalizeRecords(rows) {
       onTimeStatus
     };
   }
-  return out.slice(0, n);
+  const rows_ = out.slice(0, n);
+  applyProductBaselines(rows_);
+  return rows_;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   PRODUCT TURNAROUND BASELINES  →  early / on-time / late
+
+   The old rule compared the invoice date against the promised due date. That
+   column is no longer reliably populated, so the measure had become noise.
+
+   The new rule keeps exactly the same SHAPE, with the product's own average
+   standing in for the promise:
+       A       = all-time average turnaround for that product, whole days
+       early   = finished in fewer than A days
+       on-time = finished in A days
+       late    = finished in A + 1 days or more
+
+   Two details worth knowing:
+   • The average is taken over DISTINCT case+product pairs, not raw rows. A case
+     billing six units of one crown is one data point, not six — otherwise big
+     multi-unit cases would drag the baseline toward themselves.
+   • A product with very few cases has a meaningless average, so anything under
+     MIN_CASES falls back to the overall average across all products. Without
+     this, a product with one case would call that case perfectly on-time by
+     definition.
+   ═══════════════════════════════════════════════════════════════ */
+const PRODUCT_BASELINE_MIN_CASES = 5;
+let PRODUCT_BASELINES = { byProduct: {}, overall: null, builtFrom: 0 };
+
+function applyProductBaselines(rows) {
+  const seen = new Set();               // caseKey|product — one data point per case per product
+  const agg = {};
+  let allSum = 0, allN = 0;
+
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    if (!r || r.tat == null || !r.caseKey) continue;
+    const key = String(r.product || '').trim();
+    if (!key) continue;
+    const dedupe = r.caseKey + '|' + key;
+    if (seen.has(dedupe)) continue;
+    seen.add(dedupe);
+    const a = agg[key] || (agg[key] = { sum: 0, n: 0 });
+    a.sum += r.tat; a.n++;
+    allSum += r.tat; allN++;
+  }
+
+  const overall = allN ? allSum / allN : null;
+  const byProduct = {};
+  Object.keys(agg).forEach(k => {
+    const a = agg[k];
+    const avg = a.n ? a.sum / a.n : null;
+    byProduct[k] = {
+      avg: avg,
+      cases: a.n,
+      // the "due day" this product is judged against
+      target: (a.n >= PRODUCT_BASELINE_MIN_CASES && avg != null) ? Math.round(avg)
+              : (overall != null ? Math.round(overall) : null),
+      thin: a.n < PRODUCT_BASELINE_MIN_CASES
+    };
+  });
+  PRODUCT_BASELINES = { byProduct, overall, builtFrom: allN };
+
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    if (!r) continue;
+    const b = byProduct[String(r.product || '').trim()];
+    const target = b ? b.target : (overall != null ? Math.round(overall) : null);
+    if (r.tat == null || target == null) { r.onTimeStatus = null; r.tatTarget = null; continue; }
+    r.tatTarget = target;
+    r.tatVsTarget = r.tat - target;          // negative = ahead of the product's norm
+    r.onTimeStatus = r.tat < target ? 'early' : (r.tat === target ? 'ontime' : 'late');
+  }
+}
+
+// Used by the UI to explain what a case was measured against.
+function productTarget(productName) {
+  const b = PRODUCT_BASELINES.byProduct[String(productName || '').trim()];
+  if (b) return b;
+  return PRODUCT_BASELINES.overall != null
+    ? { avg: PRODUCT_BASELINES.overall, target: Math.round(PRODUCT_BASELINES.overall), cases: 0, thin: true }
+    : null;
 }
 
 /* ──────────────────────────────────────────
@@ -3255,7 +3336,7 @@ function onTimeKpiHTML(stats) {
       <div class="ontime"><span class="v">${pct(stats.onTimePct)}</span><span class="l">On-Time</span></div>
       <div class="late"><span class="v">${pct(stats.latePct)}</span><span class="l">Late</span></div>
     </div>
-    <div class="kpi-ontime-sub">${fmtN(stats.ontimeCases)} case${stats.ontimeCases===1?'':'s'} vs. due date</div>
+    <div class="kpi-ontime-sub">${fmtN(stats.ontimeCases)} case${stats.ontimeCases===1?'':'s'} vs. product average</div>
   </div>`;
 }
 
@@ -3351,7 +3432,7 @@ function onTimeCardHTML(stats, title) {
       <div class="ot-head">
         <div>
           <div class="ot-title">${esc(title || 'On-Time Delivery')}</div>
-          <div class="ot-sub">vs. promised due date · ${fmtN(stats.ontimeCases)} case${stats.ontimeCases===1?'':'s'} measured</div>
+          <div class="ot-sub">vs. each product's average turnaround · ${fmtN(stats.ontimeCases)} case${stats.ontimeCases===1?'':'s'} measured</div>
         </div>
       </div>
       <div class="ot-rows">
