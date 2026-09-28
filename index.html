@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.09.28-OT5</title>
+<title>Lab Sales Dashboard v2026.09.28-OT6</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -9608,11 +9608,13 @@ function rpBuildStatusReport() {
     entryDates[d.drId] = e;
   });
 
-  // "added on <day>" for a category, straight from those dates
+  /* "added on <day>" for a category, straight from those dates.
+     Deliberately NOT filtered by today's status: a doctor who became New on the
+     1st and has since become Current still became New on the 1st. Requiring
+     current membership emptied every past day and made the report look broken. */
   const addedOn = (catKey, day) => docs.filter(d => {
-    const e = entryDates[d.drId] || {};
-    const dt = e[catKey];
-    return dt && dayKey(dt) === day && rpCatCode(d).indexOf(catKey) >= 0;
+    const dt = (entryDates[d.drId] || {})[catKey];
+    return dt && dayKey(dt) === day;
   });
 
   const asOfDay = isoDate(maxDate);
