@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.09.28-OT3</title>
+<title>Lab Sales Dashboard v2026.09.28-OT5</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -5241,8 +5241,6 @@ function computeDoctorStatus() {
 
   const map = new Map();
   for (const r of rawByGroupState()) {
-    // Rewound view: a case invoiced AFTER the as-of date has not happened yet.
-    if (asOfCut && r.anchorDate && r.anchorDate > asOfCut) continue;
     let d = map.get(r.drId);
     if (!d) {
       d = {
@@ -9567,15 +9565,93 @@ function rpBuildStatusReport() {
      simply be recomputed: run the same status engine as of yesterday and diff.
      That makes "added today" mean exactly one day, every time, on any machine,
      and it cannot be knocked out by a deploy or a cache clear. */
-  const prevDate = new Date(maxDate.getTime() - 864e5);
-  const baseMap = {};
-  computeDoctorStatus(prevDate).forEach(d => { const c = rpCatCode(d); if (c) baseMap[d.drId] = c; });
-  const baseAsOf = isoDate(prevDate);
-  const baseCats = RP_CATS.map(c => c.key).join('');
+  /* ── Entry dates are DERIVED, not snapshotted ────────────────────────────
+     Two earlier versions of this got it wrong. A localStorage snapshot drifted
+     per browser, so "added today" once spanned 23 days. Diffing against
+     yesterday fixed the window but tied everything to when data was uploaded —
+     load three days at once and two days of changes vanish.
+
+     A doctor's case history already says WHEN they entered each category, so
+     that is what we read:
+       new      → their first case
+       current  → a case following 21+ days of silence (or day 16 after their
+                  first case, when they stop counting as new)
+       winback  → the case that ended a 60+ day gap
+       falloff  → 21 days after their last case
+       inactive → 30 days after their last case
+     Falloff and inactive are the interesting ones: nothing happens on those
+     days, no file is uploaded, and yet the doctor genuinely changed category.
+     Only a derived date can catch that. */
+  const D15 = 15, D20 = 20, D29 = 29;
+  const dayKey = d => isoDate(d);
+  const entryDates = {};              // drId -> { n:Date, c:Date, w:Date, f:Date, i:Date }
+  docs.forEach(d => {
+    const e = {};
+    if (d.firstDate) {
+      e.n = d.firstDate;
+      const after = new Date(d.firstDate.getTime() + (D15 + 1) * 864e5);
+      if (after <= maxDate) e.c = after;
+    }
+    // a return after real silence re-enters "current" on the day of that case
+    if (d.dates && d.dates.length > 1) {
+      for (let i = 1; i < d.dates.length; i++) {
+        if ((d.dates[i] - d.dates[i-1]) / 864e5 > D20) e.c = d.dates[i];
+      }
+    }
+    if (d.returnedDate) e.w = d.returnedDate;
+    if (d.lastDate) {
+      const f = new Date(d.lastDate.getTime() + (D20 + 1) * 864e5);
+      const i2 = new Date(d.lastDate.getTime() + (D29 + 1) * 864e5);
+      if (f  <= maxDate) e.f  = f;
+      if (i2 <= maxDate) e.i  = i2;
+    }
+    entryDates[d.drId] = e;
+  });
+
+  // "added on <day>" for a category, straight from those dates
+  const addedOn = (catKey, day) => docs.filter(d => {
+    const e = entryDates[d.drId] || {};
+    const dt = e[catKey];
+    return dt && dayKey(dt) === day && rpCatCode(d).indexOf(catKey) >= 0;
+  });
+
+  const asOfDay = isoDate(maxDate);
+  const baseAsOf = asOfDay;
   const baseline = false;
-  const CUR_CATS = baseCats;
 
   let h = rpHead('🔔 Status Changes Report', 'Daily additions + full rosters — New / Winback / Falloff / Inactive / Current', maxDate);
+
+  /* Day-by-day movement across the last two weeks. The single-day view above
+     only tells you about the latest day; this shows whether a category has been
+     filling up steadily or spiked once, and it is derived from case history so
+     it is correct no matter how many days a single upload happened to cover. */
+  const DAYS_BACK = 14;
+  const dayRows = [];
+  for (let i = 0; i < DAYS_BACK; i++) {
+    const day = isoDate(new Date(maxDate.getTime() - i * 864e5));
+    const counts = {};
+    let any = 0;
+    RP_CATS.forEach(c => { const n = addedOn(c.key, day).length; counts[c.key] = n; any += n; });
+    dayRows.push({ day, counts, any });
+  }
+  h += '<div style="' + RP_F + 'font-size:15px;font-weight:800;color:#0f172a;margin:6px 0 8px">Movement by day</div>';
+  h += '<table role="presentation" style="' + RP_F + 'width:100%;border-collapse:collapse;font-size:13px;margin-bottom:8px">' +
+    '<thead><tr style="background:#0f172a;color:#fff">' +
+    '<th style="padding:8px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.06em">Day</th>' +
+    RP_CATS.map(c => '<th style="padding:8px 10px;text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:.06em">' +
+      esc(c.label.replace(/^[^ ]+ /, '')) + '</th>').join('') +
+    '</tr></thead><tbody>' +
+    dayRows.map((r, i) => '<tr style="background:' + (i ? (i % 2 ? '#f8fafc' : '#fff') : '#eff6ff') +
+      ';border-top:1px solid #e2e8f0">' +
+      '<td style="padding:7px 10px;font-weight:' + (i ? '500' : '800') + '">' + esc(fmtDate(new Date(r.day + 'T00:00:00'))) +
+        (i ? '' : ' <span style="color:#2563eb;font-size:11px">(latest)</span>') + '</td>' +
+      RP_CATS.map(c => '<td style="padding:7px 10px;text-align:right;' +
+        (r.counts[c.key] ? 'font-weight:700;color:' + c.color : 'color:#cbd5e1') + '">' +
+        (r.counts[c.key] || '–') + '</td>').join('') + '</tr>').join('') +
+    '</tbody></table>' +
+    '<div style="' + RP_F + 'font-size:11.5px;color:#64748b;margin-bottom:18px">' +
+    'Entry dates come from each doctor\'s own case history — a falloff on the 21st silent day counts on that day, ' +
+    'whether or not data was uploaded. Totals below are the full current roster.</div>';
 
   if (baseline) {
     h += '<div style="' + RP_F + 'background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:12px 16px;font-size:13px;color:#92400e;margin-bottom:16px">' +
@@ -9615,11 +9691,10 @@ function rpBuildStatusReport() {
     const inCat = docs.filter(d => cat.test(d)).sort((a, b) => (rev90[b.drId] || 0) - (rev90[a.drId] || 0));
     // A category the previous snapshot never tracked (e.g. Current added in an
     // update) baselines instead of flooding 'added today' with its whole roster.
-    const catBaseline = baseline || baseCats.indexOf(cat.key) < 0;
-    const adds = catBaseline ? [] : inCat.filter(d => {
-      const prev = baseMap[d.drId] || '';
-      return prev.indexOf(cat.key) < 0;
-    });
+    const catBaseline = false;
+    // Everyone who entered THIS category on the report's latest day.
+    const adds = addedOn(cat.key, asOfDay)
+                   .sort((a, b) => (rev90[b.drId] || 0) - (rev90[a.drId] || 0));
 
     h += '<div style="' + RP_F + 'font-size:15px;font-weight:800;color:' + cat.color + ';margin:22px 0 8px">' + cat.label +
       ' <span style="color:#0f172a">— ' + (catBaseline ? '' : '<b>' + adds.length + ' added today</b> · ') + inCat.length + ' total</span></div>';
