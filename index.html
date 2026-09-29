@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.09.29-SUB1</title>
+<title>Lab Sales Dashboard v2026.09.29-SUB2</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -6224,7 +6224,12 @@ async function prodLoadAll(force) {
             r.tasks_completed  = /true/i.test(String(r.is_completed || '')) ? 1 : 0;
             r.step            = r.step_label || r.subtask_name || r.task_name || '';
           } else {
-            r.step = r.product_name || '';
+            /* Rows from the OLDER daily rollup have no task or subtask — only a
+               product. Leaving `step` blank keeps them out of the task/subtask
+               panel entirely; they still count toward units, cases and the
+               product mix. Setting it to the product name put "Vitality Solid
+               Zirconia" in a panel that is meant to show work steps. */
+            r.step = '';
           }
           rows.push(r);
         });
