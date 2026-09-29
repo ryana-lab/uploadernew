@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.09.28-OT7</title>
+<title>Lab Sales Dashboard v2026.09.29-SUB1</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -6126,12 +6126,17 @@ function prodNum(v) { const n = parseFloat(v); return isNaN(n) ? 0 : n; }
 /* Is this uploaded CSV a PRODUCTION export rather than the invoice one? They
    share no columns, so the headers tell us unambiguously and the user never has
    to pick a file type. */
-function looksLikeProductionCSV(rows) {
-  if (!rows || !rows.length) return false;
+function prodCsvKind(rows) {
+  if (!rows || !rows.length) return null;
   const keys = Object.keys(rows[0] || {}).map(k => String(k).trim().toLowerCase());
-  const need = ['employee', 'scan_in_date', 'total_units'];
-  return need.every(k => keys.includes(k));
+  const has = k => keys.includes(k);
+  // v2: one row per task, with the case, the timing and (sometimes) a subtask
+  if (has('employee') && has('task_id') && has('scan_in_date')) return 'task';
+  // v1: the older daily rollup
+  if (has('employee') && has('scan_in_date') && has('total_units')) return 'rollup';
+  return null;
 }
+function looksLikeProductionCSV(rows) { return !!prodCsvKind(rows); }
 
 /* Push a production export to the database. Days are small (one day, a handful
    of people), so this goes up in one or two chunks and the loader UPSERTS:
@@ -6140,16 +6145,25 @@ function looksLikeProductionCSV(rows) {
 async function prodPushRows(rows, label) {
   const db = pgClient();
   if (!db) { sbLog('Connect to Supabase first — production data is stored there.', 'warn'); return false; }
+  const kind = prodCsvKind(rows) || 'rollup';
+  const fn = kind === 'task'
+    ? { reset: 'ptask_stage_reset', stage: 'ptask_stage_rows', load: 'ptask_load' }
+    : { reset: 'prod_stage_reset',  stage: 'prod_stage_rows',  load: 'prod_load' };
   try {
-    sbLog('Saving ' + rows.length.toLocaleString() + ' production rows to the database…');
-    const { error: rErr } = await db.rpc('prod_stage_reset');
+    sbLog('Saving ' + rows.length.toLocaleString() + ' production rows (' +
+          (kind === 'task' ? 'task/subtask detail' : 'daily rollup') + ')…');
+    /* The task export carries a `patient` column. It is stripped HERE, in the
+       browser, so identifiable health information never crosses the wire — the
+       database drops it again on its side, but there is no reason to send it. */
+    const clean = rows.map(r => { const o = {}; for (const k in r) { if (String(k).trim().toLowerCase() !== 'patient') o[k] = r[k]; } return o; });
+    const { error: rErr } = await db.rpc(fn.reset);
     if (rErr) throw new Error(rErr.message);
     const CH = 2000;
-    for (let i = 0; i < rows.length; i += CH) {
-      const { error } = await db.rpc('prod_stage_rows', { p_rows: rows.slice(i, i + CH) });
+    for (let i = 0; i < clean.length; i += CH) {
+      const { error } = await db.rpc(fn.stage, { p_rows: clean.slice(i, i + CH) });
       if (error) throw new Error(error.message);
     }
-    const { data, error: lErr } = await db.rpc('prod_load', { p_source: label || 'dashboard upload' });
+    const { data, error: lErr } = await db.rpc(fn.load, { p_source: label || 'dashboard upload' });
     if (lErr) throw new Error(lErr.message);
     const d = data || {};
     sbLog('✓ production: ' + Number(d.rows || 0).toLocaleString() + ' rows for ' +
@@ -6160,6 +6174,8 @@ async function prodPushRows(rows, label) {
     const m = (e && e.message) || String(e);
     sbLog('✗ production: ' + m, 'err');
     if (/Admins only/i.test(m)) sbLog('   This login is not role=\'admin\' in the reps table.', 'warn');
+    else if (/ptask_/i.test(m))
+      sbLog('   Run salesly_production_tasks.sql in Supabase first — this is the new task export.', 'warn');
     else if (/prod_stage_rows|prod_load|schema cache|does not exist/i.test(m))
       sbLog('   Run salesly_production_schema.sql in Supabase first.', 'warn');
     return false;
@@ -6184,15 +6200,37 @@ async function prodLoadAll(force) {
   if (!db) return false;
   PROD.loading = true;
   try {
-    const rows = []; let after = 0;
-    for (;;) {
-      const { data, error } = await db.rpc('prod_fetch_rows', { p_after: after, p_limit: 5000 });
-      if (error) throw new Error(error.message);
-      const got = (data && data.rows) || [];
-      if (!got.length) break;
-      for (let i = 0; i < got.length; i++) rows.push(got[i]);
-      after = Number(data.last_id) || after;
-      if (got.length < 5000) break;
+    const rows = [];
+    // Pull both shapes: the newer task/subtask export and anything loaded under
+    // the older daily rollup, so history from before the format change survives.
+    for (const src of [
+      { rpc: 'ptask_fetch_rows', task: true },
+      { rpc: 'prod_fetch_rows',  task: false }
+    ]) {
+      let after = 0;
+      for (;;) {
+        let data, error;
+        try { ({ data, error } = await db.rpc(src.rpc, { p_after: after, p_limit: 5000 })); }
+        catch (e) { break; }                       // that table/RPC not installed — skip it
+        if (error) break;
+        const got = (data && data.rows) || [];
+        if (!got.length) break;
+        got.forEach(r => {
+          if (src.task) {
+            // normalise the task grain onto the shape the tabs already read
+            r.total_units    = r.units;
+            r.cases_touched  = r.case_number ? 1 : 0;
+            r.tasks_scanned_in = 1;
+            r.tasks_completed  = /true/i.test(String(r.is_completed || '')) ? 1 : 0;
+            r.step            = r.step_label || r.subtask_name || r.task_name || '';
+          } else {
+            r.step = r.product_name || '';
+          }
+          rows.push(r);
+        });
+        after = Number(data.last_id) || after;
+        if (got.length < 5000) break;
+      }
     }
     PROD.rows = rows; PROD.loaded = true;
     return true;
@@ -6208,7 +6246,8 @@ function prodByEmployee() {
   PROD.rows.filter(prodInRange).forEach(r => {
     const k = String(r.employee || '').trim(); if (!k) return;
     const e = by[k] || (by[k] = { employee: k, units: 0, cases: 0, tasksIn: 0, tasksDone: 0,
-                                  days: new Set(), products: {}, stations: {}, depts: {} });
+                                  minutes: 0, days: new Set(), products: {}, steps: {},
+                                  stations: {}, depts: {} });
     e.units     += prodNum(r.total_units);
     e.cases     += prodNum(r.cases_touched);
     e.tasksIn   += prodNum(r.tasks_scanned_in);
@@ -6216,12 +6255,30 @@ function prodByEmployee() {
     if (r.scan_in_date) e.days.add(r.scan_in_date);
     const pn = (r.product_name || '(unnamed)').trim();
     e.products[pn] = (e.products[pn] || 0) + prodNum(r.total_units);
+    /* The step is the SUBTASK where the export gives one, otherwise the task
+       name. Only about a fifth of rows carry a subtask and they cluster in CAD,
+       so without the fallback Milling, 3D Printing and Finishing would show an
+       empty breakdown. */
+    const st = (r.step || r.step_label || r.subtask_name || r.task_name || '').trim();
+    if (st) {
+      const sv = e.steps[st] || (e.steps[st] = { units: 0, tasks: 0, mins: 0 });
+      sv.units += prodNum(r.total_units);
+      sv.tasks += prodNum(r.tasks_scanned_in) || 1;
+      sv.mins  += prodNum(r.planned_minutes);
+    }
+    e.minutes += prodNum(r.planned_minutes);
     if (r.workstation) e.stations[r.workstation] = (e.stations[r.workstation] || 0) + prodNum(r.total_units);
     if (r.department)  e.depts[r.department]     = (e.depts[r.department]     || 0) + prodNum(r.total_units);
   });
   return Object.values(by).map(e => {
     const top = Object.entries(e.products).sort((a,b) => b[1]-a[1]);
+    const steps = Object.entries(e.steps).sort((a,b) => b[1].units - a[1].units);
     return Object.assign(e, {
+      stepMix: steps,
+      topStep: steps.length ? steps[0][0] : '',
+      // planned_minutes now varies per task in the export, so this is a real
+      // figure rather than a restatement of the task count
+      minutesPerUnit: e.units ? e.minutes / e.units : 0,
       dayCount:   e.days.size,
       topProduct: top.length ? top[0][0] : '—',
       topShare:   top.length && e.units ? top[0][1] / e.units : 0,
@@ -6336,7 +6393,9 @@ function drawEGrid() {
   }
   grid.innerHTML = list.map(e => {
     // Product mix ranked first, because that is what the grid is for.
-    const mix = e.mix.slice(0,3).map(([name, u]) => {
+    const useSteps = e.stepMix && e.stepMix.length;
+    const mixSrc = useSteps ? e.stepMix.map(([n, v]) => [n, v.units]) : e.mix;
+    const mix = mixSrc.slice(0,3).map(([name, u]) => {
       const pct = e.units ? Math.round(u / e.units * 100) : 0;
       return `<div style="display:flex;align-items:center;gap:8px;margin-top:5px">
         <div style="flex:1;min-width:0;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(name)}</div>
@@ -6345,7 +6404,8 @@ function drawEGrid() {
         <div class="text-mut" style="font-size:11px;width:34px;text-align:right">${pct}%</div>
       </div>`;
     }).join('');
-    const more = e.mix.length > 3 ? `<div class="text-mut" style="font-size:11px;margin-top:4px">+${e.mix.length-3} more products</div>` : '';
+    const more = mixSrc.length > 3
+      ? `<div class="text-mut" style="font-size:11px;margin-top:4px">+${mixSrc.length-3} more ${useSteps?'steps':'products'}</div>` : '';
     return `<div class="dr-card clk" data-emp="${esc(e.employee)}" style="cursor:pointer">
       <div style="display:flex;align-items:baseline;gap:8px">
         <div class="dr-name" style="flex:1">${esc(e.employee)}</div>
@@ -6362,7 +6422,7 @@ function drawEGrid() {
         <div><div class="text-mut" style="font-size:10px;text-transform:uppercase">Units / case</div>
              <div style="font-size:17px;font-weight:700">${(Math.round(e.unitsPerCase*100)/100).toLocaleString()}</div></div>
       </div>
-      <div class="text-mut" style="font-size:10px;text-transform:uppercase;letter-spacing:.4px">Product mix</div>
+      <div class="text-mut" style="font-size:10px;text-transform:uppercase;letter-spacing:.4px">${useSteps?'Task / subtask mix':'Product mix'}</div>
       ${mix}${more}
     </div>`;
   }).join('');
@@ -6420,13 +6480,24 @@ async function renderEmployeeDetail() {
          ['Units / day', (Math.round(e.unitsPerDay*10)/10).toLocaleString()],
          ['Units / case', (Math.round(e.unitsPerCase*100)/100).toLocaleString()],
          ['Tasks scanned', e.tasksIn.toLocaleString()],
-         ['Tasks completed', e.tasksDone.toLocaleString() + (e.tasksIn ? ' · ' + Math.round(e.donePct*100) + '%' : '')]
+         ['Tasks completed', e.tasksDone.toLocaleString() + (e.tasksIn ? ' · ' + Math.round(e.donePct*100) + '%' : '')],
+         ['Planned min / unit', e.minutesPerUnit ? (Math.round(e.minutesPerUnit*10)/10).toLocaleString() : '—']
         ].map(([l,v]) => `<div class="kpi-card" style="flex:1 1 150px;padding:12px 14px;border:1px solid var(--line,#e6e9ee);border-radius:10px">
             <div class="text-mut" style="font-size:10px;text-transform:uppercase;letter-spacing:.4px">${l}</div>
             <div style="font-size:21px;font-weight:700;margin-top:2px">${v}</div></div>`).join('')}
     </div>
 
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:16px">
+      ${(e.stepMix && e.stepMix.length) ? `<div class="card" style="padding:14px;border:1px solid var(--line,#e6e9ee);border-radius:12px">
+        <div style="font-weight:700;margin-bottom:10px">Task / subtask mix</div>
+        ${e.stepMix.map(([name,v]) => { const pct = e.units ? Math.round(v.units/e.units*100) : 0;
+          return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:7px">
+            <div style="flex:1;min-width:0;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(name)}</div>
+            <div style="width:110px;height:7px;background:#eef1f5;border-radius:4px;overflow:hidden;flex:0 0 auto">
+              <div style="width:${pct}%;height:100%;background:#7c3aed"></div></div>
+            <div style="font-size:12px;width:96px;text-align:right">${v.units.toLocaleString()} u <span class="text-mut">· ${v.tasks} task${v.tasks===1?'':'s'}</span></div>
+          </div>`; }).join('')}
+      </div>` : ''}
       <div class="card" style="padding:14px;border:1px solid var(--line,#e6e9ee);border-radius:12px">
         <div style="font-weight:700;margin-bottom:10px">Product mix</div>
         ${e.mix.map(([name,u]) => { const pct = e.units ? Math.round(u/e.units*100) : 0;
