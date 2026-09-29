@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.09.29-SUB2</title>
+<title>Lab Sales Dashboard v2026.09.29-SUB3</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -6251,7 +6251,7 @@ function prodByEmployee() {
   PROD.rows.filter(prodInRange).forEach(r => {
     const k = String(r.employee || '').trim(); if (!k) return;
     const e = by[k] || (by[k] = { employee: k, units: 0, cases: 0, tasksIn: 0, tasksDone: 0,
-                                  minutes: 0, days: new Set(), products: {}, steps: {},
+                                  minutes: 0, stepUnits: 0, days: new Set(), products: {}, steps: {},
                                   stations: {}, depts: {} });
     e.units     += prodNum(r.total_units);
     e.cases     += prodNum(r.cases_touched);
@@ -6270,6 +6270,7 @@ function prodByEmployee() {
       sv.units += prodNum(r.total_units);
       sv.tasks += prodNum(r.tasks_scanned_in) || 1;
       sv.mins  += prodNum(r.planned_minutes);
+      e.stepUnits += prodNum(r.total_units);
     }
     e.minutes += prodNum(r.planned_minutes);
     if (r.workstation) e.stations[r.workstation] = (e.stations[r.workstation] || 0) + prodNum(r.total_units);
@@ -6400,8 +6401,13 @@ function drawEGrid() {
     // Product mix ranked first, because that is what the grid is for.
     const useSteps = e.stepMix && e.stepMix.length;
     const mixSrc = useSteps ? e.stepMix.map(([n, v]) => [n, v.units]) : e.mix;
+    /* Percentages are measured against the units that actually carry a step,
+       not every unit. Rows loaded under the older rollup format have no task
+       label, so including them made a person whose whole day was 3D Printing
+       read "28%". */
+    const mixTotal = useSteps ? (e.stepUnits || e.units) : e.units;
     const mix = mixSrc.slice(0,3).map(([name, u]) => {
-      const pct = e.units ? Math.round(u / e.units * 100) : 0;
+      const pct = mixTotal ? Math.round(u / mixTotal * 100) : 0;
       return `<div style="display:flex;align-items:center;gap:8px;margin-top:5px">
         <div style="flex:1;min-width:0;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(name)}</div>
         <div style="width:78px;height:6px;background:#eef1f5;border-radius:3px;overflow:hidden;flex:0 0 auto">
@@ -6427,7 +6433,7 @@ function drawEGrid() {
         <div><div class="text-mut" style="font-size:10px;text-transform:uppercase">Units / case</div>
              <div style="font-size:17px;font-weight:700">${(Math.round(e.unitsPerCase*100)/100).toLocaleString()}</div></div>
       </div>
-      <div class="text-mut" style="font-size:10px;text-transform:uppercase;letter-spacing:.4px">${useSteps?'Task / subtask mix':'Product mix'}</div>
+      <div class="text-mut" style="font-size:10px;text-transform:uppercase;letter-spacing:.4px">${useSteps?'Task / subtask mix':'Product mix <span style="text-transform:none;letter-spacing:0">(no task data yet)</span>'}</div>
       ${mix}${more}
     </div>`;
   }).join('');
@@ -6495,7 +6501,7 @@ async function renderEmployeeDetail() {
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:16px">
       ${(e.stepMix && e.stepMix.length) ? `<div class="card" style="padding:14px;border:1px solid var(--line,#e6e9ee);border-radius:12px">
         <div style="font-weight:700;margin-bottom:10px">Task / subtask mix</div>
-        ${e.stepMix.map(([name,v]) => { const pct = e.units ? Math.round(v.units/e.units*100) : 0;
+        ${e.stepMix.map(([name,v]) => { const pct = (e.stepUnits || e.units) ? Math.round(v.units/(e.stepUnits || e.units)*100) : 0;
           return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:7px">
             <div style="flex:1;min-width:0;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(name)}</div>
             <div style="width:110px;height:7px;background:#eef1f5;border-radius:4px;overflow:hidden;flex:0 0 auto">
@@ -7713,9 +7719,20 @@ const SB_CFG_KEY = 'labbridge_cfg';
    overwritten with the stale copy. Columns not named here are left untouched
    by the upsert, so a rep's visit history can no longer be lost to a sync.
    Deletions still work: the app soft-deletes via active=false. */
+/* READ list — everything the bridge needs to SEE, including the rep-owned
+   columns. `visited` in particular carries the app's soft-delete marker and is
+   read in six places for tombstones; dropping it from here broke the sync with
+   "Sheet is missing the 'visited' column". */
 const PG_COLS = ["id","name","addr","city","zip","lat","lng","phone","email","scanner",
-                 "lab","drs","hours","visitDay","notes",
+                 "lab","drs","hours","visitDay","visited","notes","visits",
                  "starterKit","welcomeEmail","pricelist"];
+
+/* WRITE list — what the sync is allowed to send back. `visits` and `visited`
+   are REP-OWNED and absent on purpose: the sync reads rows at the start and
+   writes them back minutes later, so a visit logged inside that window used to
+   be overwritten with the stale copy. Columns not named here are left untouched
+   by the upsert. */
+const PG_WRITE_COLS = PG_COLS.filter(c => c !== 'visits' && c !== 'visited');
 
 let PG = null;
 function pgClient() {
@@ -7886,7 +7903,11 @@ function pgArrToRow(a, ci) {
     scanner: String(g('scanner') || ''), lab: String(g('lab') || ''),
     drs: String(g('drs') || ''), hours: String(g('hours') || ''),
     visit_day: String(g('visitDay') || ''), notes: String(g('notes') || ''),
-    visits: String(g('visits') || ''),
+    /* `visits` is READ (PG_COLS) but never WRITTEN. The sync reads rows, spends
+       minutes geocoding, then writes back; sending visits would overwrite any
+       visit a rep logged inside that window. Omitting the key leaves the column
+       untouched by the upsert. Same for `visited`, whose deleted marker is now
+       carried by `active` below. */
     starter_kit: String(g('starterKit')) === 'Yes',
     welcome_email: String(g('welcomeEmail')) === 'Yes',
     pricelist: String(g('pricelist') || ''),
