@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.09.29-SUB3</title>
+<title>Lab Sales Dashboard v2026.09.29-SUB4</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -8469,8 +8469,38 @@ function renderBridge() {
             cutoff = new Date(sum.to + 'T00:00:00');
             cutoff.setDate(cutoff.getDate() - LAB_OVERLAP_DAYS);
             const filtered = all.filter(r => { const d = labRowDate(r); return !d || d >= cutoff; });
-            // Only worth it if it actually saves something meaningful.
-            if (filtered.length && filtered.length < all.length * 0.9) rows = filtered;
+
+            /* The filter is an OPTIMISATION for the daily top-up, never a
+               correctness rule — the server skips duplicates by fingerprint
+               anyway. It must not silently discard a BACKFILL.
+
+               A July file loaded against a database that already reaches
+               September had every one of its 1,926 rows fall below the cutoff,
+               so nothing was sent and nothing saved. Two guards:
+                 • if the filter would drop nearly everything, the file is
+                   historical, not a top-up — send all of it
+                 • if what survives is a small slice of the file, the rest is
+                   older data worth keeping — send all of it                    */
+            /* Which kind of file is this? The deciding question is whether it
+               reaches PAST what the database already holds:
+                 • a daily export ends at or after the database's latest date →
+                   only the tail is new, so filter and send a few thousand rows
+                 • a historical file ends BEFORE it (a July backfill against a
+                   database reaching September) → every row is below the cutoff,
+                   so filtering would send nothing at all. Send the lot. */
+            let fileMax = null;
+            all.forEach(r => { const d = labRowDate(r); if (d && (!fileMax || d > fileMax)) fileMax = d; });
+            const dbMax = new Date(sum.to + 'T00:00:00');
+            const historical = fileMax && fileMax < dbMax;
+
+            if (historical) {
+              sbLog('This export ends ' + fileMax.toLocaleDateString() + ', before the database\'s ' +
+                    dbMax.toLocaleDateString() + ' — treating it as a backfill and sending all ' +
+                    all.length.toLocaleString() + ' rows.');
+              rows = all;
+            } else if (filtered.length && filtered.length < all.length * 0.9) {
+              rows = filtered;
+            }
           }
         } catch (e) { /* fall back to sending everything */ }
       }
