@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.09.29-SUB4</title>
+<title>Lab Sales Dashboard v2026.09.29-SUB7</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -3103,6 +3103,17 @@ function initDashboard() {
           };
           // Auto-save after merging so the new combined dataset survives a reload
           dbPut({ rows: APP.rawRows, meta: APP.meta }).catch(err => console.error('Auto-save failed:', err));
+          /* …and push it to the DATABASE, which is what every other browser and
+             user reads. This path used to save only to the local cache, so added
+             data looked fine on the machine that added it and simply did not
+             exist anywhere else. Only the rows from THIS file are sent — the
+             per-day comparison in labPushRaw then drops any day already stored. */
+          const addedRows = res.data;
+          setTimeout(() => {
+            try {
+              if (typeof window.__labPushRaw === 'function') window.__labPushRaw({ auto: true, rows: addedRows });
+            } catch (e) {}
+          }, 800);
           // Re-establish filter bounds and rebuild
           const min = getMinDate(), max = getMaxDate();
           const maxEod = max ? new Date(max.getFullYear(), max.getMonth(), max.getDate(), 23, 59, 59) : null;
@@ -8438,9 +8449,7 @@ function renderBridge() {
   const LAB_CHUNK = 2000;
   // Rows are skipped server-side by fingerprint, so re-sending old ones is
   // harmless — but uploading 190k rows to add a few hundred wastes a minute of
-  // every single day. Ask the database how far it has got and send only from
-  // that date back a few days (late-arriving invoices land inside that window).
-  const LAB_OVERLAP_DAYS = 10;
+  // every single day, so labPushRaw sends only the days the database lacks.
   function labRowDate(r) {
     const v = r && (r.Invoice_Date || r.invoice_date);
     if (!v) return null;
@@ -8453,56 +8462,66 @@ function renderBridge() {
     opts = opts || {};
     const db = pgClient();
     if (!db) { if (!opts.auto) sbLog('Connect to Supabase first (Test connection).', 'warn'); return; }
-    const all = (APP && APP.rawRows) || [];
+    // An explicit row set (from Add Data) wins; otherwise send the whole dataset.
+    const all = (opts.rows && opts.rows.length) ? opts.rows : ((APP && APP.rawRows) || []);
     if (!all.length) { if (!opts.auto) sbLog('No CSV loaded — upload your export first.', 'warn'); return; }
 
     const btn = document.getElementById('sbLabPush');
     if (btn) { btn.disabled = true; btn.textContent = '🗄 Saving…'; }
     try {
-      // Work out the cutoff. No data yet, or "send everything" asked for, means
-      // the whole file goes.
-      let rows = all, cutoff = null;
+      /* ── Decide which rows to send, by comparing DAY BY DAY ─────────────────
+         Earlier versions filtered on a date cutoff (latest stored invoice minus
+         ten days). That assumed the database had no gaps, and it failed exactly
+         when a gap existed: a July file against a database reaching September
+         sent zero rows, and a later full export would have dropped July too.
+
+         Instead: ask the database how many rows it holds for each invoice day,
+         group this file the same way, and send every day where the file has
+         MORE rows than the database. Missing days, short days and brand-new
+         days all go up; days that already match are skipped. The server still
+         de-duplicates by fingerprint, so a slightly generous send is harmless —
+         this only exists to avoid re-uploading 190k rows every morning. */
+      let rows = all;
+      /* A file added through "+ Add Data" is supplementary and small, and it is
+         exactly the case where any filtering goes wrong: it can hold cases the
+         database has never seen on days the database already holds plenty of.
+         Send every row; the server's fingerprint check discards true repeats. */
+      if (opts.rows && opts.rows.length) opts.full = true;
       if (!opts.full) {
         try {
-          const { data: sum } = await db.rpc('lab_summary');
-          if (sum && Number(sum.rows) > 0 && sum.to) {
-            cutoff = new Date(sum.to + 'T00:00:00');
-            cutoff.setDate(cutoff.getDate() - LAB_OVERLAP_DAYS);
-            const filtered = all.filter(r => { const d = labRowDate(r); return !d || d >= cutoff; });
-
-            /* The filter is an OPTIMISATION for the daily top-up, never a
-               correctness rule — the server skips duplicates by fingerprint
-               anyway. It must not silently discard a BACKFILL.
-
-               A July file loaded against a database that already reaches
-               September had every one of its 1,926 rows fall below the cutoff,
-               so nothing was sent and nothing saved. Two guards:
-                 • if the filter would drop nearly everything, the file is
-                   historical, not a top-up — send all of it
-                 • if what survives is a small slice of the file, the rest is
-                   older data worth keeping — send all of it                    */
-            /* Which kind of file is this? The deciding question is whether it
-               reaches PAST what the database already holds:
-                 • a daily export ends at or after the database's latest date →
-                   only the tail is new, so filter and send a few thousand rows
-                 • a historical file ends BEFORE it (a July backfill against a
-                   database reaching September) → every row is below the cutoff,
-                   so filtering would send nothing at all. Send the lot. */
-            let fileMax = null;
-            all.forEach(r => { const d = labRowDate(r); if (d && (!fileMax || d > fileMax)) fileMax = d; });
-            const dbMax = new Date(sum.to + 'T00:00:00');
-            const historical = fileMax && fileMax < dbMax;
-
-            if (historical) {
-              sbLog('This export ends ' + fileMax.toLocaleDateString() + ', before the database\'s ' +
-                    dbMax.toLocaleDateString() + ' — treating it as a backfill and sending all ' +
-                    all.length.toLocaleString() + ' rows.');
-              rows = all;
-            } else if (filtered.length && filtered.length < all.length * 0.9) {
-              rows = filtered;
-            }
+          const { data: dbDays, error: dcErr } = await db.rpc('lab_day_counts');
+          if (!dcErr && dbDays && typeof dbDays === 'object') {
+            const fileDays = {};
+            all.forEach(r => {
+              const d = labRowDate(r);
+              const k = d ? (d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' +
+                             String(d.getDate()).padStart(2, '0')) : '(no date)';
+              (fileDays[k] = fileDays[k] || []).push(r);
+            });
+            const send = [];
+            let daysSent = 0, daysSkipped = 0;
+            Object.keys(fileDays).forEach(k => {
+              const inFile = fileDays[k].length;
+              const inDb = Number(dbDays[k] || 0);
+              /* Skip a day ONLY when the counts match exactly. "The database has
+                 more rows than the file" is NOT proof the file's rows are there —
+                 an audit found a July file whose cases were entirely absent from
+                 days where the database already held 439 rows from another
+                 export. Counts can only safely prove a day is complete when they
+                 agree; any difference means send it and let fingerprints decide. */
+              if (k === '(no date)' || inFile !== inDb) { send.push(...fileDays[k]); daysSent++; }
+              else daysSkipped++;
+            });
+            rows = send;
+            sbLog('Comparing day by day: ' + daysSent + ' day' + (daysSent === 1 ? '' : 's') +
+                  ' to send, ' + daysSkipped + ' already complete in the database.');
           }
-        } catch (e) { /* fall back to sending everything */ }
+        } catch (e) { /* no per-day info available — fall back to sending everything */ }
+      }
+      if (!rows.length) {
+        sbLog('✓ Nothing to send — every day in this file is already fully in the database.', 'ok');
+        if (btn) { btn.disabled = false; btn.textContent = '🗄 Save invoices to database'; }
+        return;
       }
       if (rows.length < all.length) {
         sbLog('Saving ' + rows.length.toLocaleString() + ' recent rows (of ' +
