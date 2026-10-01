@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.10.01-DW2</title>
+<title>Lab Sales Dashboard v2026.10.01-ER1</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -10150,8 +10150,10 @@ function rpEmpSection(w, rows) {
     : 'last ' + w.n + ' days (' + fmtDate(w.curFrom) + ' – ' + fmtDate(w.curTo) + ') vs prior ' + w.n;
 
   let h = '<div style="' + RP_F + 'margin:22px 0 8px">' +
-    '<div style="font-size:16px;font-weight:800;color:#0f172a">' + w.label + '</div>' +
-    '<div style="font-size:12px;color:#64748b">' + esc(window) + '</div></div>';
+    '<div style="font-size:16px;font-weight:800;color:#0f172a">' + w.label + ' — per employee</div>' +
+    '<div style="font-size:12px;color:#64748b">' + esc(window) +
+    (list.length > w.cap ? ' · top ' + w.cap + ' of ' + list.length + ' by units — full list below' : '') +
+    '</div></div>';
 
   if (!list.length) {
     return h + '<div style="' + RP_F + 'padding:14px;background:#f8fafc;border:1px solid #e2e8f0;' +
@@ -10170,49 +10172,76 @@ function rpEmpSection(w, rows) {
       (p !== null ? '<div style="font-size:11px">' + rpEmpDelta(v, p) + '</div>' : '') +
       '</td>').join('') + '</tr></table>';
 
-  // per-employee, each with its own product breakdown
-  h += '<table role="presentation" style="' + RP_F + 'width:100%;border-collapse:collapse;font-size:13px">' +
-    '<thead><tr style="background:#0f172a;color:#fff">' +
-    ['Employee', 'Units', 'vs prior', 'Cases', 'Days', 'Scanned', 'Done'].map((c, i) =>
-      '<th style="padding:8px 10px;text-align:' + (i ? 'right' : 'left') + ';font-size:11px;' +
-      'text-transform:uppercase;letter-spacing:.06em">' + c + '</th>').join('') +
-    '</tr></thead><tbody>';
+  /* ── People table — same shape as the Customer and Product reports ─────────
+     Top 25 by units, the remainder in a collapsed "Show the remaining…" block.
+     Each person's products sit in their own collapsed row: the summary line
+     names their top product, so the report reads at a glance and only opens
+     up when someone wants the detail. Printing every breakdown inline made
+     eight people fill a screen; at twenty it would be unreadable.
+     NOTE: <details> is ignored by Outlook and some webmail — there every block
+     renders already open, which is still a complete and correct report. */
+  const shown = list.slice(0, w.cap);
+  const rest  = list.slice(w.cap);
 
-  list.slice(0, w.cap).forEach((e, i) => {
+  const th = (c, right) => '<th style="padding:8px 10px;text-align:' + (right ? 'right' : 'left') +
+    ';font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:#fff">' + c + '</th>';
+  const headRow = '<tr style="background:#0f172a">' + th('Employee') + th('Units', 1) + th('vs prior', 1) +
+    th('Cases', 1) + th('Days', 1) + th('Scanned', 1) + th('Done', 1) + '</tr>';
+
+  const personRows = (e, i) => {
     const p = prv[e.employee];
     const dept = Object.keys(e.depts).sort((a, b) => e.depts[b] - e.depts[a])[0] || '';
     const bg = i % 2 ? '#f8fafc' : '#fff';
-    h += '<tr style="background:' + bg + ';border-top:1px solid #e2e8f0">' +
-      '<td style="padding:9px 10px"><b>' + esc(e.employee) + '</b>' +
-        (dept ? '<div style="font-size:11px;color:#64748b">' + esc(dept) + '</div>' : '') + '</td>' +
-      '<td style="padding:9px 10px;text-align:right;font-weight:800">' + e.units.toLocaleString() + '</td>' +
-      '<td style="padding:9px 10px;text-align:right">' + rpEmpDelta(e.units, p ? p.units : null) + '</td>' +
-      '<td style="padding:9px 10px;text-align:right">' + e.cases.toLocaleString() + '</td>' +
-      '<td style="padding:9px 10px;text-align:right">' + e.days.size + '</td>' +
-      '<td style="padding:9px 10px;text-align:right">' + e.tasksIn.toLocaleString() + '</td>' +
-      '<td style="padding:9px 10px;text-align:right">' + e.tasksDone.toLocaleString() + '</td></tr>';
-
-    // product breakdown, indented under the person
     const mix = Object.entries(e.products).sort((a, b) => b[1].units - a[1].units);
-    h += '<tr style="background:' + bg + '"><td colspan="7" style="padding:0 10px 10px 22px">' +
-      '<table role="presentation" style="width:100%;border-collapse:collapse;font-size:12px">' +
-      mix.map(([name, v]) => {
-        const pct = e.units ? Math.round(v.units / e.units * 100) : 0;
-        return '<tr>' +
-          '<td style="padding:2px 0;color:#334155;width:52%">' + esc(name) + '</td>' +
-          '<td style="padding:2px 0;width:28%">' +
-            '<div style="background:#e2e8f0;border-radius:3px;height:6px;width:100%">' +
-            '<div style="background:#4361ee;height:6px;border-radius:3px;width:' + pct + '%"></div></div></td>' +
-          '<td style="padding:2px 0;text-align:right;color:#0f172a;font-weight:600;width:12%">' + v.units.toLocaleString() + '</td>' +
-          '<td style="padding:2px 0;text-align:right;color:#64748b;width:8%">' + pct + '%</td>' +
-          '</tr>';
-      }).join('') + '</table></td></tr>';
-  });
+    const top = mix[0];
+    const topPct = top && e.units ? Math.round(top[1].units / e.units * 100) : 0;
+    const td = (v, right, extra) => '<td style="padding:9px 10px;' + (right ? 'text-align:right;' : '') +
+      (extra || '') + '">' + v + '</td>';
 
-  h += '</tbody></table>';
-  if (list.length > w.cap) {
-    h += '<div style="' + RP_F + 'font-size:12px;color:#64748b;margin-top:6px">' +
-         'Showing the top ' + w.cap + ' of ' + list.length + ' people by units.</div>';
+    let h = '<tr style="background:' + bg + ';border-top:1px solid #e2e8f0">' +
+      td('<b style="color:#0f172a">' + esc(e.employee) + '</b>' +
+         (dept ? '<div style="font-size:11px;color:#64748b">' + esc(dept) + '</div>' : '')) +
+      td(e.units.toLocaleString(), 1, 'font-weight:800;color:#0f172a') +
+      td(rpEmpDelta(e.units, p ? p.units : null), 1) +
+      td(e.cases.toLocaleString(), 1) +
+      td(e.days.size, 1) +
+      td(e.tasksIn.toLocaleString(), 1) +
+      td(e.tasksDone.toLocaleString(), 1) + '</tr>';
+
+    if (mix.length) {
+      h += '<tr style="background:' + bg + '"><td colspan="7" style="padding:0 10px 10px 22px">' +
+        '<details><summary style="cursor:pointer;font-size:12px;color:#2563eb;font-weight:700;list-style:none">' +
+          '▸ ' + mix.length + ' product' + (mix.length === 1 ? '' : 's') +
+          (top ? ' <span style="color:#64748b;font-weight:500">— top: ' + esc(top[0]) + ' ' + topPct + '%</span>' : '') +
+        '</summary>' +
+        '<table role="presentation" style="width:100%;border-collapse:collapse;font-size:12px;margin-top:6px">' +
+        mix.map(([name, v]) => {
+          const pct = e.units ? Math.round(v.units / e.units * 100) : 0;
+          return '<tr>' +
+            '<td style="padding:2px 0;color:#334155;width:52%">' + esc(name) + '</td>' +
+            '<td style="padding:2px 0;width:28%"><div style="background:#e2e8f0;border-radius:3px;height:6px;width:100%">' +
+              '<div style="background:#4361ee;height:6px;border-radius:3px;width:' + pct + '%"></div></div></td>' +
+            '<td style="padding:2px 0;text-align:right;color:#0f172a;font-weight:600;width:12%">' + v.units.toLocaleString() + '</td>' +
+            '<td style="padding:2px 0;text-align:right;color:#64748b;width:8%">' + pct + '%</td></tr>';
+        }).join('') +
+        '</table></details></td></tr>';
+    }
+    return h;
+  };
+
+  const tableOf = rows => '<table role="presentation" style="' + RP_F +
+    'width:100%;border-collapse:collapse;font-size:13px;border:1px solid #e2e8f0">' +
+    headRow + rows.map(personRows).join('') + '</table>';
+
+  h += tableOf(shown);
+
+  if (rest.length) {
+    h += '<details style="' + RP_F + 'margin-top:8px">' +
+      '<summary style="cursor:pointer;font-size:12px;font-weight:700;color:#2563eb;padding:8px 12px;' +
+      'background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;list-style:none">' +
+      '▸ Show the remaining ' + rest.length + ' ' + (rest.length === 1 ? 'person' : 'people') +
+      ' (' + list.length + ' total)</summary>' +
+      '<div style="margin-top:8px">' + tableOf(rest) + '</div></details>';
   }
   return h;
 }
