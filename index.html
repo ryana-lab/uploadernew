@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.09.30-RU2</title>
+<title>Lab Sales Dashboard v2026.10.01-DW2</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -6485,7 +6485,63 @@ async function renderEmployeeDetail() {
     const pn = (r.product_name || '').trim();
     if (pn) o.products[pn] = (o.products[pn] || 0) + prodNum(r.total_units); });
   const days = Object.entries(byDay).sort((a,b) => (prodDate(b[0])||0) - (prodDate(a[0])||0));
-  const maxDayUnits = Math.max(1, ...days.map(d => d[1].units));
+
+  /* ── Daily production window ───────────────────────────────────────────────
+     Steps out as history accumulates, because a long list of daily product
+     chips becomes unreadable fast:
+       5d / 7d  → the most recent 5 or 7 PRODUCTION days, every product shown
+       month    → the last 30 calendar days, top 3 products per day
+       quarter  → the last 90 calendar days grouped by WEEK (~13 rows)
+     Options that would show nothing extra are disabled rather than hidden, so
+     the control looks the same from one person to the next. */
+  const WINDOWS = [
+    { key: '5',  label: 'Last 5 days' },
+    { key: '7',  label: 'Last 7 days' },
+    { key: '30', label: 'Month' },
+    { key: '90', label: 'Quarter' }
+  ];
+  const win = PROD.dayWindow || '5';
+  const latest = days.length ? prodDate(days[0][0]) : null;
+  const inCalWindow = (n) => days.filter(([d]) => {
+    const dt = prodDate(d);
+    return dt && latest && (latest - dt) / 864e5 < n;
+  });
+  let rowsShown, groupedByWeek = false;
+  if (win === '5' || win === '7') {
+    rowsShown = days.slice(0, Number(win));
+  } else if (win === '30') {
+    rowsShown = inCalWindow(30);
+  } else {
+    // quarter: roll the days up into Monday-starting weeks
+    groupedByWeek = true;
+    const weeks = {};
+    inCalWindow(90).forEach(([d, o]) => {
+      const dt = prodDate(d); if (!dt) return;
+      const mon = new Date(dt); mon.setDate(dt.getDate() - ((dt.getDay() + 6) % 7));
+      const k = (mon.getMonth()+1) + '/' + mon.getDate() + '/' + mon.getFullYear();
+      const w = weeks[k] || (weeks[k] = { units:0, cases:0, tasksIn:0, tasksDone:0, products:{}, _d: mon, days: 0 });
+      w.units += o.units; w.cases += o.cases; w.tasksIn += o.tasksIn; w.tasksDone += o.tasksDone; w.days++;
+      Object.entries(o.products).forEach(([pn, u]) => { w.products[pn] = (w.products[pn] || 0) + u; });
+    });
+    rowsShown = Object.entries(weeks).sort((a,b) => b[1]._d - a[1]._d);
+  }
+  // A window is only worth offering if it would show more than the one before.
+  const reach = {
+    '5':  Math.min(days.length, 5),
+    '7':  Math.min(days.length, 7),
+    '30': inCalWindow(30).length,
+    '90': inCalWindow(90).length
+  };
+  const maxDayUnits = Math.max(1, ...rowsShown.map(d => d[1].units));
+
+  /* Each day is one summary line; its products open underneath on click. Every
+     product is still shown when a day is open — the point is that a month of
+     days stays a short list rather than a wall of chips. The latest day starts
+     open, since that is usually the one being looked at. */
+  if (!PROD.openDays) PROD.openDays = new Set();
+  const openKey = k => (groupedByWeek ? 'w:' : 'd:') + k;
+  if (rowsShown.length && !PROD.openDaysTouched) PROD.openDays.add(openKey(rowsShown[0][0]));
+  const isOpen = k => PROD.openDays.has(openKey(k));
 
   // per workstation
   const byStation = {};
@@ -6555,15 +6611,33 @@ async function renderEmployeeDetail() {
     </div>
 
     <div class="card" style="padding:14px;border:1px solid var(--line,#e6e9ee);border-radius:12px;margin-top:16px">
-      <div style="font-weight:700;margin-bottom:10px">Daily production</div>
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px">
+        <div style="font-weight:700;flex:1">${groupedByWeek ? 'Weekly production' : 'Daily production'}
+          <span class="text-mut" style="font-weight:400;font-size:12px;margin-left:6px">
+            ${rowsShown.length} ${groupedByWeek ? 'week' : 'day'}${rowsShown.length===1?'':'s'} of ${days.length} on record</span></div>
+        <button class="btn-text" id="edToggleAll" style="font-size:12px">
+          ${rowsShown.length && rowsShown.every(([k]) => isOpen(k)) ? 'Collapse all' : 'Expand all'}</button>
+        <div class="pill-group" id="edWin">
+          ${WINDOWS.map((w, i) => {
+            const prev = i ? reach[WINDOWS[i-1].key] : 0;
+            const useful = i === 0 || reach[w.key] > prev;
+            return `<button class="pill${w.key===win?' active':''}" data-win="${w.key}"
+                      ${useful || w.key===win ? '' : 'disabled title="Not enough history yet"'}
+                      style="${useful || w.key===win ? '' : 'opacity:.4;cursor:default'}">${w.label}</button>`;
+          }).join('')}
+        </div>
+      </div>
       <table class="tbl" style="width:100%;font-size:13px;border-collapse:collapse">
         <thead><tr style="text-align:left">
-          <th style="padding:6px 4px">Date</th><th style="padding:6px 4px">Units</th>
+          <th style="padding:6px 4px">${groupedByWeek ? 'Week of' : 'Date'}</th><th style="padding:6px 4px">Units</th>
           <th style="padding:6px 4px">Cases</th><th style="padding:6px 4px">Scanned</th>
           <th style="padding:6px 4px">Completed</th><th style="padding:6px 4px;width:34%"></th>
         </tr></thead>
-        <tbody>${days.map(([d,o]) => `<tr style="border-top:1px solid var(--line,#eef1f5)">
-          <td style="padding:6px 4px">${esc(d)}</td>
+        <tbody>${rowsShown.map(([d,o]) => `<tr class="ed-dayrow" data-day="${esc(d)}"
+              style="border-top:1px solid var(--line,#eef1f5);cursor:${Object.keys(o.products).length ? 'pointer' : 'default'}">
+          <td style="padding:6px 4px;white-space:nowrap">
+            <span style="display:inline-block;width:14px;color:#94a3b8;font-size:11px">${Object.keys(o.products).length ? (isOpen(d) ? '▾' : '▸') : ''}</span>${esc(d)}${groupedByWeek ? ` <span class="text-mut" style="font-size:11px">· ${o.days} day${o.days===1?'':'s'}</span>` : ''}
+            ${(!isOpen(d) && Object.keys(o.products).length) ? `<span class="text-mut" style="font-size:11px;margin-left:6px">${Object.keys(o.products).length} product${Object.keys(o.products).length===1?'':'s'}</span>` : ''}</td>
           <td style="padding:6px 4px;font-weight:600">${o.units.toLocaleString()}</td>
           <td style="padding:6px 4px">${o.cases.toLocaleString()}</td>
           <td style="padding:6px 4px">${o.tasksIn.toLocaleString()}</td>
@@ -6571,21 +6645,40 @@ async function renderEmployeeDetail() {
           <td style="padding:6px 4px"><div style="height:7px;background:#eef1f5;border-radius:4px;overflow:hidden">
             <div style="width:${Math.round(o.units/maxDayUnits*100)}%;height:100%;background:#4361ee"></div></div></td>
         </tr>
-        ${Object.keys(o.products).length ? `<tr><td colspan="6" style="padding:0 4px 10px 4px">
+        ${(Object.keys(o.products).length && isOpen(d)) ? `<tr><td colspan="6" style="padding:0 4px 10px 22px">
           <div style="display:flex;flex-wrap:wrap;gap:6px">
-            ${Object.entries(o.products).sort((a,b) => b[1]-a[1]).map(([name,u]) => {
+            ${(() => { const all = Object.entries(o.products).sort((a,b) => b[1]-a[1]);
+                       return all.map(([name,u]) => {
               const pct = o.units ? Math.round(u / o.units * 100) : 0;
               return `<span style="display:inline-flex;align-items:center;gap:6px;font-size:11.5px;
                         background:#f1f5f9;border:1px solid #e2e8f0;border-radius:999px;padding:3px 10px">
                 <span style="color:#334155">${esc(name)}</span>
                 <b style="color:#0f172a">${u.toLocaleString()}</b>
                 <span style="color:#94a3b8">${pct}%</span></span>`;
-            }).join('')}
+            }).join(''); })()}
           </div></td></tr>` : ''}`).join('')}</tbody>
       </table>
     </div>`;
 
   document.getElementById('edPick').addEventListener('change', ev => { PROD.employee = ev.target.value; renderEmployeeDetail(); });
+  document.querySelectorAll('.ed-dayrow').forEach(tr => tr.addEventListener('click', () => {
+    const k = openKey(tr.dataset.day);
+    PROD.openDaysTouched = true;            // stop re-opening the latest day after the user chooses
+    if (PROD.openDays.has(k)) PROD.openDays.delete(k); else PROD.openDays.add(k);
+    renderEmployeeDetail();
+  }));
+  const ta = document.getElementById('edToggleAll');
+  if (ta) ta.addEventListener('click', () => {
+    PROD.openDaysTouched = true;
+    const allOpen = rowsShown.every(([k]) => isOpen(k));
+    rowsShown.forEach(([k]) => { if (allOpen) PROD.openDays.delete(openKey(k)); else PROD.openDays.add(openKey(k)); });
+    renderEmployeeDetail();
+  });
+  document.querySelectorAll('#edWin .pill').forEach(b => b.addEventListener('click', () => {
+    if (b.disabled) return;
+    PROD.dayWindow = b.dataset.win;          // remembered across people, so comparing two is consistent
+    renderEmployeeDetail();
+  }));
   document.getElementById('edExport').addEventListener('click', () => {
     downloadCSV((e.employee.replace(/[^a-z0-9]+/gi,'-').toLowerCase()) + '-production.csv',
       mine.map(r => ({ date: r.scan_in_date, employee: r.employee, department: r.department,
