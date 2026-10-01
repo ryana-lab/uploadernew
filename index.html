@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.09.29-SUB7</title>
+<title>Lab Sales Dashboard v2026.09.30-RU2</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -2181,6 +2181,11 @@ function aggKPIs() {
     // Case-level, not row-level: one case spans several line-item rows
     const totalCases = countCases(data);
     const remakeCount = countCases(data.filter(r => r.remake));
+    /* Remake rate is measured BY UNIT: units remade / units produced. A case
+       remaking three crowns is three units of rework, not one. On the current
+       data this reads ~6.6% where the old per-case figure read ~5.2%, because
+       remakes skew toward multi-unit cases. */
+    const remakeUnits = data.reduce((s, r) => s + (r.remake ? (r.qty || 0) : 0), 0);
     const onHoldCount = countCases(data.filter(r => r.onHold));
     const doctors = new Set(data.map(r => r.drId)).size;
     const products = new Set(data.map(r => r.product)).size;
@@ -2204,8 +2209,9 @@ function aggKPIs() {
         const h = v.length >> 1;
         return v.length % 2 ? v[h] : (v[h - 1] + v[h]) / 2;
       })(),
-      remakeRate: totalCases ? remakeCount / totalCases : 0,
+      remakeRate: totalUnits ? remakeUnits / totalUnits : 0,
       remakeCount,
+      remakeUnits,
       onHoldRate: totalCases ? onHoldCount / totalCases : 0,
       onHoldCount,
       doctors, products, states, avgTAT,
@@ -2255,7 +2261,7 @@ function aggByDoctor() {
       addCase(d.caseSet, r.caseKey);
       d.revenue += r.netCost;
       d.units += r.qty;
-      if (r.remake) addCase(d.remakeSet, r.caseKey);
+      d.uAll = (d.uAll || 0) + (r.qty || 0); if (r.remake) { addCase(d.remakeSet, r.caseKey); d.remakeUnits = (d.remakeUnits || 0) + (r.qty || 0); }
       if (r.anchorDate) {
         if (!d.firstDate || r.anchorDate < d.firstDate) d.firstDate = r.anchorDate;
         if (!d.lastDate || r.anchorDate > d.lastDate) d.lastDate = r.anchorDate;
@@ -2285,7 +2291,7 @@ function aggByDoctor() {
       practice: practiceInfo.primary || d.practice || '',
       practiceInfo,
       avgCase: cases ? d.revenue / cases : 0,
-      remakeRate: cases ? remakes / cases : 0,
+      remakeRate: d.uAll ? (d.remakeUnits || 0) / d.uAll : 0,   // by unit
       avgTat: d.tatN ? d.tatSum / d.tatN : null,
       medTat: medianOf(d.tatList),
       earlyPct:  d.ontimeCases ? d.onTimeEarly  / d.ontimeCases : null,
@@ -2315,7 +2321,7 @@ function aggByProduct() {
       addCase(p.caseSet, r.caseKey);
       p.revenue += r.netCost;
       p.units += r.qty;
-      if (r.remake) addCase(p.remakeSet, r.caseKey);
+      p.uAll = (p.uAll || 0) + (r.qty || 0); if (r.remake) { addCase(p.remakeSet, r.caseKey); p.remakeUnits = (p.remakeUnits || 0) + (r.qty || 0); }
       p.doctors.add(r.drId);
       addTat(p, r);
       if (r.onTimeStatus) {
@@ -2334,7 +2340,7 @@ function aggByProduct() {
       remakes: p.remakeSet.size,
       doctors: p.doctors.size,
       avgPrice: p.units ? p.revenue / p.units : 0,
-      remakeRate: p.caseSet.size ? p.remakeSet.size / p.caseSet.size : 0,
+      remakeRate: p.uAll ? (p.remakeUnits || 0) / p.uAll : 0,   // by unit
       avgTat: p.tatN ? p.tatSum / p.tatN : null,
       onTimeEarly: p.onTimeEarly, onTimeOnTime: p.onTimeOnTime, onTimeLate: p.onTimeLate, ontimeCases: p.ontimeCases,
       earlyPct:  p.ontimeCases ? p.onTimeEarly  / p.ontimeCases : null,
@@ -2354,7 +2360,7 @@ function aggByMonth() {
       m.revenue += r.netCost;
       addCase(m.caseSet, r.caseKey);
       m.units += r.qty;          // the "Units" series on the overview chart
-      if (r.remake) addCase(m.remakeSet, r.caseKey);
+      m.uAll = (m.uAll || 0) + (r.qty || 0); if (r.remake) { addCase(m.remakeSet, r.caseKey); m.remakeUnits = (m.remakeUnits || 0) + (r.qty || 0); }
     }
     for (const m of map.values()) { m.cases = m.caseSet.size; m.remakes = m.remakeSet.size; }
     // Drop sparse months (under 10 records) — these are typically stray rows with
@@ -2380,7 +2386,7 @@ function aggByState() {
       }
       s.revenue += r.netCost;
       addCase(s.caseSet, r.caseKey);
-      if (r.remake) addCase(s.remakeSet, r.caseKey);
+      s.uAll = (s.uAll || 0) + (r.qty || 0); if (r.remake) { addCase(s.remakeSet, r.caseKey); s.remakeUnits = (s.remakeUnits || 0) + (r.qty || 0); }
       s.doctors.add(r.drId);
     }
     return Array.from(map.values()).map(s => ({
@@ -2390,7 +2396,7 @@ function aggByState() {
       cases: s.caseSet.size,
       doctors: s.doctors.size,
       remakes: s.remakeSet.size,
-      remakeRate: s.caseSet.size ? s.remakeSet.size / s.caseSet.size : 0
+      remakeRate: s.uAll ? (s.remakeUnits || 0) / s.uAll : 0   // by unit
     })).sort((a,b) => b.revenue - a.revenue);
   });
 }
@@ -3629,7 +3635,7 @@ function renderOverview() {
       <div class="kpi"><div class="kpi-label">Total Revenue</div><div class="kpi-value">${fmtUSDFull(k.totalRev)}</div><div class="kpi-sub">${fmtN(k.totalCases)} invoiced cases</div></div>
       <div class="kpi"><div class="kpi-label">Median Case Value</div><div class="kpi-value">${fmtUSDFull(k.medianCase)}</div><div class="kpi-sub">mean ${fmtUSDFull(k.avgCase)} · ${fmtN(k.totalUnits)} units shipped</div></div>
       <div class="kpi"><div class="kpi-label">Active Doctors</div><div class="kpi-value">${fmtN(k.doctors)}</div><div class="kpi-sub">${fmtN(k.products)} unique products</div></div>
-      <div class="kpi"><div class="kpi-label">Remake Rate</div><div class="kpi-value">${fmtPct(k.remakeRate)}</div><div class="kpi-sub">${fmtN(k.remakeCount)} cases reworked</div></div>
+      <div class="kpi"><div class="kpi-label">Remake Rate</div><div class="kpi-value">${fmtPct(k.remakeRate)}</div><div class="kpi-sub">${fmtN(k.remakeUnits)} of ${fmtN(k.totalUnits)} units reworked</div></div>
       <div class="kpi"><div class="kpi-label">On-Hold Rate</div><div class="kpi-value">${fmtPct(k.onHoldRate)}</div><div class="kpi-sub">${fmtN(k.onHoldCount)} held cases</div></div>
       <div class="kpi"><div class="kpi-label">Avg Turnaround</div><div class="kpi-value">${k.avgTAT == null ? '—' : k.avgTAT.toFixed(1) + '<span class="sup">days</span>'}</div><div class="kpi-sub">entry → invoiced · <span title="Build identifier — use this to confirm you are running the latest file.">${BUILD_ID}</span></div></div>
     </div>
@@ -3705,7 +3711,7 @@ function renderOverview() {
 
   makeChart('c0b', {
     type: 'line',
-    data: { labels, datasets: [{ label: 'Remake %', data: months.map(m => m.cases ? m.remakes / m.cases * 100 : 0), borderColor: '#dc2626', backgroundColor: 'rgba(220,38,38,.1)', borderWidth: 2.5, tension: .3, fill: true, pointRadius: 2 }] },
+    data: { labels, datasets: [{ label: 'Remake %', data: months.map(m => m.uAll ? (m.remakeUnits || 0) / m.uAll * 100 : 0), borderColor: '#dc2626', backgroundColor: 'rgba(220,38,38,.1)', borderWidth: 2.5, tension: .3, fill: true, pointRadius: 2 }] },
     options: { ...co, plugins: { ...co.plugins, legend: { display: false } }, scales: { ...co.scales, y: { ...co.scales.y, ticks: { ...co.scales.y.ticks, callback: v => v.toFixed(1) + '%' } } } }
   });
 
@@ -4864,6 +4870,8 @@ function renderDoctorDetail() {
   const totalUnits = cases.reduce((s,r) => s + r.qty, 0);
   const caseCount = countCases(cases);
   const remakes = countCases(cases.filter(r => r.remake));
+  const remakeUnitsK = cases.reduce((s, r) => s + (r.remake ? (r.qty || 0) : 0), 0);
+  const allUnitsK    = cases.reduce((s, r) => s + (r.qty || 0), 0);
   const onHold = cases.filter(r => r.onHold).length;
   // Average turnaround (received → invoiced) across this doctor's valid cases
   // Median is the headline; held cases make the mean unrepresentative
@@ -4902,7 +4910,7 @@ function renderDoctorDetail() {
     if (!m) { m = { key: r.anchorMonth, revenue: 0, caseSet: new Set(), cases: 0, remakeSet: new Set(), remakes: 0, tatSum: 0, tatN: 0,
                     otEarly: 0, otOnTime: 0, otLate: 0, otTotal: 0 }; mmap.set(r.anchorMonth, m); }
     m.revenue += r.netCost; addCase(m.caseSet, r.caseKey); m.cases = m.caseSet.size;
-    if (r.remake) { addCase(m.remakeSet, r.caseKey); m.remakes = m.remakeSet.size; }
+    m.uAll = (m.uAll || 0) + (r.qty || 0); if (r.remake) { addCase(m.remakeSet, r.caseKey); m.remakes = m.remakeSet.size; m.remakeUnits = (m.remakeUnits || 0) + (r.qty || 0); }
     addTat(m, r);
     // Same on-time accumulation the Product Detail month buckets use.
     if (r.onTimeStatus) {
@@ -4985,7 +4993,7 @@ function renderDoctorDetail() {
       <div class="kpi"><div class="kpi-label">Revenue (filtered)</div><div class="kpi-value">${fmtUSDFull(totalRev)}</div></div>
       <div class="kpi"><div class="kpi-label">Cases</div><div class="kpi-value">${fmtN(caseCount)}</div><div class="kpi-sub">${fmtN(totalUnits)} units</div></div>
       <div class="kpi"><div class="kpi-label">Avg Case</div><div class="kpi-value">${fmtUSDFull(caseCount ? totalRev/caseCount : 0)}</div></div>
-      <div class="kpi"><div class="kpi-label">Remake Rate</div><div class="kpi-value">${fmtPct(caseCount ? remakes/caseCount : 0)}</div><div class="kpi-sub">${remakes} of ${caseCount}</div></div>
+      <div class="kpi"><div class="kpi-label">Remake Rate</div><div class="kpi-value">${fmtPct(allUnitsK ? remakeUnitsK/allUnitsK : 0)}</div><div class="kpi-sub">${fmtN(remakeUnitsK)} of ${fmtN(allUnitsK)} units</div></div>
       <div class="kpi"><div class="kpi-label">Avg Turnaround</div><div class="kpi-value">${ddTat == null ? '—' : ddTat.toFixed(1) + '<span class="sup">days</span>'}</div><div class="kpi-sub">entry → invoiced</div></div>
       ${onTimeKpiHTML(ddOnTime)}
       <div class="kpi"><div class="kpi-label">On Hold</div><div class="kpi-value">${onHold}</div><div class="kpi-sub">cases delayed</div></div>
@@ -5165,7 +5173,7 @@ function renderDoctorDetail() {
   });
   makeChart('ddRemake', {
     type: 'line',
-    data: { labels: ddLabels, datasets: [{ label: 'Remake %', data: months.map(m => m.cases ? m.remakes/m.cases*100 : 0), borderColor: '#dc2626', backgroundColor: 'rgba(220,38,38,.1)', borderWidth: 2.5, tension: .3, fill: true, pointRadius: 2 }] },
+    data: { labels: ddLabels, datasets: [{ label: 'Remake %', data: months.map(m => m.uAll ? (m.remakeUnits || 0)/m.uAll*100 : 0), borderColor: '#dc2626', backgroundColor: 'rgba(220,38,38,.1)', borderWidth: 2.5, tension: .3, fill: true, pointRadius: 2 }] },
     options: { ...co, plugins: { ...co.plugins, legend: { display: false } }, scales: { ...co.scales, y: { ...co.scales.y, ticks: { ...co.scales.y.ticks, callback: v => v.toFixed(1)+'%' } } } }
   });
   makeChart('ddTat', {
@@ -5271,7 +5279,7 @@ function computeDoctorStatus() {
     d.totalCases = d._caseSet.size;
     d.totalRev += r.netCost;
     d.totalUnits += r.qty;
-    if (r.remake) { if (!d._remakeSet) d._remakeSet = new Set(); addCase(d._remakeSet, r.caseKey); d.remakes = d._remakeSet.size; }
+    d.uAll = (d.uAll || 0) + (r.qty || 0); if (r.remake) { if (!d._remakeSet) d._remakeSet = new Set(); addCase(d._remakeSet, r.caseKey); d.remakes = d._remakeSet.size; d.remakeUnits = (d.remakeUnits || 0) + (r.qty || 0); }
     if (r.caseKey) { tallyPractice(d.practices, r.practice, r.anchorDate); noteContact(d.contacts, r); }
     // Per-practice case timeline for THIS doctor (the Karan Varma fix): each
     // practice accumulates only the cases billed under it, so its status reflects
@@ -5283,7 +5291,7 @@ function computeDoctorStatus() {
         let pd = d.practiceDates.get(pk);
         if (!pd) { pd = { name: pnRaw, dates: [], caseSet: new Set(), cases: 0, rev: 0, units: 0, remakeSet: new Set(), remakes: 0, tatSum: 0, tatN: 0 }; d.practiceDates.set(pk, pd); }
         addCase(pd.caseSet, r.caseKey); pd.cases = pd.caseSet.size; pd.rev += r.netCost; pd.units += r.qty;
-        if (r.remake) { addCase(pd.remakeSet, r.caseKey); pd.remakes = pd.remakeSet.size; }
+        pd.uAll = (pd.uAll || 0) + (r.qty || 0); if (r.remake) { addCase(pd.remakeSet, r.caseKey); pd.remakes = pd.remakeSet.size; pd.remakeUnits = (pd.remakeUnits || 0) + (r.qty || 0); }
         addTat(pd, r);
         if (r.anchorDate && r.caseKey) pd.dates.push(r.anchorDate);
       }
@@ -5325,7 +5333,7 @@ function computeDoctorStatus() {
     d.practice = d.practiceInfo.primary || d.practice || '';
 
     d.daysSinceLast = Math.floor(sinceLast / 864e5);
-    d.remakeRate = d.totalCases ? d.remakes / d.totalCases : 0;
+    d.remakeRate = d.uAll ? (d.remakeUnits || 0) / d.uAll : 0;   // by unit
     d.avgTAT = d.tatN ? d.tatSum / d.tatN : null;
 
     // Engagement-tracker status (drives the segment counts)
@@ -5352,7 +5360,7 @@ function computeDoctorStatus() {
       d.byPractice.set(pk, {
         practice: pd.name, cases: pd.cases, rev: pd.rev,
         units: pd.units || 0,
-        remakeRate: pd.cases ? (pd.remakes || 0) / pd.cases : 0,
+        remakeRate: pd.uAll ? (pd.remakeUnits || 0) / pd.uAll : 0,   // by unit
         avgTAT: pd.tatN ? pd.tatSum / pd.tatN : null,
         status: st.status, isWinbackSegment: st.isWinbackSegment,
         firstDate: st.firstDate, lastDate: st.lastDate,
@@ -6470,9 +6478,12 @@ async function renderEmployeeDetail() {
   // per day
   const byDay = {};
   mine.forEach(r => { const d = r.scan_in_date || '—';
-    const o = byDay[d] || (byDay[d] = { units:0, cases:0, tasksIn:0, tasksDone:0 });
+    const o = byDay[d] || (byDay[d] = { units:0, cases:0, tasksIn:0, tasksDone:0, products:{} });
     o.units += prodNum(r.total_units); o.cases += prodNum(r.cases_touched);
-    o.tasksIn += prodNum(r.tasks_scanned_in); o.tasksDone += prodNum(r.tasks_completed); });
+    o.tasksIn += prodNum(r.tasks_scanned_in); o.tasksDone += prodNum(r.tasks_completed);
+    // what they actually made that day, so a busy day can be read at a glance
+    const pn = (r.product_name || '').trim();
+    if (pn) o.products[pn] = (o.products[pn] || 0) + prodNum(r.total_units); });
   const days = Object.entries(byDay).sort((a,b) => (prodDate(b[0])||0) - (prodDate(a[0])||0));
   const maxDayUnits = Math.max(1, ...days.map(d => d[1].units));
 
@@ -6559,7 +6570,18 @@ async function renderEmployeeDetail() {
           <td style="padding:6px 4px">${o.tasksDone.toLocaleString()}</td>
           <td style="padding:6px 4px"><div style="height:7px;background:#eef1f5;border-radius:4px;overflow:hidden">
             <div style="width:${Math.round(o.units/maxDayUnits*100)}%;height:100%;background:#4361ee"></div></div></td>
-        </tr>`).join('')}</tbody>
+        </tr>
+        ${Object.keys(o.products).length ? `<tr><td colspan="6" style="padding:0 4px 10px 4px">
+          <div style="display:flex;flex-wrap:wrap;gap:6px">
+            ${Object.entries(o.products).sort((a,b) => b[1]-a[1]).map(([name,u]) => {
+              const pct = o.units ? Math.round(u / o.units * 100) : 0;
+              return `<span style="display:inline-flex;align-items:center;gap:6px;font-size:11.5px;
+                        background:#f1f5f9;border:1px solid #e2e8f0;border-radius:999px;padding:3px 10px">
+                <span style="color:#334155">${esc(name)}</span>
+                <b style="color:#0f172a">${u.toLocaleString()}</b>
+                <span style="color:#94a3b8">${pct}%</span></span>`;
+            }).join('')}
+          </div></td></tr>` : ''}`).join('')}</tbody>
       </table>
     </div>`;
 
@@ -6712,6 +6734,8 @@ function renderProductDetail() {
   const totalUnits = cases.reduce((s,r) => s + r.qty, 0);
   const caseCount = countCases(cases);
   const remakes = countCases(cases.filter(r => r.remake));
+  const remakeUnitsK = cases.reduce((s, r) => s + (r.remake ? (r.qty || 0) : 0), 0);
+  const allUnitsK    = cases.reduce((s, r) => s + (r.qty || 0), 0);
   const sample = cases[0];
 
   // Monthly: revenue, units, remake%, tat — use shared valid-month list
@@ -6723,7 +6747,7 @@ function renderProductDetail() {
     if (!m) { m = { key: r.anchorMonth, revenue: 0, units: 0, caseSet: new Set(), cases: 0, remakeSet: new Set(), remakes: 0, tatSum: 0, tatN: 0,
                     otEarly: 0, otOnTime: 0, otLate: 0, otTotal: 0 }; mmap.set(r.anchorMonth, m); }
     m.revenue += r.netCost; m.units += r.qty; addCase(m.caseSet, r.caseKey); m.cases = m.caseSet.size;
-    if (r.remake) { addCase(m.remakeSet, r.caseKey); m.remakes = m.remakeSet.size; }
+    m.uAll = (m.uAll || 0) + (r.qty || 0); if (r.remake) { addCase(m.remakeSet, r.caseKey); m.remakes = m.remakeSet.size; m.remakeUnits = (m.remakeUnits || 0) + (r.qty || 0); }
     addTat(m, r);
     if (r.onTimeStatus) {
       m.otTotal++;
@@ -6800,7 +6824,7 @@ function renderProductDetail() {
       <div class="kpi"><div class="kpi-label">Cases</div><div class="kpi-value">${fmtN(caseCount)}</div></div>
       <div class="kpi"><div class="kpi-label">Units</div><div class="kpi-value">${fmtN(totalUnits)}</div></div>
       <div class="kpi"><div class="kpi-label">Avg Unit $</div><div class="kpi-value">${fmtUSDFull(totalUnits ? totalRev/totalUnits : 0)}</div></div>
-      <div class="kpi"><div class="kpi-label">Remake Rate</div><div class="kpi-value">${fmtPct(caseCount ? remakes/caseCount : 0)}</div><div class="kpi-sub">${remakes} of ${caseCount}</div></div>
+      <div class="kpi"><div class="kpi-label">Remake Rate</div><div class="kpi-value">${fmtPct(allUnitsK ? remakeUnitsK/allUnitsK : 0)}</div><div class="kpi-sub">${fmtN(remakeUnitsK)} of ${fmtN(allUnitsK)} units</div></div>
       ${onTimeKpiHTML(pdOnTime)}
     </div>
 
@@ -6865,7 +6889,7 @@ function renderProductDetail() {
   makeChart('pdUnits', { type: 'line', data: { labels, datasets: [{ label: 'Units', data: months.map(m => m.units), borderColor: '#059669', backgroundColor: 'rgba(5,150,105,.1)', borderWidth: 2.5, tension: .3, fill: true, pointRadius: 2 }] },
     options: { ...co, plugins: { ...co.plugins, legend: { display: false } } } });
 
-  makeChart('pdRemake', { type: 'line', data: { labels, datasets: [{ label: 'Remake %', data: months.map(m => m.cases ? m.remakes/m.cases*100 : 0), borderColor: '#dc2626', backgroundColor: 'rgba(220,38,38,.1)', borderWidth: 2.5, tension: .3, fill: true, pointRadius: 2 }] },
+  makeChart('pdRemake', { type: 'line', data: { labels, datasets: [{ label: 'Remake %', data: months.map(m => m.uAll ? (m.remakeUnits || 0)/m.uAll*100 : 0), borderColor: '#dc2626', backgroundColor: 'rgba(220,38,38,.1)', borderWidth: 2.5, tension: .3, fill: true, pointRadius: 2 }] },
     options: { ...co, plugins: { ...co.plugins, legend: { display: false } }, scales: { ...co.scales, y: { ...co.scales.y, ticks: { ...co.scales.y.ticks, callback: v => v.toFixed(1)+'%' } } } } });
 
   makeChart('pdTat', { type: 'line', data: { labels, datasets: [{ label: 'Avg TAT', spanGaps: true, data: months.map(m => m.tatN ? +(m.tatSum / m.tatN).toFixed(1) : null), borderColor: '#7c3aed', backgroundColor: 'rgba(124,58,237,.1)', borderWidth: 2.5, tension: .3, fill: true, pointRadius: 2 }] },
@@ -7291,7 +7315,7 @@ function aggByCity() {
       m.set(key, o);
     }
     o.revenue += r.netCost; addCase(o._cs, r.caseKey); o.cases = o._cs.size;
-    if (r.remake) { addCase(o._rs, r.caseKey); o.remakes = o._rs.size; }
+    o.uAll = (o.uAll || 0) + (r.qty || 0); if (r.remake) { addCase(o._rs, r.caseKey); o.remakes = o._rs.size; o.remakeUnits = (o.remakeUnits || 0) + (r.qty || 0); }
     if (r.drId) o._drs.add(r.drId);
   }
   const arr = [];
@@ -7471,7 +7495,7 @@ function drawCityMap() {
   }
   svg.innerHTML = html;
 
-  const fmtVal = (c) => `Revenue: ${fmtUSDFull(c.revenue)}<br>Cases: ${fmtN(c.cases)}<br>Doctors: ${fmtN(c.doctors)}<br>Remake: ${fmtPct(c.cases ? c.remakes / c.cases : 0)}`;
+  const fmtVal = (c) => `Revenue: ${fmtUSDFull(c.revenue)}<br>Cases: ${fmtN(c.cases)}<br>Doctors: ${fmtN(c.doctors)}<br>Remake: ${fmtPct(c.uAll ? (c.remakeUnits || 0) / c.uAll : 0)}`;
   const byKey = new Map(cities.map(c => [c.city + '|' + c.abbr, c]));
   const tip = document.getElementById('mapTooltip');
   svg.querySelectorAll('circle').forEach(el => {
@@ -9483,14 +9507,14 @@ function rpAdd(b, r) {
   // `rows` is the distinct CASE count (named rows for backwards compatibility)
   addCase(b.caseSet, r.caseKey);
   b.rows = b.caseSet.size;
-  if (r.remake) { addCase(b.remakeSet, r.caseKey); b.remakes = b.remakeSet.size; }
+  b.uAll = (b.uAll || 0) + (r.qty || 0); if (r.remake) { addCase(b.remakeSet, r.caseKey); b.remakes = b.remakeSet.size; b.remakeUnits = (b.remakeUnits || 0) + (r.qty || 0); }
   addTat(b, r);
 }
 function rpMetrics(b) {
   return {
     rev: b.rev,
     units: b.units,
-    remake: b.rows ? (b.remakes / b.rows) * 100 : null,
+    remake: b.uAll ? ((b.remakeUnits || 0) / b.uAll) * 100 : null,   // by unit
     tat: b.tatN ? b.tatSum / b.tatN : null
   };
 }
