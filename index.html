@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.10.01-ER1</title>
+<title>Lab Sales Dashboard v2026.10.08-DR1</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -8375,7 +8375,8 @@ function buildBridgeData() {
       ? Array.from(d.byPractice.values())
       : [{ practice: d.practice || '', cases: d.totalCases, rev: d.totalRev,
            status: d.status, isWinbackSegment: d.isWinbackSegment,
-           firstDate: d.firstDate, lastDate: d.lastDate }];
+           firstDate: d.firstDate, lastDate: d.lastDate,
+           remakeRate: d.remakeRate, avgTAT: d.avgTAT }];
     buckets.forEach(b => {
       const o = offices.get(sbNorm(b.practice || '')) || null;
       const pk = (b.practice || '').toLowerCase().replace(/\s+/g,' ').trim();
@@ -8389,6 +8390,9 @@ function buildBridgeData() {
         scan: (o && o.scan) || '',
         first: b.firstDate, last: b.lastDate, cases: b.cases,
         rev: b.rev, rev90: rev90dp[d.drId + '|' + pk] || 0,
+        // remake rate is BY UNIT (units remade / units produced), turnaround is
+        // received → invoiced in days; both for this doctor at this practice
+        remakeRate: b.remakeRate, avgTat: b.avgTAT,
         label: sbLabelOf(dp), segs: sbSegsOf(dp)
       });
     });
@@ -8807,7 +8811,17 @@ function sbStatusLine(docRow, label) {
   // per-doctor parser reads the status up to the first ·, and a one-word label
   // is unambiguous for every reader, old or new.
   const lbl = String(label || '').toUpperCase().replace(/^NEW DOCTOR$/, 'NEW');
-  return SB_LAB_MARK + ' ' + lbl + ' · Dr. ' + docRow.name + ' · last case ' + sbUS(docRow.last) + ' · ' + docRow.cases + ' cases · ' + sbMoney(docRow.rev90) + ' last 90d · ' + sbMoney(docRow.rev) + ' lifetime';
+  /* Remake % and average turnaround ride at the END of the line, after the
+     fields older Salesly builds already read, so nothing that parses this line
+     today is affected. Left off when there's nothing to measure (no units, or
+     no case with both a received and invoice date). */
+  const extra = [];
+  if (docRow.remakeRate != null && isFinite(docRow.remakeRate))
+    extra.push((Math.round(docRow.remakeRate * 1000) / 10) + '% remakes');
+  if (docRow.avgTat != null && isFinite(docRow.avgTat))
+    extra.push((Math.round(docRow.avgTat * 10) / 10) + 'd avg turnaround');
+  return SB_LAB_MARK + ' ' + lbl + ' · Dr. ' + docRow.name + ' · last case ' + sbUS(docRow.last) + ' · ' + docRow.cases + ' cases · ' + sbMoney(docRow.rev90) + ' last 90d · ' + sbMoney(docRow.rev) + ' lifetime' +
+         (extra.length ? ' · ' + extra.join(' · ') : '');
 }
 function sbMergeNotes(existing, lines) {
   const keep = String(existing || '').split('\n').filter(l => !l.trim().startsWith(SB_LAB_MARK)).join('\n').trim();
@@ -10434,9 +10448,7 @@ function renderReports() {
       <div class="sb-card-title"><span class="sb-stepnum">1</span> Delivery setup</div>
       <div class="sb-hint">Connection is <b>shared with the Salesly Bridge tab</b> — same Supabase project.
         Reports are written to the <code>reports</code> table and emailed by the <code>send-reports</code>
-        Edge Function, which runs nightly on a schedule. <b>Send now</b> invokes it immediately.
-        Finally run <code>setupNightlyTrigger</code> once from the script editor to schedule the nightly send
-        (default 6 AM — change <code>SEND_HOUR</code> in the script to adjust).</div>
+        Edge Function, which runs nightly on a schedule. <b>Send now</b> invokes it immediately.</div>
       <div class="sb-row">
         <div class="sb-hint">Backend: the Supabase project configured on the <b>Salesly Bridge</b> tab. Reports are written to the <code>reports</code> table and emailed by the <code>send-reports</code> Edge Function.</div>
         
