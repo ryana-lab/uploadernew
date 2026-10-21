@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.10.08-DR1</title>
+<title>Lab Sales Dashboard v2026.10.08-DR2</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -8149,6 +8149,12 @@ async function sbSheetPost(cols, rows, opts) {
         const d = new Date(m.last);
         if (!isNaN(d)) r.last_invoice_date = d.toISOString().slice(0, 10);
       }
+      // The office's first-ever case. The database only ever moves this EARLIER
+      // and never blanks it, so a row without it can't erase a known date.
+      if (m.first) {
+        const f = new Date(m.first);
+        if (!isNaN(f)) r.first_case_date = f.toISOString().slice(0, 10);
+      }
       // Lifecycle status → offices.status. The DB trigger stamps status_changed_at
       // only when it actually flips, powering the "just changed" badge in Salesly.
       if (m.status) r.status = m.status;
@@ -9542,18 +9548,22 @@ async function sbSync() {
     const RANK = { 'New':5, 'Winback':4, 'Active':3, 'Falloff':2, 'Inactive':1 };
     const NORM = s => { s=String(s||'').trim(); return s==='New Doctor'?'New':s; };
     push.forEach(o => {
-      let rev = 0, last = '';
+      let rev = 0, last = '', first = '';
       let best = '', bestRank = 0;
       (o.docs || []).forEach(d => {
         const r = d.row || {};
         if (isFinite(+r.rev)) rev += +r.rev;
         const dt = r.last ? new Date(r.last) : null;
         if (dt && !isNaN(dt) && (!last || dt > last)) last = dt;
+        // the office's FIRST case: the earliest first case of any doctor there.
+        // This is what dates a closed sale — see salesly_closed_sales_fix.sql.
+        const ft = r.first ? new Date(r.first) : null;
+        if (ft && !isNaN(ft) && (!first || ft < first)) first = ft;
         const lbl = NORM(d.label);
         const rk = RANK[lbl] || 0;
         if (rk > bestRank) { bestRank = rk; best = lbl; }
       });
-      meta[sbStrict(o.name)] = { rev: rev, last: last || '', status: best };
+      meta[sbStrict(o.name)] = { rev: rev, last: last || '', first: first || '', status: best };
     });
     // EVERY practice name that appears anywhere in the invoice data — not just
     // the selected segments — so sbSheetPost can tell a real customer apart from
