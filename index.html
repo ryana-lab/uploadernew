@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.10.22-DL2</title>
+<title>Lab Sales Dashboard v2026.10.22-DL4</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -1758,6 +1758,21 @@ function countCases(rows) {
    Products and Remake Reasons charts. Canonicalize the typography, then keep
    the first spelling seen as the display label so nothing is renamed. */
 const _labelCanon = new Map();
+/* Heartland started adding a state code to practice names in late 2026:
+   "HL Dental Arts of Oliver Springs" became "HL (TN) Dental Arts of Oliver
+   Springs". To the dashboard that was a NEW practice — the office's history
+   split in two, and long-standing doctors showed up as "New Doctors" because
+   their first case under the new name was this month. A bracketed US state
+   code is now dropped from practice names, so both spellings are one practice.
+   Practice names only — product names are untouched. */
+const _US_STATE_CODES = new Set(('AL AK AZ AR CA CO CT DE FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ ' +
+  'NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY DC').split(' '));
+function stripPracticeStateCode(name) {
+  return String(name == null ? '' : name)
+    .replace(/\s*\(\s*([A-Za-z]{2})\s*\)\s*/g, (m, code) => _US_STATE_CODES.has(code.toUpperCase()) ? ' ' : m)
+    .replace(/\s+/g, ' ').trim();
+}
+
 function canonLabel(raw) {
   const s = String(raw == null ? '' : raw).replace(/\u00a0/g, ' ').trim();
   if (!s) return '';
@@ -1968,7 +1983,7 @@ function normalizeRecords(rows) {
       // across CSV exports.
       // canonLabel folds spelling variants of the same location together
       // ("Hl Carus Dental -  Brodie Lane" vs "... - Brodie Lane")
-      practice: canonLabel(titleCase(practiceRaw)),
+      practice: canonLabel(titleCase(stripPracticeStateCode(practiceRaw))),
       group: dentalGroupOf(practiceRaw),
       email,
       phone,
@@ -2006,8 +2021,57 @@ function normalizeRecords(rows) {
     };
   }
   const rows_ = out.slice(0, n);
+  applyDoctorAliases(rows_);
   applyProductBaselines(rows_);
   return rows_;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   ONE DOCTOR, HOWEVER THE LAB WROTE THE NAME
+   The lab system sometimes records a doctor by first name only and later by
+   full name — "Cynthia" on one case, "Cynthia Grinstead" on the next. A doctor
+   is keyed by name + state, so those were two doctors: split cases, split
+   revenue, two rows in every grid and report.
+
+   Fixed HERE, when the data is read, not by editing stored invoices: the lab's
+   own CSV keeps the old name on the old case, so a database edit would be
+   undone — or the case loaded twice — by the next upload.
+
+   Rule: a single-name doctor whose name matches EXACTLY ONE full-name doctor at
+   the SAME practice (as first or last name) is that doctor. A single name that
+   matches two doctors there is left alone — there is no telling which. Also
+   handles a full name typed into the first-name box ("Cynthia Grinstead" with
+   no last name), which reads as full here. */
+let DOCTOR_ALIASES = [];
+function applyDoctorAliases(rows) {
+  const tokensOf = id => { const parts = String(id || '').split('|'); const st = parts.pop();
+                           return { st, toks: parts.join(' ').split(/\s+/).filter(Boolean) }; };
+  const fullAt = new Map(), nameOf = new Map();
+  for (const r of rows) {
+    if (!r || !r.drId) continue;
+    const { st, toks } = tokensOf(r.drId);
+    if (toks.length < 2) continue;
+    const pk = String(r.practice || '').toLowerCase() + '|' + st;
+    let m = fullAt.get(pk); if (!m) { m = new Map(); fullAt.set(pk, m); }
+    for (const t of toks) { let set = m.get(t); if (!set) { set = new Set(); m.set(t, set); } set.add(r.drId); }
+    if (!nameOf.has(r.drId)) nameOf.set(r.drId, r.drName);
+  }
+  const seen = new Map();
+  for (const r of rows) {
+    if (!r || !r.drId) continue;
+    const { st, toks } = tokensOf(r.drId);
+    if (toks.length !== 1) continue;
+    const pk = String(r.practice || '').toLowerCase() + '|' + st;
+    const set = fullAt.get(pk) && fullAt.get(pk).get(toks[0]);
+    if (!set || set.size !== 1) continue;
+    const to = set.values().next().value;
+    const key = r.drId + '→' + to + '@' + pk;
+    if (!seen.has(key)) seen.set(key, { from: r.drName, to: nameOf.get(to) || to, practice: r.practice, lines: 0 });
+    seen.get(key).lines++;
+    r.drIdOriginal = r.drId; r.drNameOriginal = r.drName;
+    r.drId = to; r.drName = nameOf.get(to) || r.drName;
+  }
+  DOCTOR_ALIASES = [...seen.values()];
 }
 
 /* ═══════════════════════════════════════════════════════════════
