@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.10.08-DR2</title>
+<title>Lab Sales Dashboard v2026.10.22-DL2</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -9726,7 +9726,7 @@ function rpHead(title, sub, maxDate) {
     APP.filters.state ? 'State: ' + APP.filters.state : ''
   ].filter(Boolean).join(' · ');
   return '<div style="' + RP_F + 'background:#0f172a;color:#fff;border-radius:12px;padding:20px 24px;margin-bottom:16px">' +
-    '<div style="font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#93c5fd;font-weight:700">Lab Sales Dashboard — Nightly Report</div>' +
+    '<div style="font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#93c5fd;font-weight:700">Lab Sales Dashboard — Daily Report</div>' +
     '<div style="font-size:22px;font-weight:800;margin:4px 0 2px">' + title + '</div>' +
     '<div style="font-size:12px;color:#cbd5e1">' + sub + ' · Data through <b style="color:#fff">' + esc(fmtDate(maxDate)) + '</b>' +
     (scope ? ' · ' + esc(scope) : '') + ' · <b style="color:#fff">Invoiced business days only (Mon–Fri)</b> · Generated ' + esc(new Date().toLocaleString()) + '</div></div>';
@@ -9828,6 +9828,8 @@ rpClearOldSnap();
 function rpBuildStatusReport() {
   const docs = computeDoctorStatus();
   const maxDate = getMaxDate() || new Date();
+  // "today" in this report means the latest day in the data — named, not assumed
+  const dayLbl = rpDayLabel(maxDate), dayShort = maxDate.toLocaleDateString('en-US', { weekday: 'short' });
   const asOf = isoDate(maxDate);
 
   // 90-day revenue per doctor for context in the listings
@@ -9909,6 +9911,7 @@ function rpBuildStatusReport() {
   const baseline = false;
 
   let h = rpHead('🔔 Status Changes Report', 'Daily additions + full rosters — New / Winback / Falloff / Inactive / Current', maxDate);
+  const _headEnd = h.length;     // the 💎 Diamond section is spliced in here, above everything else
 
   /* Day-by-day movement across the last two weeks. The single-day view above
      only tells you about the latest day; this shows whether a category has been
@@ -9952,9 +9955,11 @@ function rpBuildStatusReport() {
          'their own case history, so a falloff or inactive counts on the day it actually happened.</div>';
   }
 
+  const KA = keyAcctResolve(docs);
+  const dia = d => KA.byDoc.has(d.drId) ? '💎 ' : '';
   const rpDocRow = d =>
     '<tr>' +
-    '<td style="padding:7px 12px;border-bottom:1px solid #f1f5f9;font-size:12.5px;font-weight:700;color:#0f172a">' + esc(d.name) + '</td>' +
+    '<td style="padding:7px 12px;border-bottom:1px solid #f1f5f9;font-size:12.5px;font-weight:700;color:#0f172a">' + dia(d) + esc(d.name) + '</td>' +
     '<td style="padding:7px 12px;border-bottom:1px solid #f1f5f9;font-size:12.5px">' + esc(d.practice || '—') + '</td>' +
     '<td style="padding:7px 12px;border-bottom:1px solid #f1f5f9;font-size:12.5px">' + esc([d.city, d.stateAbbr || d.state].filter(Boolean).join(', ') || '—') + '</td>' +
     '<td style="padding:7px 12px;border-bottom:1px solid #f1f5f9;font-size:12.5px">' + esc(fmtDate(d.lastDate)) + '</td>' +
@@ -9967,7 +9972,7 @@ function rpBuildStatusReport() {
     list.map(rpDocRow).join('') + '</table>';
   const ROSTER_CAP = 100;
   const rpRosterRow = d =>
-    '<tr><td style="padding:5px 10px;border-bottom:1px solid #f1f5f9;font-size:12px"><b style="color:#0f172a">' + esc(d.name) + '</b></td>' +
+    '<tr><td style="padding:5px 10px;border-bottom:1px solid #f1f5f9;font-size:12px"><b style="color:#0f172a">' + dia(d) + esc(d.name) + '</b></td>' +
     '<td style="padding:5px 10px;border-bottom:1px solid #f1f5f9;font-size:12px">' + esc(d.practice || '—') + '</td>' +
     '<td style="padding:5px 10px;border-bottom:1px solid #f1f5f9;font-size:12px">' + esc(fmtDate(d.lastDate)) + '</td>' +
     '<td style="padding:5px 10px;border-bottom:1px solid #f1f5f9;font-size:12px;font-weight:700;color:#2563eb">' + rpMoneyF(rev90[d.drId] || 0) + '</td></tr>';
@@ -9975,6 +9980,51 @@ function rpBuildStatusReport() {
     '<table cellpadding="0" cellspacing="0" style="' + RP_F + 'width:100%;border-collapse:collapse;background:#fff;border:1px solid #e2e8f0;border-radius:10px">' +
     '<tr>' + ['Doctor', 'Practice', 'Last case', 'Rev (90d)'].map(t => '<th style="text-align:left;padding:5px 10px;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:#64748b;border-bottom:1px solid #e2e8f0">' + t + '</th>').join('') + '</tr>' +
     list.map(rpRosterRow).join('') + '</table>';
+
+  /* ── 💎 DIAMOND LIST — the same report, for the tracked accounts only ───────
+     Placed first: it's the list being reported on. Every doctor at a matched
+     practice counts. Accounts with no cases in the data are listed at the end
+     rather than silently left out. */
+  if (KA.accounts.length) {
+    let dh = '';
+    const ddocs = docs.filter(d => KA.byDoc.has(d.drId));
+    const found = KA.accounts.filter(a => a.practice).length;
+    dh += '<div style="' + RP_F + 'margin:6px 0 10px;padding:12px 14px;background:#f5f3ff;border:1px solid #ddd6fe;border-radius:12px">' +
+         '<div style="font-size:17px;font-weight:800;color:#5b21b6">💎 Diamond list</div>' +
+         '<div style="font-size:12px;color:#6d28d9">' + KA.accounts.length + ' accounts · ' + found + ' found in the lab data · ' + ddocs.length + ' doctors</div></div>';
+    // current status, at a glance
+    dh += '<table role="presentation" style="' + RP_F + 'width:100%;border-collapse:separate;border-spacing:6px 0;margin-bottom:8px"><tr>' +
+      RP_CATS.map(c => { const n = ddocs.filter(d => c.test(d)).length, a = addedOn(c.key, asOfDay).filter(d => KA.byDoc.has(d.drId)).length;
+        return '<td style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:8px 10px;text-align:center">' +
+               '<div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:' + c.color + ';font-weight:700">' + esc(c.label.replace(/^[^ ]+ /, '')) + '</div>' +
+               '<div style="font-size:20px;font-weight:800;color:#0f172a">' + n + '</div>' +
+               '<div style="font-size:11px;color:' + (a ? c.color : '#94a3b8') + ';font-weight:' + (a ? 700 : 400) + '">' + (a ? '+' + a + ' on ' + dayShort : 'no change') + '</div></td>'; }).join('') +
+      '</tr></table>';
+    // what changed today, and everyone by status
+    RP_CATS.forEach(cat => {
+      const inCat = ddocs.filter(d => cat.test(d)).sort((a, b) => (rev90[b.drId] || 0) - (rev90[a.drId] || 0));
+      const adds = addedOn(cat.key, asOfDay).filter(d => KA.byDoc.has(d.drId)).sort((a, b) => (rev90[b.drId] || 0) - (rev90[a.drId] || 0));
+      if (!inCat.length && !adds.length) return;
+      dh += '<div style="' + RP_F + 'font-size:14px;font-weight:800;color:' + cat.color + ';margin:14px 0 6px">💎 ' + cat.label +
+        ' <span style="color:#0f172a">— <b>' + adds.length + ' changed ' + dayLbl + '</b> · ' + inCat.length + ' total</span></div>';
+      if (adds.length) dh += '<div style="' + RP_F + 'font-size:12px;font-weight:700;color:#0f172a;margin:4px 0 4px">Changed ' + dayLbl + '</div>' + rpDocTable(adds);
+      if (inCat.length) dh += '<div style="' + RP_F + 'font-size:12px;font-weight:700;color:#0f172a;margin:8px 0 4px">Everyone in this category</div>' + rpRosterTable(inCat);
+    });
+    const notFound = KA.accounts.filter(a => a.status === 'missing');
+    const toChoose = KA.accounts.filter(a => a.status === 'unclear');
+    const nameList = arr => arr.map(a => esc(a.row.practice_name || a.row.address) +
+      (a.row.city ? ' <span style="color:#94a3b8">(' + esc(a.row.city) + ')</span>' : '')).join(' · ');
+    if (toChoose.length) {
+      dh += '<div style="' + RP_F + 'font-size:13px;font-weight:800;color:#b45309;margin:14px 0 6px">💎 Needs a choice on the Reports tab — ' + toChoose.length + '</div>' +
+        '<div style="' + RP_F + 'font-size:12px;color:#475569;line-height:1.6">More than one practice fits these; until one is picked they are not counted above. ' + nameList(toChoose) + '</div>';
+    }
+    if (notFound.length) {
+      dh += '<div style="' + RP_F + 'font-size:13px;font-weight:800;color:#64748b;margin:14px 0 6px">💎 On the list, no cases in the lab data — ' + notFound.length + '</div>' +
+        '<div style="' + RP_F + 'font-size:12px;color:#475569;line-height:1.6">' + nameList(notFound) + '</div>';
+    }
+    dh += '<div style="' + RP_F + 'border-top:2px solid #e2e8f0;margin:22px 0 6px;padding-top:10px;font-size:15px;font-weight:800;color:#0f172a">All clients</div>';
+    h = h.slice(0, _headEnd) + dh + h.slice(_headEnd);
+  }
 
   RP_CATS.forEach(cat => {
     const inCat = docs.filter(d => cat.test(d)).sort((a, b) => (rev90[b.drId] || 0) - (rev90[a.drId] || 0));
@@ -9986,14 +10036,14 @@ function rpBuildStatusReport() {
                    .sort((a, b) => (rev90[b.drId] || 0) - (rev90[a.drId] || 0));
 
     h += '<div style="' + RP_F + 'font-size:15px;font-weight:800;color:' + cat.color + ';margin:22px 0 8px">' + cat.label +
-      ' <span style="color:#0f172a">— ' + (catBaseline ? '' : '<b>' + adds.length + ' added today</b> · ') + inCat.length + ' total</span></div>';
+      ' <span style="color:#0f172a">— ' + (catBaseline ? '' : '<b>' + adds.length + ' added ' + dayLbl + '</b> · ') + inCat.length + ' total</span></div>';
 
     if (catBaseline) {
       h += '<div style="' + RP_F + 'font-size:12px;color:#64748b;font-style:italic;margin-bottom:6px">Baseline day for this category — additions start tomorrow.</div>';
     } else if (!adds.length) {
-      h += '<div style="' + RP_F + 'font-size:12px;color:#64748b;font-style:italic;margin-bottom:6px">No new additions today.</div>';
+      h += '<div style="' + RP_F + 'font-size:12px;color:#64748b;font-style:italic;margin-bottom:6px">No new additions on ' + dayLbl + '.</div>';
     } else {
-      h += '<div style="' + RP_F + 'font-size:12px;font-weight:700;color:#0f172a;margin:6px 0 4px">Added today</div>' + rpDocTable(adds);
+      h += '<div style="' + RP_F + 'font-size:12px;font-weight:700;color:#0f172a;margin:6px 0 4px">Added ' + dayLbl + '</div>' + rpDocTable(adds);
     }
     // Full roster so the team can cater to every doctor currently in this bucket
     const roster = inCat.slice(0, ROSTER_CAP);
@@ -10292,15 +10342,248 @@ async function rpBuildEmployeeReport() {
   return h;
 }
 
+/* ══ 💎 KEY ACCOUNTS — THE DIAMOND LIST ═══════════════════════════════════════
+   ~100–110 tracked accounts, stored in public.key_accounts (salesly_key_accounts.sql)
+   so every machine and every morning's report sees the same list.
+
+   The list stores what was uploaded (practice, address, city, state, doctor),
+   NOT a link to a practice record. Each account is re-matched whenever a report
+   is built — address first, then practice name, then doctor — so a practice
+   the lab renames is still found as long as its address is the same.
+
+   Matching uses the SAME normalisers as the Salesly bridge (sbStrict, sbAddrCore,
+   suites), so "100 Main Street, Suite 200" and "100 Main St Ste 200" agree, and
+   two tenants in one tower with different suites never do. */
+const KEYACCT = { list: [], loaded: false, error: '' };
+
+async function keyAcctLoad(force) {
+  if (KEYACCT.loaded && !force) return KEYACCT.list;
+  const db = pgClient();
+  if (!db) { KEYACCT.error = 'not connected'; return KEYACCT.list; }
+  try {
+    const { data, error } = await db.from('key_accounts').select('*').order('practice_name');
+    if (error) throw new Error(error.message);
+    KEYACCT.list = data || []; KEYACCT.loaded = true; KEYACCT.error = '';
+  } catch (e) {
+    KEYACCT.error = /key_accounts/.test(e.message) ? 'run salesly_key_accounts.sql first' : e.message;
+  }
+  return KEYACCT.list;
+}
+
+function kaSuite(a) { const m = SB_SUITE_RE.exec(String(a || '').toLowerCase()); return m ? (m[1] || m[2] || '') : ''; }
+// "Mt Prospect" = "Mount Prospect", "St. Charles" = "Saint Charles" — both
+// spellings turn up for the same town, sometimes within one practice's invoices.
+const KA_CITY_ABBR = { mt: 'mount', st: 'saint', ste: 'sainte', ft: 'fort', pt: 'port', hts: 'heights',
+                       spgs: 'springs', spg: 'springs', vlg: 'village', twp: 'township' };
+function kaCity(c) {
+  return String(c || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+    .split(' ').map(t => KA_CITY_ABBR[t] || t).join(' ');
+}
+// the street without N/S/E/W — "556 W Ida Ct" and "556 Ida Ct" are one place
+const KA_DIRS = { n: 1, s: 1, e: 1, w: 1, ne: 1, nw: 1, se: 1, sw: 1 };
+function kaLoose(core) { return String(core || '').split(' ').filter(t => !KA_DIRS[t]).join(' '); }
+function kaPracKey(name, city) { return sbStrict(name) + '|' + kaCity(city); }
+
+/* Practices as they appear in the lab data — built from the INVOICE LINES, not
+   from each doctor's main practice. Built from doctors, any practice where no
+   doctor happened to have it as their main office was invisible, and real
+   accounts came back "not found". Every spelling of a practice's address and
+   city, and every doctor who invoiced there, is kept. */
+function keyAcctPractices() {
+  const by = new Map();
+  (APP.raw || []).forEach(r => {
+    const nm = sbStrict(r.practice); if (!nm) return;
+    const k = nm + '|' + kaCity(r.city);
+    let p = by.get(k);
+    if (!p) {
+      p = { key: k, name: r.practice, city: r.city || '', state: r.stateAbbr || r.state || '', address: r.address || '',
+            cores: new Set(), loose: new Set(), suites: new Set(), docIds: new Set(), docNames: new Set() };
+      by.set(k, p);
+    }
+    if (r.address) {
+      const c = sbAddrCore(r.address);
+      if (c) { p.cores.add(c); p.loose.add(kaLoose(c)); }
+      const su = kaSuite(r.address); if (su) p.suites.add(su);
+      if (!p.address) p.address = r.address;
+    }
+    if (r.drId) p.docIds.add(r.drId);
+    if (r.drName) p.docNames.add(sbStrict(r.drName));
+  });
+  return [...by.values()];
+}
+
+/* One uploaded account → the practice it means.
+     address match (same street core + city; suites must agree when both have one)  +2
+     practice-name match (city must agree when the list gives one)                  +2
+     a doctor on the list works at that practice                                    +2
+   A single best candidate scoring 2+ is a match; a tie, or nothing scoring, is
+   left for a person to decide. A hand-pinned choice always wins. */
+function keyAcctMatch(row, practices) {
+  // "All of these": one office the lab has recorded under several names at the
+  // same address (common when a group renames a location). Flag every one.
+  if (row.match_practice === '__all__') {
+    const rCore = sbAddrCore(row.address), rSuite = kaSuite(row.address), rCity = kaCity(row.city);
+    const ps = practices.filter(p => rCore && (p.cores.has(rCore) || p.loose.has(kaLoose(rCore)))
+                                   && (!rCity || rCity === kaCity(p.city))
+                                   && !(rSuite && p.suites.size && !p.suites.has(rSuite)));
+    return ps.length
+      ? { status: 'matched', practice: ps[0], practices: ps, how: 'all ' + ps.length + ' names at this address (chosen by hand)', candidates: ps }
+      : { status: 'missing', practice: null, how: 'nothing at this address any more', candidates: [] };
+  }
+  if (row.match_practice) {
+    const k = kaPracKey(row.match_practice, row.match_city);
+    const p = practices.find(x => x.key === k);
+    return p ? { status: 'matched', practice: p, how: 'chosen by hand', candidates: [p] }
+             : { status: 'missing', practice: null, how: 'pinned practice no longer in the data', candidates: [] };
+  }
+  const rCore = sbAddrCore(row.address), rSuite = kaSuite(row.address), rCity = kaCity(row.city);
+  const rName = sbStrict(row.practice_name), rDoc = sbStrict(row.doctor_name);
+  const scored = [];
+  practices.forEach(p => {
+    let sc = 0; const why = [];
+    const sameCity = !rCity || rCity === kaCity(p.city);
+    const sameStreet = rCore && (p.cores.has(rCore) || p.loose.has(kaLoose(rCore)));
+    const suiteClash = rSuite && p.suites.size && !p.suites.has(rSuite);   // two tenants in one building
+    if (sameStreet && sameCity && !suiteClash) { sc += 2; why.push('address'); }
+    if (rName && rName === sbStrict(p.name) && sameCity) { sc += 2; why.push('name'); }
+    if (rDoc && sameCity && p.docNames.has(rDoc)) { sc += 2; why.push('doctor'); }
+    if (sc) scored.push({ p, sc, why });
+  });
+  scored.sort((a, b) => b.sc - a.sc);
+  if (!scored.length) return { status: 'missing', practice: null, how: 'not in the lab data', candidates: [] };
+  const top = scored[0].sc, tied = scored.filter(x => x.sc === top);
+  if (tied.length === 1) return { status: 'matched', practice: tied[0].p, how: tied[0].why.join(' + '), candidates: scored.map(x => x.p) };
+  return { status: 'unclear', practice: null, how: tied.length + ' practices match equally', candidates: tied.map(x => x.p) };
+}
+
+// Everything the report needs: which doctors are diamond, and how each account fared.
+function keyAcctResolve(docs) {
+  const practices = keyAcctPractices();
+  const byDoc = new Map(), accounts = [];
+  (KEYACCT.list || []).forEach(row => {
+    const m = keyAcctMatch(row, practices);
+    accounts.push({ row, ...m });
+    (m.practices || (m.practice ? [m.practice] : [])).forEach(p => p.docIds.forEach(id => byDoc.set(id, row)));
+  });
+  return { byDoc, accounts, practices };
+}
+
+/* ── Upload: CSV or Excel → preview → save ─────────────────────────────────── */
+const KA_COLS = {
+  practice_name: /practice|account|office|clinic|company|business|^name$/i,
+  address: /address|street|addr/i, city: /^city|town/i, state: /^state|^st$|province/i,
+  zip: /zip|postal/i, doctor_name: /doctor|dentist|^dr\b|provider|physician/i, note: /note|comment/i
+};
+function kaMapRow(raw) {
+  const out = {}; const keys = Object.keys(raw || {});
+  Object.entries(KA_COLS).forEach(([field, re]) => {
+    const k = keys.find(h => re.test(String(h).trim()) && !(field === 'practice_name' && KA_COLS.doctor_name.test(h)));
+    if (k != null) out[field] = String(raw[k] == null ? '' : raw[k]).trim();
+  });
+  return out;
+}
+async function kaReadFile(file) {
+  const name = (file.name || '').toLowerCase();
+  if (/\.(xlsx|xls)$/.test(name)) {
+    if (!window.XLSX) await new Promise((ok, bad) => { const sc = document.createElement('script');
+      sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'; sc.onload = ok;
+      sc.onerror = () => bad(new Error('Could not load the Excel reader — save the list as CSV instead')); document.head.appendChild(sc); });
+    const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+    return XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' });
+  }
+  return new Promise((ok, bad) => Papa.parse(file, { header: true, skipEmptyLines: true, complete: r => ok(r.data), error: bad }));
+}
+
+let KA_PENDING = null;   // an uploaded list waiting for "Save"
+async function kaRenderCard() {
+  const box = document.getElementById('kaBox'); if (!box) return;
+  await keyAcctLoad(true);
+  if (KEYACCT.error) { box.innerHTML = '<div style="color:#dc2626;font-size:13px">' + esc(KEYACCT.error) + '</div>'; return; }
+  const haveData = !!(APP.raw && APP.raw.length);
+  const showing = KA_PENDING || KEYACCT.list;
+  const res = keyAcctMatchAll(showing);
+  const n = c => res.filter(r => r.status === c).length;
+  const statusChip = r => r.status === 'matched'
+      ? '<span style="color:#059669;font-weight:700">✓ matched</span><div style="font-size:11px;color:#64748b">' + esc(r.how) + '</div>'
+      : r.status === 'unclear'
+        ? '<span style="color:#b45309;font-weight:700">? choose</span><div><select class="gf-select ka-pick" data-i="' + r.i + '" style="font-size:11.5px;max-width:240px"><option value="">— which practice? —</option>' +
+          r.candidates.map(p => '<option value="' + esc(p.name) + '|' + esc(p.city) + '">' + esc(p.name) + ' · ' + esc(p.address) + ', ' + esc(p.city) + '</option>').join('') +
+          '<option value="__all__|">All of these — same office, different names</option></select></div>'
+        : '<span style="color:#dc2626;font-weight:700">✗ not found</span><div style="font-size:11px;color:#64748b">' + esc(r.how) + '</div>';
+  box.innerHTML =
+    '<div style="font-size:13px;margin-bottom:8px">' + (KA_PENDING
+      ? '<b>Preview of the uploaded list</b> — nothing is saved until you press <b>Save this list</b>.'
+      : (KEYACCT.list.length ? '<b>' + KEYACCT.list.length + ' accounts</b> on the list' + (KEYACCT.list[0].uploaded_at ? ', uploaded ' + esc(new Date(KEYACCT.list[0].uploaded_at).toLocaleDateString()) : '') + '.'
+                             : 'No list uploaded yet.')) +
+    (showing.length ? ' &nbsp;<span style="color:#059669">' + n('matched') + ' matched</span> · <span style="color:#b45309">' + n('unclear') + ' to choose</span> · <span style="color:#dc2626">' + n('missing') + ' not found</span>' : '') + '</div>' +
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">' +
+      '<label class="btn-text" style="cursor:pointer">⬆ Upload list (CSV or Excel)<input type="file" id="kaFile" accept=".csv,.xlsx,.xls" style="display:none"></label>' +
+      (KA_PENDING ? '<button class="sb-btn-primary" id="kaSave">💾 Save this list</button><button class="btn-text" id="kaCancel">Cancel</button>' : '') +
+    '</div>' +
+    (!haveData ? '<div style="font-size:12px;color:#b45309;margin-bottom:8px">Load the invoice data first — matching needs it.</div>' : '') +
+    (showing.length ? '<div style="max-height:360px;overflow:auto;border:1px solid #e2e8f0;border-radius:8px"><table style="width:100%;border-collapse:collapse;font-size:12.5px">' +
+      '<tr style="position:sticky;top:0;background:#f8fafc;text-align:left">' + ['Account on the list', 'Matched to', 'Result'].map(t => '<th style="padding:6px 8px;border-bottom:1px solid #e2e8f0">' + t + '</th>').join('') + '</tr>' +
+      res.map(r => '<tr style="border-top:1px solid #f1f5f9;vertical-align:top">' +
+        '<td style="padding:6px 8px"><b>' + esc(r.row.practice_name || '—') + '</b><div style="font-size:11px;color:#64748b">' + esc([r.row.address, r.row.city, r.row.state].filter(Boolean).join(', ')) + (r.row.doctor_name ? ' · Dr. ' + esc(r.row.doctor_name) : '') + '</div></td>' +
+        '<td style="padding:6px 8px">' + (r.practice ? esc(r.practice.name) + (r.practices && r.practices.length > 1 ? ' <span style="color:#6d28d9">+' + (r.practices.length - 1) + ' other name' + (r.practices.length > 2 ? 's' : '') + '</span>' : '') + '<div style="font-size:11px;color:#64748b">' + esc(r.practice.city) + ' · ' + r.practice.docIds.size + ' doctor' + (r.practice.docIds.size === 1 ? '' : 's') + '</div>' : '—') + '</td>' +
+        '<td style="padding:6px 8px">' + statusChip(r) + '</td></tr>').join('') + '</table></div>' : '');
+
+  const fi = document.getElementById('kaFile');
+  if (fi) fi.onchange = async () => {
+    const f = fi.files && fi.files[0]; if (!f) return;
+    try {
+      const raw = await kaReadFile(f);
+      const rows = raw.map(kaMapRow).filter(r => r.practice_name || r.address);
+      if (!rows.length) throw new Error('No practice or address columns found — check the file has a header row.');
+      KA_PENDING = rows; KA_PENDING.label = f.name; kaRenderCard();
+    } catch (e) { toast('Could not read the list: ' + e.message); }
+  };
+  box.querySelectorAll('.ka-pick').forEach(sel => sel.onchange = () => {
+    const i = +sel.dataset.i, [mp, mc] = String(sel.value).split('|');
+    const target = KA_PENDING || KEYACCT.list;
+    if (target[i]) { target[i].match_practice = mp || null; target[i].match_city = (mp === '__all__') ? null : (mc || null); }
+    if (!KA_PENDING) { KA_PENDING = KEYACCT.list.map(x => ({ ...x })); KA_PENDING.label = 'edited'; }
+    kaRenderCard();
+  });
+  const sv = document.getElementById('kaSave');
+  if (sv) sv.onclick = async () => {
+    const db = pgClient(); if (!db) return;
+    sv.disabled = true;
+    const { data, error } = await db.rpc('replace_key_accounts', { p_rows: KA_PENDING, p_label: KA_PENDING.label || null });
+    if (error) { toast('Save failed: ' + error.message); sv.disabled = false; return; }
+    toast('💎 Saved ' + data + ' accounts'); KA_PENDING = null; kaRenderCard();
+  };
+  const cn = document.getElementById('kaCancel'); if (cn) cn.onclick = () => { KA_PENDING = null; kaRenderCard(); };
+}
+function keyAcctMatchAll(rows) {
+  const practices = keyAcctPractices();
+  return (rows || []).map((row, i) => ({ i, row, ...keyAcctMatch(row, practices) }));
+}
+
+/* ══ THE REPORT DAY ══════════════════════════════════════════════════════════
+   Reports are about the LATEST DAY IN THE UPLOADED DATA, not the calendar day
+   they're built. The CSV arrives overnight and is uploaded in the morning, so
+   Wednesday morning's push reports on Tuesday. Every report — visits included —
+   uses this one date, so a single email never mixes two different days.
+   If the morning upload is ever missed, the reports (and their dated subject
+   lines) show the older day, which makes the gap obvious instead of hiding it. */
+function rpReportDay() {
+  const md = getMaxDate();
+  if (md) return new Date(md.getFullYear(), md.getMonth(), md.getDate());
+  const y = new Date(); y.setDate(y.getDate() - 1); return y;        // nothing loaded: yesterday
+}
+function rpDayLabel(d) { return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }); }
+
 async function rpBuildAll() {
+  await keyAcctLoad(true);           // the diamond list, fresh, for the status report
   const asOf = isoDate(getMaxDate() || new Date());
   return {
     asOf,
     reports: [
-      { key: 'doctors',  subject: '📋 Daily Customer Report',   html: rpBuildDoctorReport() },
-      { key: 'products', subject: '📦 Daily Product Report',    html: rpBuildProductReport() },
-      { key: 'status',   subject: '🔔 Status Changes Report',   html: rpBuildStatusReport() },
-      { key: 'visits',   subject: '🚗 Daily Visit Report',      html: (await rpBuildVisitReport(isoDate(new Date()))).html },
+      { key: 'doctors',  subject: '📋 Daily Customer Report — ' + rpDayLabel(rpReportDay()), html: rpBuildDoctorReport() },
+      { key: 'products', subject: '📦 Daily Product Report — ' + rpDayLabel(rpReportDay()),  html: rpBuildProductReport() },
+      { key: 'status',   subject: '🔔 Status Changes Report — ' + rpDayLabel(rpReportDay()), html: rpBuildStatusReport() },
+      { key: 'visits',   subject: '🚗 Daily Visit Report — ' + rpDayLabel(rpReportDay()),    html: (await rpBuildVisitReport(isoDate(rpReportDay()))).html },
       { key: 'employees', subject: '🧑‍🔧 Daily Employee Production', html: await rpBuildEmployeeReport() }
     ]
   };
@@ -10338,7 +10621,7 @@ async function rpPost(action) {
   const goA = document.getElementById('rpPush'), goB = document.getElementById('rpSend');
   goA.disabled = goB.disabled = true;
   try {
-    rpLog(action === 'sendNow' ? 'Building reports and sending now…' : 'Building and storing tonight\'s reports…');
+    rpLog(action === 'sendNow' ? 'Building reports and sending now…' : 'Building and storing reports for ' + rpDayLabel(rpReportDay()) + '…');
     const built = await rpBuildAll();
     built.reports.forEach(r => { r.to = perReport[r.key] || recipients || ''; });
 
@@ -10374,8 +10657,8 @@ async function rpPost(action) {
       rpLog('✓ Sent — routing:\n' + routeNote + '\n(check spam the first time)', 'ok');
       toast('Reports emailed');
     } else {
-      rpLog('✓ Stored for tonight — routing:\n' + routeNote + '\nRe-push after each data refresh to keep them current.', 'ok');
-      toast('Reports stored for tonight');
+      rpLog('✓ Stored — reports cover ' + rpDayLabel(rpReportDay()) + ' — routing:\n' + routeNote + '\nRe-push after each upload to keep them current.', 'ok');
+      toast('Reports stored for ' + rpDayLabel(rpReportDay()));
     }
     // No snapshot to save any more: the status baseline is recomputed from the
     // data each time (see rpBuildStatusReport), so pushing a report no longer
@@ -10394,7 +10677,7 @@ async function rpPreview(which) {
   // it is the one preview that has to wait on a fetch.
   if (which === 'visits') {
     box.innerHTML = '<div style="padding:18px;color:#64748b;font-size:13px">Loading visits…</div>';
-    try { box.innerHTML = (await rpBuildVisitReport(isoDate(new Date()))).html; }
+    try { box.innerHTML = (await rpBuildVisitReport(isoDate(rpReportDay()))).html; }
     catch (e) { box.innerHTML = '<div style="padding:18px;color:#dc2626;font-size:13px">' + esc(e.message) + '</div>'; }
     box.scrollTop = 0;
     return;
@@ -10407,6 +10690,7 @@ async function rpPreview(which) {
     box.scrollTop = 0;
     return;
   }
+  if (which === 'status') await keyAcctLoad();
   box.innerHTML = which === 'doctors' ? rpBuildDoctorReport()
                 : which === 'products' ? rpBuildProductReport()
                 : rpBuildStatusReport();
@@ -10437,7 +10721,7 @@ function renderReports() {
   el.innerHTML = `
     <div class="section-header">
       <div>
-        <div class="section-title">📧 Nightly Email Reports</div>
+        <div class="section-title">📧 Daily Email Reports</div>
         <div class="section-sub">Daily Customer, Product, and Status-Changes reports — emailed automatically every night.</div>
       </div>
       <div class="section-actions">
@@ -10451,14 +10735,14 @@ function renderReports() {
       Weekend-dated cases are counted with the preceding Friday, and days with no invoicing (weekends, holidays) are skipped entirely. The <b>Customer</b> and <b>Product</b> reports show those trends for revenue,
       units, remake % and turnaround — total change and % change, overall and per client / per product — and the
       <b>Status Changes report</b> lists doctors added that day to New, Winback, Falloff and Inactive (same rules as the
-      Status tab and the Bridge). Click <b>Push tonight's reports</b> after each data load so the nightly email stays current;
+      Status tab and the Bridge). Each morning after the upload, click <b>Push today's reports</b>. Reports cover the <b>latest day in the data</b> — Wednesday's upload carries Tuesday, so Wednesday's email reports on Tuesday;
       <b>Send now</b> emails immediately.</div>
 
     <div class="card">
       <div class="sb-card-title"><span class="sb-stepnum">1</span> Delivery setup</div>
       <div class="sb-hint">Connection is <b>shared with the Salesly Bridge tab</b> — same Supabase project.
         Reports are written to the <code>reports</code> table and emailed by the <code>send-reports</code>
-        Edge Function, which runs nightly on a schedule. <b>Send now</b> invokes it immediately.</div>
+        Edge Function on its schedule — when email is connected, set that to run <b>after</b> your usual upload, or press <b>Send now</b> once you've pushed.</div>
       <div class="sb-row">
         <div class="sb-hint">Backend: the Supabase project configured on the <b>Salesly Bridge</b> tab. Reports are written to the <code>reports</code> table and emailed by the <code>send-reports</code> Edge Function.</div>
         
@@ -10480,6 +10764,14 @@ function renderReports() {
     </div>
 
     <div class="card">
+      <div class="sb-card-title"><span class="sb-stepnum">💎</span> Diamond list</div>
+      <div class="sb-hint">The tracked accounts. They get a 💎 and their own section in the <b>Status changes</b> report.
+        Upload a CSV or Excel file with columns for practice, address, city, state — a doctor column helps when an
+        address is shared. You'll see what matched before anything is saved, and uploading again replaces the list.</div>
+      <div id="kaBox" style="font-size:13px;color:#64748b">Loading…</div>
+    </div>
+
+    <div class="card">
       <div class="sb-card-title"><span class="sb-stepnum">2</span> Preview</div>
       <div class="sb-hint">Exactly what lands in the inbox. Per-entity tables are sorted by biggest revenue swing. Each period shows the <b>top 25</b>, with the rest in an expandable <b>Show the remaining…</b> block — so the full client and product lists are always reachable.</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -10494,7 +10786,7 @@ function renderReports() {
 
     <div class="card">
       <div class="sb-card-title"><span class="sb-stepnum">3</span> Push &amp; send</div>
-      <button class="sb-btn-primary" id="rpPush">🌙 Push tonight's reports</button>
+      <button class="sb-btn-primary" id="rpPush">📤 Push today's reports</button>
       <button class="btn-text" id="rpSend" style="margin-left:8px">✉️ Send now</button>
       <div class="sb-log" id="rpLog" style="display:none"></div>
     </div>`;
@@ -10505,6 +10797,7 @@ function renderReports() {
   document.getElementById('rpPrevStat').onclick = () => rpPreview('status');
   document.getElementById('rpPrevVisits').onclick = () => rpPreview('visits');
   document.getElementById('rpPrevEmp').onclick = () => rpPreview('employees');
+  kaRenderCard();
   document.getElementById('rpPush').onclick = () => rpPost('saveReports');
   document.getElementById('rpSend').onclick = () => rpPost('sendNow');
   /* Save the recipient boxes. The old handler read rpUrl/rpToken, which were
