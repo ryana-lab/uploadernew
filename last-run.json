@@ -1,0 +1,9 @@
+{
+  "ran_at": "2026-10-26T20:38:44.857Z",
+  "ok": false,
+  "dry_run": false,
+  "days": [],
+  "invoices": {},
+  "production": {},
+  "error": "missing secrets: PILOT_API_KEY, AUTOMATION_EMAIL, AUTOMATION_PASSWORD, SUPABASE_URL, SUPABASE_KEY"
+}
