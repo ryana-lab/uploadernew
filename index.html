@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.10.26-DL10</title>
+<title>Lab Sales Dashboard v2026.10.26-DL11</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -170,6 +170,32 @@ html, body {
 .sv-legend span { display: inline-flex; align-items: center; gap: 5px; }
 .sv-daylist { display: flex; flex-direction: column; gap: 10px; min-width: 0; margin-top: 14px; }
 .sv-dupe-note { color: #a16207; }
+/* ── COACH ── */
+.coach-ask { padding: 14px 16px; margin-bottom: 14px; }
+.coach-try { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 12px; }
+.coach-lbl { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; color: var(--mut); margin-right: 4px; }
+.coach-preset { font-size: 12.5px; }
+.coach-build { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+.coach-f { display: flex; flex-direction: column; gap: 4px; min-width: 150px; }
+.coach-f > span { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--mut); }
+.coach-f.coach-q { min-width: 280px; }
+.coach-f.coach-wide { min-width: 260px; flex: 1 1 260px; }
+.coach-f select, .coach-f input { width: 100%; }
+.coach-go { height: 36px; white-space: nowrap; }
+.coach-preview { margin-top: 10px; font-size: 13px; color: var(--dim); font-style: italic; }
+.coach-empty { color: var(--mut); font-size: 13px; padding: 8px 2px; }
+.coach-a { padding: 14px 16px; margin-bottom: 12px; }
+.coach-qline { display: flex; gap: 8px; align-items: baseline; font-size: 13.5px; color: var(--dim); margin-bottom: 8px; }
+.coach-head { display: flex; gap: 8px; align-items: baseline; font-size: 15px; color: var(--ink); line-height: 1.45; }
+.coach-you, .coach-me { flex: none; font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; padding: 2px 7px; border-radius: 999px; }
+.coach-you { background: var(--card-2); color: var(--mut); }
+.coach-me { background: var(--accent-soft); color: var(--accent-ink); }
+.coach-how { margin: 8px 0 2px; font-size: 12.5px; color: var(--dim); }
+.coach-how summary { cursor: pointer; color: var(--accent-ink); font-weight: 600; }
+.coach-how ul { margin: 6px 0 0 18px; padding: 0; line-height: 1.5; }
+.coach-table { overflow-x: auto; margin-top: 10px; max-height: 520px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; }
+.coach-table thead th { position: sticky; top: 0; background: var(--card); }
+.coach-actions { display: flex; gap: 8px; justify-content: flex-end; align-items: center; margin-top: 8px; }
 .sv-group-label { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; color: var(--mut); margin: 2px 0 -2px; }
 .sv-cl { align-self: stretch; text-align: center; font-size: 10.5px; font-weight: 800; color: #92400e; background: #fef3c7;
          border-radius: 5px; padding: 1px 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -983,6 +1009,7 @@ html, body {
     </div>
     <nav class="tabs" id="tabsBar">
       <button class="tab-btn active" data-tab="overview">📊 Sales Overview</button>
+      <button class="tab-btn" data-tab="coach">💬 Coach</button>
       <button class="tab-btn" data-tab="sales">💼 Sales Hub</button>
       <button class="tab-btn" data-tab="docgrid">👨‍⚕️ Doctor Grid</button>
       <button class="tab-btn" data-tab="docdetail">🔍 Doctor Detail</button>
@@ -1043,6 +1070,7 @@ html, body {
   </div>
 
   <div class="content">
+    <div class="tab-panel" id="panel-coach"></div>
     <div class="tab-panel active" id="panel-overview"></div>
     <div class="tab-panel" id="panel-sales"></div>
     <div class="tab-panel" id="panel-docgrid"></div>
@@ -3529,13 +3557,14 @@ function switchTab(tab) {
 /* Detail tabs depend on the current selection, so they must re-render on every
    visit — never serve them from the rendered-cache. */
 const ALWAYS_RENDER = { docdetail: 1, proddetail: 1, bridge: 1, reports: 1, prospects: 1, queue: 1,
-                        empgrid: 1, empdetail: 1, svgrid: 1, svdetail: 1 };
+                        empgrid: 1, empdetail: 1, svgrid: 1, svdetail: 1, coach: 1 };
 
 function renderTab(tab, force) {
   if (!force && !ALWAYS_RENDER[tab] && APP.rendered[tab]) return;
   APP.rendered[tab] = true;
   switch (tab) {
     case 'overview':  renderOverview(); break;
+    case 'coach':     renderCoach(); break;
     case 'sales':     renderSalesHub(); break;
     case 'docgrid':   renderDoctorGrid(); break;
     case 'docdetail': renderDoctorDetail(); break;
@@ -7187,6 +7216,564 @@ function svOfficeCard(o, dayVisits, all) {
    collapsible on its own with its count and revenue still visible when shut. */
 
 
+/* ══ COACH — ask the dashboard a question, get the list and a CSV ═════════════
+   Not an AI: every answer is CALCULATED by the dashboard from the loaded data,
+   with the same rules as the other tabs, so the same question always gives the
+   same answer. Pick a suggested question or build one from a template, filling
+   its blanks from dropdowns (product, status, dates, dental group, state,
+   customer). Each answer shows the headline number, HOW Coach counted it
+   (which products, which status rule, which dates), the list, and a CSV.
+
+   Statuses are the RETENTION TAB's, counted per doctor at each practice:
+     Current = current, plus older winbacks now simply active
+     New     = first case within 15 days      Winback = returned inside the window
+     Falloff = silent 21–29 days              Inactive = no case in 30+ days
+   Product questions use the curated catalog below, not keyword guessing:
+   "Extra Implant Screw" is an implant part, not a screw-retained crown;
+   "Patient Name on Denture/Flipper" is an add-on, not a denture. */
+
+/* ── the product catalog: every product the lab sells, in a group + category ── */
+const COACH_CATALOG = [
+  ['Crowns', 'Zirconia Crown', ['Digital Vitality Solid Zirconia', 'Vitality Solid Zirconia', 'Digital Vitality Esthetic Solid Zirconia',
+    'Vitality Layered Zirconia', 'Vitality Esthetic Solid Zirconia', 'Vitality Solid Zirconia - Lab', 'Digital Solid Zirconia PAW HD Only',
+    'Vitality Layered Zirconia Premium', 'Digital Vitality Layered Zirconia', 'Digital Vitality Esthetic Zirconia']],
+  ['Crowns', 'E.max Crown', ['Emax', 'Emax Layered']],
+  ['Crowns', 'PFM Crown', ['PFM Non-Precious', 'PFM Noble / Semi-Precious', 'PFM High Noble', 'PFM Non-Precious - Posterior', 'Richmond PFM Noble / Semi-Precious']],
+  ['Crowns', 'Full Cast Crown', ['FC Yellow High Noble', 'FC Yellow Semi-Precious', 'FC Non-Precious', 'FC White Semi-Precious', 'FC White High Noble', 'FC High Noble', 'FC yellow high nobel']],
+  ['Bridges', 'Zirconia Bridge', ['Digital Vitality Solid Zirconia - Bridge', 'Analog Vitality Solid Zirconia - Bridge', 'Digital Vitality Esthetic Solid Zirconia - Bridge',
+    'Vitality Layered Zirconia - Bridge', 'Analog Vitality Esthetic Solid Zirconia - Bridge', 'Digital Vitality Solid Zirconia-Bridge', 'Digital Vitality Solid Zirconia- Bridge',
+    'Digital Vitality Esthetic Solid Zirconia-Bridge', 'Digital Vitality Solid Zirconia Bridge']],
+  ['Bridges', 'E.max Bridge', ['Emax - Bridge', 'Emax Layered - Bridge']],
+  ['Bridges', 'PFM Bridge', ['PFM Non-Precious - Bridge', 'PFM Noble / Semi-Precious - Bridge', 'PFM High Noble - Bridge']],
+  ['Bridges', 'Full Cast Bridge', ['FC Yellow Semi-Precious - Bridge', 'FC Yellow High Noble - Bridge', 'FC White Semi-Precious - Bridge', 'FC Non-Precious - Bridge']],
+  ['Bridges', 'Maryland Bridge', ['Zirconia Maryland Bridge', 'PFM Maryland Bridge', 'Emax Maryland Bridge', 'PFM NP Maryland Bridge']],
+  ['Other fixed', 'Inlay / Onlay', ['Emax Inlay/Onlay', 'Vitality Solid Zirconia Inlay/Onlay', 'Esthetic Zirconia Inlay/Onlay', 'FC Non-Precious Inlay/Onlay', 'EMAX ONLAY']],
+  ['Other fixed', 'Veneer', ['Vitality Veneer']],
+  ['Other fixed', 'Temporary', ['Vitality Temp', 'Vitality Temp - Bridge', 'Temporary Maryland Bridge']],
+  ['Other fixed', 'Coping / Post & Core', ['Zirconia Coping', 'PFM Coping Non-Precious Cast', 'Non-Precious Coping', 'Non-Precious Coping - Bridge', 'Semi-Precious Coping',
+    'NP Post & Core', 'SP Post & Core', 'Reduction Coping']],
+  ['Implants', 'Screw-Retained Implant Crown', ['Screw-Retained Implant Vitality', 'Screw-Retained Implant Non-OEM HD Only']],
+  ['Implants', 'Screw-Retained Implant Bridge', ['Screw-Retained Implant Vitality - Bridge']],
+  ['Implants', 'Implant Crown on Abutment', ['Implant Vitality Solid Zirconia', 'Implant Vitality Esthetic Zirconia', 'Titanium custom abutment and zirconia crown package',
+    'Zircona custom abutment and zirconia crown package', 'Implant PFM NP', 'Implant PFM SP']],
+  ['Implants', 'Implant Hybrid / Full Arch', ['Vitality Screw-Retained BruxZir Hybrid Bridge [To Finish]', 'Vitality Inclusive Screw-Retained Hybrid Denture [To Finish]',
+    'Milled PMMA Hybrid Dr. .STL w/ Pink', 'Milled PMMA Hybrid W/ Pink Tissue', 'Milled PMMA Hybrid Dr. .STL', 'Locator Implant Overdenture [To Finish]', 'Conversion Denture', 'Conversion']],
+  ['Implants', 'Custom Abutment', ['Vitality Custom Abutment (Non-OEM)', 'Custom Abutment Authentic Brand', 'Custom Abutment Zim 3i Encode', 'Dr. Franklin Authentic Hiossen Abutment',
+    'Custom Implant Abutment - Hybrid Zirconia', 'Custom Locator Abutment', 'Custom KAT Abutment', 'Custom Multi Unit Abutment', 'Custom Abutment Authentic Biohorizon Implant Pack']],
+  ['Implants', 'Implant Temporary', ['Vitality screw-retained temp over ti base', 'Vitality Temp cement over implant']],
+  ['Implants', 'Implant Parts', ['Extra Implant Screw', 'Angled Screw Channel', 'OEM Digital Analog', 'Scan Body Order', 'Implant Parts', 'Stock Locator Abutment', 'Stock Implant Labor',
+    'Extra Locator', 'Stock Multi Unit Abutment', 'Stock Abutment Prep', 'Stock Abutment', 'Impression Coping', 'Locator Metal Housings w/ Caps', 'Locator RTX Housing', 'Locator Analog',
+    'Locator', 'Healing Abutment', 'T:LOC Driver - return for full credit', 'Wrench Kit (return for full credit)', 'Implant Driver', 'Snappy Abutment Charge',
+    'ERA Attachment with Metal Housing', 'Implant Reprocessing', 'Implant Parts Temp Cylinder for Conversion', 'Golden Hue Anodization', 'Analog Charge']],
+  ['Dentures', 'Denture', ['Standard Denture', 'Premium Denture', 'Economy Denture', '3D Printed Digital Denture - Truedent', '3D Printed Denture - Lucitone', 'Copy Denture', 'TrueDent Reprint Denture']],
+  ['Dentures', 'Immediate / Reference Denture', ['Standard Immediate Denture', '3D Printed Immediate Denture - Lucitone', '3D Reference/Immediate denture', '3D Printed Reference Denture - Lucitone']],
+  ['Partials & Flippers', 'Partial', ['VitalityFlex Partial', 'VitalityCast Partial', 'Acrylic Partial', 'Unilateral (Nesbit) Flexible Partial', 'Unilateral (Nesbit) Acrylic partial',
+    'VitalityCast Partial Premium', 'Premium VitalityFlex Partial', 'Lab - FP3d Partial w/ Teeth + Design Provided', '(Nesbit) Flexible Partial', 'Acrylic Partial 5+ Teeth',
+    'Vitality Metal Base Partial', 'Unilateral (Nesbit) Acrylic Partial w/Metal Frame']],
+  ['Partials & Flippers', 'Partial Framework', ['VitalityCast Partial Framework ONLY', 'VitalityCast Partial Framework', 'Vitality Partial Framework ONLY', 'Vitality Partial Metal Framework ONLY',
+    'Vitality Cast Partial Framework', 'Vitality Framework ONLY', 'PMMA Framework', 'Metal Framework Upgrade']],
+  ['Partials & Flippers', 'Flipper', ['Vitality Acrylic Flipper', 'Vitality Acrylic Flipper Over 5 Teeth', 'Vitality Premium Acrylic Flipper']],
+  ['Removable steps & repairs', 'Try-In & Bite Rim', ['Bite Rim', 'Traditional Wax Try In', 'Cast Partial Try In', '3D Printed Mono-Block Try In', 'Metal Upper Partial Try In', 'Try in Partial',
+    'Custom Tray', 'Custom Tray + Verification Jig', 'Verification Jig', "Process/Finish Doctor's Set Up [To Finish]", 'Cast Partial Processing']],
+  ['Removable steps & repairs', 'Repair & Reline', ['Repair Base Price [To Finish]', 'Acrylic Reline', 'Flexible Clasp Replacement', 'Add Tooth to Existing Partial', 'Adding Tooth to Partial',
+    'Hybrid Denture Repair', 'Denture Rebase [To Finish]', 'Acrylic Parital Rebase [To Finish]', 'Soft Reline', 'Repair Base', 'Cast Retention Weld [To Finish]']],
+  ['Removable steps & repairs', 'Clasp & Component', ['Milled Rest for Partial', 'Wrought Wire Clasps (pair)', 'Ball Clasps (pair)', 'Cast Clasp', 'Lingual Bar', 'Metal Mesh',
+    'Attachment Labor', 'Labor on Precision Attachments', 'Patient Name on Denture/Flipper', 'Additional Tooth']],
+  ['Appliances', 'Nightguard / Splint', ['Clench 3D Printed Nightguard', 'Hard/Soft Night Guard', 'Soft Nightguard', '3D Printed Nightguard HD Only', 'Dual Laminate Nightguard',
+    'NTI Appliance', 'Processed Acrylic Bite Splint [To Finish]', 'Bite Correction Splint', 'Sport Guard']],
+  ['Appliances', 'Retainer / Essix', ['Clear Retainer', 'Essix Appliance', 'Essix Retainer with 1 Tooth', 'Essix Retainer', 'Hawley Retainer', 'Band & Loop Space Maintainer']],
+  ['Appliances', 'Whitening Tray', ['Bleaching Tray']],
+  ['Appliances', 'Surgical Guide', ['Surgical Stent [To Finish]', 'Hard Clear Surgical Guide', 'Radiographic Surgical Stent', 'Conversion Surgical Guide', 'Reduction Guide',
+    'Temp Guide/Putty Matrix', 'Placement Jig']],
+  ['Models & diagnostics', 'Model', ['3D Printed Model Both Full Arches', '3D Printed Model Both Quadrant Arches', '3D Printed Model Single Full Arch', '3D Printed Model Single Quadrant Arch',
+    '3D Printed Model Solid Quadrant Arch', '3D Printed Model Solid Full Arch', 'Duplicate Model', 'Epoxy Model', 'Duplicate Stone Model', '3D Printed Die', 'Soft Tissue Model',
+    'Model Work', 'Additional Model Charge']],
+  ['Models & diagnostics', 'Wax-up & Design', ['Digital Diagnostic Waxup', 'Traditional Wax Diagnostic Waxup', '3Shape Balance', '.stl File Generation', 'Crown Design Fee', 'In Lab Scan']],
+  ['Fees & add-ons', 'Shipping', ['Shipping', 'Overnight Shipping', 'In-Bound Shipping', '3D Denture Shipping']],
+  ['Fees & add-ons', 'Rush Fee', ['1 Day Rush Fee', '2 Day Rush Fee', '3 Day Rush Fee', 'Digital 1 Day Rush Fee']],
+  ['Fees & add-ons', 'Add-on & Fee', ['Reprocessing Fee', 'Soft Tissue Bridge Fee', 'Custom Shade Consultation', 'Fit Crown to Nightguard / Retainer', 'Fit Crown to Existing Partial',
+    'Premium Custom Staining', 'Pink Porcelain', 'Metal Occlusal', 'Alloy', 'Acid Etching Emax', '180 Porcelain Butt Margin', '360 Porcelain Butt Margin',
+    'Maryland Bridge - additional wing', 'Maryland Bridge - additional pontic', 'Temporary Maryland Bridge - additional pontic',
+    'Contact add on (case not previously done by Vitality)', 'Premium Department', 'In Office Visit', 'Misc', 'To Be Determined', 'Balance Forward']],
+  ['Fees & add-ons', 'Scanner & Program', ['Trios3 Monthly', 'Trios3', 'Trios6', 'Trios5', 'Trios5 Monthly', 'Trios Program Placement Fee', 'Trios Program Starter Fee']]
+  // Not placed on purpose — unclear what they are, so they show as "Unclassified"
+  // in the review list rather than being guessed: Magic Touch Balance, Dr. Lee Patrone Special.
+];
+const COACH_GROUP_ORDER = ['Crowns', 'Bridges', 'Other fixed', 'Implants', 'Dentures', 'Partials & Flippers', 'Removable steps & repairs',
+                           'Appliances', 'Models & diagnostics', 'Fees & add-ons', 'Unclassified'];
+const COACH_GROUP_LABEL = { 'Crowns': 'any crown', 'Bridges': 'any bridge', 'Other fixed': 'other fixed work (inlays, veneers, temps, copings)',
+  'Implants': 'any implant product', 'Dentures': 'any denture', 'Partials & Flippers': 'any partial or flipper',
+  'Removable steps & repairs': 'removable try-ins, repairs and components', 'Appliances': 'any appliance', 'Models & diagnostics': 'models and diagnostics',
+  'Fees & add-ons': 'fees and add-ons', 'Unclassified': 'unclassified products' };
+const coachNorm = n => String(n || '').toLowerCase().replace(/\s+/g, ' ').trim();
+let _coachCatMap = null;
+
+/* A product's group and category: from the catalog when it's listed there; a
+   product the lab adds later falls back to careful rules (and says so); what
+   no rule fits is "Unclassified" — never guessed. */
+function coachCat(name) {
+  if (!_coachCatMap) {
+    _coachCatMap = new Map();
+    COACH_CATALOG.forEach(([g, c, list]) => list.forEach(p => _coachCatMap.set(coachNorm(p), { group: g, cat: c, how: 'catalog' })));
+  }
+  const key = coachNorm(name);
+  if (_coachCatMap.has(key)) return _coachCatMap.get(key);
+  const n = key, r = (g, c) => ({ group: g, cat: c, how: 'rule' });
+  let out;
+  if (!n) out = { group: 'Unclassified', cat: 'Unclassified', how: 'none' };
+  else if (/shipping/.test(n)) out = r('Fees & add-ons', 'Shipping');
+  else if (/rush/.test(n)) out = r('Fees & add-ons', 'Rush Fee');
+  else if (/trios|scanner program/.test(n)) out = r('Fees & add-ons', 'Scanner & Program');
+  else if (/screw.?retained/.test(n) && /hybrid|denture/.test(n)) out = r('Implants', 'Implant Hybrid / Full Arch');
+  else if (/screw.?retained/.test(n) && /temp/.test(n)) out = r('Implants', 'Implant Temporary');
+  else if (/screw.?retained/.test(n) && /bridge/.test(n)) out = r('Implants', 'Screw-Retained Implant Bridge');
+  else if (/screw.?retained/.test(n)) out = r('Implants', 'Screw-Retained Implant Crown');
+  else if (/abutment/.test(n) && /crown|package/.test(n)) out = r('Implants', 'Implant Crown on Abutment');
+  else if (/hybrid|overdenture/.test(n)) out = r('Implants', 'Implant Hybrid / Full Arch');
+  else if (/custom/.test(n) && /abutment/.test(n)) out = r('Implants', 'Custom Abutment');
+  else if (/implant/.test(n) && /zirconia|pfm|crown/.test(n)) out = r('Implants', 'Implant Crown on Abutment');
+  else if (/implant|abutment|locator|analog|scan body|screw/.test(n)) out = r('Implants', 'Implant Parts');
+  else if (/denture/.test(n) && /repair|reline|rebase/.test(n)) out = r('Removable steps & repairs', 'Repair & Reline');
+  else if (/denture/.test(n) && /immediate|reference/.test(n)) out = r('Dentures', 'Immediate / Reference Denture');
+  else if (/denture/.test(n) && !/name on/.test(n)) out = r('Dentures', 'Denture');
+  else if (/flipper/.test(n)) out = r('Partials & Flippers', 'Flipper');
+  else if (/framework/.test(n)) out = r('Partials & Flippers', 'Partial Framework');
+  else if (/try.?in|bite rim|custom tray/.test(n)) out = r('Removable steps & repairs', 'Try-In & Bite Rim');
+  else if (/partial/.test(n) && /repair|reline|rebase|add.* tooth|clasp/.test(n)) out = r('Removable steps & repairs', 'Repair & Reline');
+  else if (/partial|nesbit/.test(n)) out = r('Partials & Flippers', 'Partial');
+  else if (/night ?guard|splint|\bnti\b|sport guard|bruxism|occlusal guard/.test(n)) out = r('Appliances', 'Nightguard / Splint');
+  else if (/retainer|essix|space maintainer/.test(n)) out = r('Appliances', 'Retainer / Essix');
+  else if (/bleach|whiten/.test(n)) out = r('Appliances', 'Whitening Tray');
+  else if (/surgical|stent|\bguide\b/.test(n)) out = r('Appliances', 'Surgical Guide');
+  else if (/model|\bdie\b/.test(n)) out = r('Models & diagnostics', 'Model');
+  else if (/wax ?up|waxup|design|\.stl/.test(n)) out = r('Models & diagnostics', 'Wax-up & Design');
+  else if (/maryland/.test(n) && /additional/.test(n)) out = r('Fees & add-ons', 'Add-on & Fee');
+  else if (/maryland/.test(n)) out = r('Bridges', 'Maryland Bridge');
+  else if (/inlay|onlay/.test(n)) out = r('Other fixed', 'Inlay / Onlay');
+  else if (/veneer/.test(n)) out = r('Other fixed', 'Veneer');
+  else if (/coping|post ?(&|and) ?core/.test(n)) out = r('Other fixed', 'Coping / Post & Core');
+  else if (/\btemp\b|temporary|provisional/.test(n)) out = r('Other fixed', 'Temporary');
+  else if (/zirconia|zircona/.test(n) && /bridge/.test(n)) out = r('Bridges', 'Zirconia Bridge');
+  else if (/e\.?max/.test(n) && /bridge/.test(n)) out = r('Bridges', 'E.max Bridge');
+  else if (/pfm/.test(n) && /bridge/.test(n)) out = r('Bridges', 'PFM Bridge');
+  else if (/(^fc\b|full cast)/.test(n) && /bridge/.test(n)) out = r('Bridges', 'Full Cast Bridge');
+  else if (/zirconia|zircona/.test(n)) out = r('Crowns', 'Zirconia Crown');
+  else if (/e\.?max/.test(n)) out = r('Crowns', 'E.max Crown');
+  else if (/pfm/.test(n)) out = r('Crowns', 'PFM Crown');
+  else if (/(^fc\b|full cast)/.test(n)) out = r('Crowns', 'Full Cast Crown');
+  else out = { group: 'Unclassified', cat: 'Unclassified', how: 'none' };
+  _coachCatMap.set(key, out);
+  return out;
+}
+
+/* ── the blanks a question can have ───────────────────────────────────────── */
+const COACH_STATUS = [
+  { key: 'any', label: 'any status', test: () => true },
+  { key: 'current', label: 'current', test: e => e.status === 'current' || (e.status === 'winback' && !e.isWinbackSegment) },
+  { key: 'new', label: 'new', test: e => e.status === 'new' },
+  // "new" in everyday speech — started recently — rather than Retention's 15-day onboarding window
+  { key: 'newrange', label: 'newly started', test: (e, R) => !!e.firstDate && coachIn(e.firstDate, R) },
+  { key: 'winback', label: 'winback', test: e => !!e.isWinbackSegment },
+  { key: 'falloff', label: 'falloff', test: e => e.status === 'falloff' },
+  { key: 'inactive', label: 'inactive', test: e => e.status === 'inactive' }
+];
+const COACH_STATUS_RULE = {
+  current: 'Current = a case in the last 20 days (the Retention tab\'s Current Clients)',
+  new: 'New = first-ever case at that practice within the last 15 days (Retention: New Doctors)',
+  newrange: 'Newly started = their first-ever case at that practice falls inside the chosen dates',
+  winback: 'Winback = returned after a 45+ day gap, inside the winback window (Retention: Winbacks)',
+  falloff: 'Falloff = silent 21–29 days (Retention: Falloff)', inactive: 'Inactive = no case in 30+ days (Retention: Inactive)'
+};
+const COACH_RANGES = [['all', 'all time'], ['30', 'the last 30 days'], ['90', 'the last 90 days'], ['180', 'the last 6 months'], ['365', 'the last 12 months'],
+                      ['mtd', 'this month'], ['lastm', 'last month'], ['ytd', 'this year'], ['custom', 'custom dates…']];
+const COACH_QUIET = [['30', '30 days'], ['60', '60 days'], ['90', '90 days'], ['180', '6 months']];
+const COACH_METRICS = [['revenue', 'revenue'], ['units', 'units'], ['cases', 'cases'], ['doctors', 'doctors']];
+
+const COACH_TPL = [
+  { key: 'who_sent',   q: 'Which doctors sent a product?',                  slots: ['status', 'product', 'range', 'group', 'state'] },
+  { key: 'came_back',  q: 'Which winback doctors came back to a product?',  slots: ['product', 'group', 'state'] },
+  { key: 'first_time', q: 'Which doctors tried a product for the first time?', slots: ['product', 'range', 'status', 'group', 'state'] },
+  { key: 'stopped',    q: 'Which doctors stopped sending a product?',        slots: ['product', 'quiet', 'group', 'state'] },
+  { key: 'top',        q: 'What are the top products?',                      slots: ['product', 'metric', 'range', 'status', 'group', 'state'] },
+  { key: 'mix',        q: 'What does a customer send?',                      slots: ['customer', 'range'] },
+  { key: 'production', q: 'Who produced a product?',                         slots: ['product', 'range'] }
+];
+const COACH_PRESETS = [
+  { label: 'How many doctors sent screw-retained implant crowns?', tpl: 'who_sent', p: { status: 'any', product: 'cat:Screw-Retained Implant Crown', range: 'all' } },
+  { label: 'How many new doctors (started in the last 90 days) send dentures?', tpl: 'who_sent', p: { status: 'newrange', product: 'grp:Dentures', range: '90' } },
+  { label: 'Which winback doctors came back to a crown product?',  tpl: 'came_back', p: { product: 'grp:Crowns' } },
+  { label: 'Top products in the last 30 days',                     tpl: 'top', p: { product: 'any', metric: 'revenue', range: '30' } },
+  { label: 'Who stopped sending nightguards?',                     tpl: 'stopped', p: { product: 'cat:Nightguard / Splint', quiet: '90' } },
+  { label: 'Who tried implants for the first time in 90 days?',    tpl: 'first_time', p: { product: 'grp:Implants', range: '90', status: 'any' } }
+];
+const COACH = { tpl: 'who_sent', p: { status: 'any', product: 'cat:Screw-Retained Implant Crown', range: 'all', quiet: '90', metric: 'revenue',
+                group: 'all', state: 'all', customer: '', from: '', to: '' }, history: [], seq: 0 };
+
+/* ── helpers ──────────────────────────────────────────────────────────────── */
+const coachUSD = n => '$' + Math.round(n || 0).toLocaleString();
+const coachDay = d => d ? d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
+function coachProdSel(v) {
+  v = v || 'any';
+  if (v === 'any') return { label: 'any product', test: () => true, cats: null };
+  const [kind, val] = [v.slice(0, 4), v.slice(4)];
+  if (kind === 'grp:') return { label: COACH_GROUP_LABEL[val] || val, group: val, test: n => coachCat(n).group === val };
+  if (kind === 'cat:') return { label: val, cat: val, test: n => coachCat(n).cat === val };
+  return { label: val, product: val, test: n => coachNorm(n) === coachNorm(val) };
+}
+function coachRange(p) {
+  const md = getMaxDate(); if (!md) return { from: null, to: null, label: 'all time' };
+  const end = new Date(md.getFullYear(), md.getMonth(), md.getDate(), 23, 59, 59);
+  const day0 = (y, m, d) => new Date(y, m, d);
+  const k = p.range || 'all';
+  if (k === 'all') return { from: null, to: null, label: 'all time' };
+  if (/^\d+$/.test(k)) return { from: day0(md.getFullYear(), md.getMonth(), md.getDate() - (+k - 1)), to: end, label: (COACH_RANGES.find(r => r[0] === k) || [0, k + ' days'])[1] };
+  if (k === 'mtd') return { from: day0(md.getFullYear(), md.getMonth(), 1), to: end, label: md.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) };
+  if (k === 'lastm') { const f = day0(md.getFullYear(), md.getMonth() - 1, 1);
+    return { from: f, to: new Date(md.getFullYear(), md.getMonth(), 0, 23, 59, 59), label: f.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) }; }
+  if (k === 'ytd') return { from: day0(md.getFullYear(), 0, 1), to: end, label: String(md.getFullYear()) + ' so far' };
+  const f = p.from ? parseDate(p.from) : null, t = p.to ? parseDate(p.to) : null;
+  return { from: f, to: t ? new Date(t.getFullYear(), t.getMonth(), t.getDate(), 23, 59, 59) : null,
+           label: (f ? coachDay(f) : 'the start') + ' – ' + (t ? coachDay(t) : 'the latest day') };
+}
+const coachIn = (d, R) => !!d && (!R.from || d >= R.from) && (!R.to || d <= R.to);
+/* The invoice lines a question looks at, with its dental-group / state blanks
+   applied. Lines with NO product (about 27k invoice-level adjustments — credits,
+   discounts, charges — netting to roughly −$400k) are left out: there is no
+   product to count them under. */
+/* The invoice lines a question looks at, with its dental-group / state blanks
+   applied. Lines with NO product name are left out: they are invoice-level
+   adjustments (about 27,000 lines, mostly charges with ~9,000 credits), not
+   products, and counting them made "any product" totals wrong. */
+function coachRows(p) {
+  return rawByGroupState().filter(r => r && r.anchorDate && String(r.product || '').trim()
+                                     && (p.group === 'all' || !p.group || r.group === p.group)
+                                     && (p.state === 'all' || !p.state || r.stateAbbr === p.state));
+}
+function coachEntries() {    // doctor-at-practice entries, with the Retention tab's statuses
+  const m = new Map();
+  statusEntries(computeDoctorStatus()).forEach(e => m.set(e.drId + '|' + (e.practice || ''), e));
+  return m;
+}
+function coachFilterNote(p) {
+  const f = APP.filters || {}, out = [];
+  if (p.group && p.group !== 'all') out.push('Dental group: ' + p.group);
+  if (p.state && p.state !== 'all') out.push('State: ' + p.state);
+  if (f.group && f.group !== 'all') out.push('The dashboard\'s Group filter (top of the page) is also on: ' + f.group);
+  if (f.state && f.state !== 'all') out.push('The dashboard\'s State filter (top of the page) is also on: ' + f.state);
+  return out;
+}
+function coachProductNote(sel, rows) {
+  if (!sel.group && !sel.cat) return [];
+  const seen = new Map();
+  rows.forEach(r => { if (sel.test(r.product)) seen.set(r.product, (seen.get(r.product) || 0) + 1); });
+  const list = [...seen.entries()].sort((a, b) => b[1] - a[1]).map(([n]) => n);
+  return ['Products counted as ' + esc(sel.label) + ' (' + list.length + '): ' + (list.map(esc).join(' · ') || 'none in the data')];
+}
+/* per doctor-at-practice totals for the lines that match */
+function coachAgg(rows, test) {
+  const by = new Map();
+  rows.forEach(r => {
+    if (!test(r)) return;
+    const k = r.drId + '|' + (r.practice || '');
+    let a = by.get(k);
+    if (!a) { a = { key: k, drId: r.drId, name: r.drName, practice: r.practice || '', city: r.city, state: r.stateAbbr || r.state, group: r.group || '',
+                    email: r.email, phone: r.phone, cases: new Set(), units: 0, rev: 0, first: null, last: null, products: new Map() }; by.set(k, a); }
+    if (r.caseKey) a.cases.add(r.caseKey);
+    a.units += r.qty || 0; a.rev += r.netCost || 0;
+    if (!a.first || r.anchorDate < a.first) a.first = r.anchorDate;
+    if (!a.last || r.anchorDate > a.last) a.last = r.anchorDate;
+    a.products.set(r.product, (a.products.get(r.product) || 0) + (r.qty || 0));
+  });
+  return by;
+}
+const coachTopProducts = a => [...a.products.entries()].sort((x, y) => y[1] - x[1]).slice(0, 3).map(([n]) => n).join('; ');
+
+/* ── the questions ────────────────────────────────────────────────────────── */
+function coachRun(tplKey, p) {
+  const sel = coachProdSel(p.product), R = coachRange(p), st = COACH_STATUS.find(s => s.key === (p.status || 'any')) || COACH_STATUS[0];
+  const rows = coachRows(p), E = coachEntries();
+  const how = [], add = x => how.push(x);
+  const docCols = [['name', 'Doctor'], ['practice', 'Practice'], ['city', 'City'], ['state', 'State'], ['status', 'Status']];
+  const statusOf = k => { const e = E.get(k); if (!e) return '—'; return e.isWinbackSegment ? 'Winback' : e.status === 'winback' ? 'Current' : (e.status || '—').replace(/^./, c => c.toUpperCase()); };
+
+  if (tplKey === 'who_sent') {
+    const A = [...coachAgg(rows, r => sel.test(r.product) && coachIn(r.anchorDate, R)).values()].filter(a => st.test(E.get(a.key) || {}, R));
+    A.sort((x, y) => y.rev - x.rev);
+    const units = A.reduce((t, a) => t + a.units, 0), rev = A.reduce((t, a) => t + a.rev, 0), cases = A.reduce((t, a) => t + a.cases.size, 0);
+    add('Date range: ' + R.label + (R.from ? ' (' + coachDay(R.from) + ' – ' + coachDay(R.to) + ')' : ''));
+    if (st.key !== 'any') add(COACH_STATUS_RULE[st.key]);
+    coachProductNote(sel, rows).forEach(add); coachFilterNote(p).forEach(add);
+    add('Counted per doctor at each practice, like the Retention tab. Cases are counted once however many lines they have. Invoice lines with no product (adjustments) are left out.');
+    return { headline: `<b>${A.length.toLocaleString()}</b> ${st.key === 'any' ? '' : st.label + ' '}doctor${A.length === 1 ? '' : 's'} sent ${esc(sel.label)} in ${esc(R.label)} — ${cases.toLocaleString()} cases, ${Math.round(units).toLocaleString()} units, <b>${coachUSD(rev)}</b>.`,
+      cols: docCols.concat([['first', 'First'], ['last', 'Last'], ['cases', 'Cases'], ['units', 'Units'], ['rev', 'Revenue'], ['top', 'Main products'], ['email', 'Email'], ['phone', 'Phone']]),
+      rows: A.map(a => ({ name: a.name, practice: a.practice, city: a.city, state: a.state, status: statusOf(a.key), first: a.first, last: a.last,
+                          cases: a.cases.size, units: Math.round(a.units), rev: a.rev, top: coachTopProducts(a), email: a.email || '', phone: a.phone || '' })),
+      how, file: 'coach-doctors-who-sent' };
+  }
+
+  if (tplKey === 'came_back') {
+    const wins = [...E.values()].filter(e => e.isWinbackSegment && e.returnedDate);
+    const winKeys = new Map(wins.map(e => [e.drId + '|' + (e.practice || ''), e]));
+    const A = [...coachAgg(rows, r => { const e = winKeys.get(r.drId + '|' + (r.practice || ''));
+      return e && sel.test(r.product) && r.anchorDate >= e.returnedDate; }).values()];
+    A.sort((x, y) => y.rev - x.rev);
+    add('Winback = ' + COACH_STATUS_RULE.winback.replace(/^Winback = /, ''));
+    add('"Came back to" = the product appears on a case dated on or after the day they returned.');
+    coachProductNote(sel, rows).forEach(add); coachFilterNote(p).forEach(add);
+    return { headline: `<b>${A.length.toLocaleString()}</b> of ${wins.length.toLocaleString()} winback doctor${wins.length === 1 ? '' : 's'} came back to ${esc(sel.label)} — <b>${coachUSD(A.reduce((t, a) => t + a.rev, 0))}</b> since returning.`,
+      cols: [['name', 'Doctor'], ['practice', 'Practice'], ['city', 'City'], ['state', 'State'], ['returned', 'Returned'], ['first', 'First since'], ['cases', 'Cases'], ['units', 'Units'], ['rev', 'Revenue since'], ['top', 'Products'], ['email', 'Email'], ['phone', 'Phone']],
+      rows: A.map(a => ({ name: a.name, practice: a.practice, city: a.city, state: a.state, returned: (winKeys.get(a.key) || {}).returnedDate, first: a.first,
+                          cases: a.cases.size, units: Math.round(a.units), rev: a.rev, top: coachTopProducts(a), email: a.email || '', phone: a.phone || '' })),
+      how, file: 'coach-winbacks-came-back' };
+  }
+
+  if (tplKey === 'first_time') {
+    const all = coachAgg(rows, r => sel.test(r.product));   // all time: when did each doctor FIRST send it?
+    const A = [...all.values()].filter(a => coachIn(a.first, R) && st.test(E.get(a.key) || {}, R));
+    A.sort((x, y) => y.first - x.first);
+    const already = A.filter(a => { const e = E.get(a.key); return e && e.firstDate && e.firstDate < a.first; }).length;
+    add('Date range for the first time: ' + R.label); if (st.key !== 'any') add(COACH_STATUS_RULE[st.key]);
+    add('"First time" = their earliest case with the product, looking at all history.');
+    coachProductNote(sel, rows).forEach(add); coachFilterNote(p).forEach(add);
+    return { headline: `<b>${A.length.toLocaleString()}</b> doctor${A.length === 1 ? '' : 's'} tried ${esc(sel.label)} for the first time in ${esc(R.label)} — <b>${already}</b> were already customers.`,
+      cols: docCols.concat([['first', 'First time'], ['customerSince', 'Customer since'], ['cases', 'Cases'], ['rev', 'Revenue'], ['email', 'Email'], ['phone', 'Phone']]),
+      rows: A.map(a => { const e = E.get(a.key) || {}; return { name: a.name, practice: a.practice, city: a.city, state: a.state, status: statusOf(a.key),
+                         first: a.first, customerSince: e.firstDate || null, cases: a.cases.size, rev: a.rev, email: a.email || '', phone: a.phone || '' }; }),
+      how, file: 'coach-first-time' };
+  }
+
+  if (tplKey === 'stopped') {
+    const md = getMaxDate(), q = +(p.quiet || 90), cut = new Date(md.getFullYear(), md.getMonth(), md.getDate() - q);
+    const recent = new Date(md.getFullYear(), md.getMonth(), md.getDate() - 30);
+    const A = [...coachAgg(rows, r => sel.test(r.product)).values()]
+      .filter(a => a.last < cut).filter(a => { const e = E.get(a.key); return e && e.lastDate && e.lastDate >= recent; });
+    A.sort((x, y) => y.rev - x.rev);
+    add(`Stopped = their last ${esc(sel.label)} case was more than ${q} days before ${coachDay(md)}.`);
+    add('Still a customer = they sent other work in the last 30 days, so this is a lost product line, not a lost doctor.');
+    coachProductNote(sel, rows).forEach(add); coachFilterNote(p).forEach(add);
+    return { headline: `<b>${A.length.toLocaleString()}</b> doctor${A.length === 1 ? '' : 's'} stopped sending ${esc(sel.label)} but still send other work — <b>${coachUSD(A.reduce((t, a) => t + a.rev, 0))}</b> lifetime on that product.`,
+      cols: docCols.concat([['last', 'Last of this product'], ['days', 'Days since'], ['latest', 'Latest case (anything)'], ['rev', 'Lifetime on this product'], ['email', 'Email'], ['phone', 'Phone']]),
+      rows: A.map(a => { const e = E.get(a.key) || {}; return { name: a.name, practice: a.practice, city: a.city, state: a.state, status: statusOf(a.key),
+                         last: a.last, days: Math.round((md - a.last) / 864e5), latest: e.lastDate || null, rev: a.rev, email: a.email || '', phone: a.phone || '' }; }),
+      how, file: 'coach-stopped-sending' };
+  }
+
+  if (tplKey === 'top') {
+    const by = new Map(), docs = new Map();
+    rows.forEach(r => {
+      if (!sel.test(r.product) || !coachIn(r.anchorDate, R)) return;
+      if (st.key !== 'any' && !st.test(E.get(r.drId + '|' + (r.practice || '')) || {}, R)) return;
+      let a = by.get(r.product); const c = coachCat(r.product);
+      if (!a) { a = { product: r.product, group: c.group, cat: c.cat, cases: new Set(), units: 0, rev: 0, docs: new Set() }; by.set(r.product, a); }
+      if (r.caseKey) a.cases.add(r.caseKey); a.units += r.qty || 0; a.rev += r.netCost || 0; a.docs.add(r.drId + '|' + (r.practice || ''));
+    });
+    const m = p.metric || 'revenue', val = a => m === 'units' ? a.units : m === 'cases' ? a.cases.size : m === 'doctors' ? a.docs.size : a.rev;
+    const A = [...by.values()].sort((x, y) => val(y) - val(x));
+    add('Date range: ' + R.label); if (st.key !== 'any') add('Only doctors who are ' + COACH_STATUS_RULE[st.key]);
+    coachProductNote(sel, rows).forEach(add); coachFilterNote(p).forEach(add);
+    const tot = A.reduce((t, a) => t + a.rev, 0);
+    return { headline: `<b>${A.length.toLocaleString()}</b> products in ${esc(R.label)}${sel.group || sel.cat ? ' (' + esc(sel.label) + ')' : ''}, ranked by ${esc((COACH_METRICS.find(x => x[0] === m) || [0, m])[1])} — <b>${coachUSD(tot)}</b> in all${A[0] ? '; top: ' + esc(A[0].product) : ''}.`,
+      cols: [['product', 'Product'], ['cat', 'Category'], ['group', 'Group'], ['doctors', 'Doctors'], ['cases', 'Cases'], ['units', 'Units'], ['rev', 'Revenue'], ['share', 'Share of revenue']],
+      rows: A.map(a => ({ product: a.product, cat: a.cat, group: a.group, doctors: a.docs.size, cases: a.cases.size, units: Math.round(a.units), rev: a.rev,
+                          share: tot ? Math.round(a.rev / tot * 1000) / 10 + '%' : '—' })),
+      how, file: 'coach-top-products' };
+  }
+
+  if (tplKey === 'mix') {
+    const c = String(p.customer || ''), [kind, val] = [c.split(': ')[0], c.split(': ').slice(1).join(': ')];
+    if (!val) return { headline: 'Pick a customer first — a doctor, a practice or a dental group.', cols: [], rows: [], how: [], file: 'coach-mix' };
+    const match = kind === 'Doctor' ? (r => (r.drName + ' · ' + (r.practice || '')) === val)
+                : kind === 'Practice' ? (r => r.practice === val) : (r => r.group === val);
+    const by = new Map();
+    rows.forEach(r => {
+      if (!match(r) || !coachIn(r.anchorDate, R)) return;
+      let a = by.get(r.product); const cc = coachCat(r.product);
+      if (!a) { a = { product: r.product, cat: cc.cat, group: cc.group, cases: new Set(), units: 0, rev: 0, first: null, last: null }; by.set(r.product, a); }
+      if (r.caseKey) a.cases.add(r.caseKey); a.units += r.qty || 0; a.rev += r.netCost || 0;
+      if (!a.first || r.anchorDate < a.first) a.first = r.anchorDate; if (!a.last || r.anchorDate > a.last) a.last = r.anchorDate;
+    });
+    const A = [...by.values()].sort((x, y) => y.rev - x.rev), tot = A.reduce((t, a) => t + a.rev, 0);
+    add(kind + ': ' + esc(val)); add('Date range: ' + R.label); coachFilterNote(p).forEach(add);
+    return { headline: `${esc(val)} sent <b>${A.length}</b> different product${A.length === 1 ? '' : 's'} in ${esc(R.label)} — <b>${coachUSD(tot)}</b>${A[0] ? '; most: ' + esc(A[0].product) : ''}.`,
+      cols: [['product', 'Product'], ['cat', 'Category'], ['cases', 'Cases'], ['units', 'Units'], ['rev', 'Revenue'], ['first', 'First'], ['last', 'Last']],
+      rows: A.map(a => ({ product: a.product, cat: a.cat, cases: a.cases.size, units: Math.round(a.units), rev: a.rev, first: a.first, last: a.last })),
+      how, file: 'coach-customer-mix' };
+  }
+
+  if (tplKey === 'production') {
+    if (!PROD.loaded || !PROD.rows.length) return { headline: 'Production data isn\'t loaded yet — Coach is loading it now; ask again in a moment.', cols: [], rows: [], how: [], file: 'coach-production', needsProd: true };
+    const by = new Map();
+    PROD.rows.forEach(r => {
+      const d = prodDate(r.scan_in_date); if (!coachIn(d, R) || !sel.test(r.product_name)) return;
+      const k = String(r.employee || '').trim(); if (!k) return;
+      let a = by.get(k); if (!a) { a = { employee: k, units: 0, tasks: 0, products: new Map(), days: new Set() }; by.set(k, a); }
+      const u = prodNum(r.total_units); a.units += u; a.tasks += 1; a.days.add(r.scan_in_date);
+      a.products.set(r.product_name, (a.products.get(r.product_name) || 0) + u);
+    });
+    const A = [...by.values()].sort((x, y) => y.units - x.units), tot = A.reduce((t, a) => t + a.units, 0);
+    add('Date range (scan-in date): ' + R.label); add('Production product names are matched to the same catalog as invoices.');
+    if (sel.group || sel.cat) add('Products counted as ' + esc(sel.label) + ': ' + [...new Set(PROD.rows.filter(r => sel.test(r.product_name)).map(r => r.product_name))].map(esc).join(' · '));
+    return { headline: `<b>${A.length}</b> people produced ${esc(sel.label)} in ${esc(R.label)} — <b>${Math.round(tot).toLocaleString()}</b> units.`,
+      cols: [['employee', 'Employee'], ['units', 'Units'], ['share', 'Share'], ['tasks', 'Tasks'], ['days', 'Days'], ['top', 'Main products']],
+      rows: A.map(a => ({ employee: a.employee, units: Math.round(a.units), share: tot ? Math.round(a.units / tot * 1000) / 10 + '%' : '—', tasks: a.tasks, days: a.days.size,
+                          top: [...a.products.entries()].sort((x, y) => y[1] - x[1]).slice(0, 3).map(([n]) => n).join('; ') })),
+      how, file: 'coach-production' };
+  }
+  return { headline: 'Unknown question.', cols: [], rows: [], how: [], file: 'coach' };
+}
+
+/* the question in words, for the conversation */
+function coachPhrase(tplKey, p) {
+  const sel = coachProdSel(p.product), R = coachRange(p), st = COACH_STATUS.find(s => s.key === (p.status || 'any')) || COACH_STATUS[0];
+  const where = [p.group && p.group !== 'all' ? p.group : '', p.state && p.state !== 'all' ? p.state : ''].filter(Boolean).join(', ');
+  const tail = (where ? ' — ' + where : '');
+  switch (tplKey) {
+    case 'who_sent':   return `Which ${st.key === 'any' ? '' : st.label + ' '}doctors sent ${sel.label} in ${R.label}?${tail}`;
+    case 'came_back':  return `Which winback doctors came back to ${sel.label}?${tail}`;
+    case 'first_time': return `Which ${st.key === 'any' ? '' : st.label + ' '}doctors tried ${sel.label} for the first time in ${R.label}?${tail}`;
+    case 'stopped':    return `Which doctors stopped sending ${sel.label} (nothing in ${(COACH_QUIET.find(q => q[0] === p.quiet) || [0, p.quiet + ' days'])[1]})?${tail}`;
+    case 'top':        return `Top ${sel.group || sel.cat ? sel.label + ' ' : ''}products by ${(COACH_METRICS.find(m => m[0] === p.metric) || [0, 'revenue'])[1]} in ${R.label}${st.key === 'any' ? '' : ', ' + st.label + ' doctors'}?${tail}`;
+    case 'mix':        return `What does ${String(p.customer || 'a customer').replace(/^(Doctor|Practice|Group): /, '')} send, in ${R.label}?`;
+    case 'production': return `Who produced ${sel.label} in ${R.label}?`;
+  }
+  return '';
+}
+
+/* ══ THE TAB ══════════════════════════════════════════════════════════════════ */
+function coachProductOptions(cur) {
+  const raw = APP.raw || [];
+  const counts = new Map(); raw.forEach(r => { if (r && r.product) counts.set(r.product, (counts.get(r.product) || 0) + 1); });
+  const groups = new Map(); [...counts.keys()].forEach(n => { const c = coachCat(n); if (!groups.has(c.group)) groups.set(c.group, new Set()); groups.get(c.group).add(c.cat); });
+  const order = COACH_GROUP_ORDER.filter(g => groups.has(g));
+  const opt = (v, l) => `<option value="${esc(v)}"${v === cur ? ' selected' : ''}>${esc(l)}</option>`;
+  return opt('any', 'Any product') +
+    `<optgroup label="Product groups">${order.map(g => opt('grp:' + g, 'Any — ' + g)).join('')}</optgroup>` +
+    order.map(g => `<optgroup label="${esc(g)}">${[...groups.get(g)].sort().map(c => opt('cat:' + c, c)).join('')}</optgroup>`).join('') +
+    `<optgroup label="One specific product">${[...counts.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([n]) => opt('prd:' + n, n)).join('')}</optgroup>`;
+}
+function coachSlotHTML(slot, p) {
+  const sel = (id, opts, cur) => `<select class="gf-select coach-slot" data-slot="${id}">${opts.map(([v, l]) => `<option value="${esc(v)}"${v === cur ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
+  const raw = APP.raw || [];
+  switch (slot) {
+    case 'status':  return `<label class="coach-f"><span>Status</span>${sel('status', COACH_STATUS.map(s => [s.key, s.key === 'any' ? 'Any status' : s.key === 'newrange' ? 'New in the date range' : s.key === 'new' ? 'New (last 15 days)' : s.label.replace(/^./, c => c.toUpperCase())]), p.status)}</label>`;
+    case 'product': return `<label class="coach-f coach-wide"><span>Product</span><select class="gf-select coach-slot" data-slot="product">${coachProductOptions(p.product)}</select></label>`;
+    case 'range':   return `<label class="coach-f"><span>Dates</span>${sel('range', COACH_RANGES, p.range)}</label>` +
+      (p.range === 'custom' ? `<label class="coach-f"><span>From</span><input type="date" class="gf-select coach-slot" data-slot="from" value="${esc(p.from)}"></label>
+                               <label class="coach-f"><span>To</span><input type="date" class="gf-select coach-slot" data-slot="to" value="${esc(p.to)}"></label>` : '');
+    case 'group':   return `<label class="coach-f"><span>Dental group</span>${sel('group', [['all', 'All groups']].concat([...new Set(raw.map(r => r && r.group).filter(Boolean))].sort().map(g => [g, g])), p.group)}</label>`;
+    case 'state':   return `<label class="coach-f"><span>State</span>${sel('state', [['all', 'All states']].concat([...new Set(raw.map(r => r && r.stateAbbr).filter(Boolean))].sort().map(s => [s, s])), p.state)}</label>`;
+    case 'quiet':   return `<label class="coach-f"><span>Nothing for</span>${sel('quiet', COACH_QUIET, p.quiet)}</label>`;
+    case 'metric':  return `<label class="coach-f"><span>Rank by</span>${sel('metric', COACH_METRICS, p.metric)}</label>`;
+    case 'customer': {
+      if (!coachSlotHTML._list) {
+        const docs = new Set(), pracs = new Set(), grps = new Set();
+        raw.forEach(r => { if (!r) return; if (r.drName) docs.add(r.drName + ' · ' + (r.practice || '')); if (r.practice) pracs.add(r.practice); if (r.group) grps.add(r.group); });
+        coachSlotHTML._list = [...grps].sort().map(g => 'Group: ' + g).concat([...pracs].sort().map(x => 'Practice: ' + x), [...docs].sort().map(x => 'Doctor: ' + x));
+      }
+      return `<label class="coach-f coach-wide"><span>Customer — type a doctor, practice or group</span>
+        <input class="gf-select coach-slot" data-slot="customer" list="coachCustList" value="${esc(p.customer)}" placeholder="e.g. Practice: Ideal Dental Lab">
+        <datalist id="coachCustList">${coachSlotHTML._list.map(x => `<option value="${esc(x)}">`).join('')}</datalist></label>`;
+    }
+  }
+  return '';
+}
+
+function renderCoach() {
+  const el = document.getElementById('panel-coach'); if (!el) return;
+  coachSlotHTML._list = null;
+  const tpl = COACH_TPL.find(t => t.key === COACH.tpl) || COACH_TPL[0];
+  const md = getMaxDate();
+  el.innerHTML = `
+    <div class="section-header">
+      <div>
+        <div class="section-title">Coach</div>
+        <div class="section-sub">Ask about customers, products and production. Coach works out every answer from your data${md ? ' (through ' + esc(coachDay(md)) + ')' : ''}, with the same rules as the other tabs.</div>
+      </div>
+      <div class="section-actions">
+        <button class="btn-text" id="coachCats">⬇ Product categories</button>
+        <button class="btn-text" id="coachClear"${COACH.history.length ? '' : ' disabled'}>Clear answers</button>
+      </div>
+    </div>
+    <div class="card coach-ask">
+      <div class="coach-try"><span class="coach-lbl">Try</span>${COACH_PRESETS.map((x, i) => `<button class="pill coach-preset" data-i="${i}">${esc(x.label)}</button>`).join('')}</div>
+      <div class="coach-build">
+        <label class="coach-f coach-q"><span>Question</span><select class="gf-select" id="coachTpl">${COACH_TPL.map(t => `<option value="${t.key}"${t.key === tpl.key ? ' selected' : ''}>${esc(t.q)}</option>`).join('')}</select></label>
+        ${tpl.slots.map(s => coachSlotHTML(s, COACH.p)).join('')}
+        <button class="sb-btn-primary coach-go" id="coachGo">Ask Coach</button>
+      </div>
+      <div class="coach-preview" id="coachPreview">${esc(coachPhrase(tpl.key, COACH.p))}</div>
+    </div>
+    <div id="coachLog">${COACH.history.map(coachAnswerHTML).join('') ||
+      '<div class="coach-empty">Pick a suggested question above, or build your own and press <b>Ask Coach</b>.</div>'}</div>`;
+  document.getElementById('coachTpl').onchange = e => { COACH.tpl = e.target.value; renderCoach(); };
+  el.querySelectorAll('.coach-slot').forEach(s => s.addEventListener('change', () => {
+    COACH.p[s.dataset.slot] = s.value;
+    if (s.dataset.slot === 'range') return renderCoach();
+    document.getElementById('coachPreview').textContent = coachPhrase(COACH.tpl, COACH.p);
+  }));
+  el.querySelectorAll('.coach-preset').forEach(b => b.addEventListener('click', () => {
+    const x = COACH_PRESETS[+b.dataset.i]; COACH.tpl = x.tpl; Object.assign(COACH.p, { group: 'all', state: 'all' }, x.p); coachAsk(x.label);
+  }));
+  document.getElementById('coachGo').onclick = () => coachAsk();
+  document.getElementById('coachClear').onclick = () => { COACH.history = []; renderCoach(); };
+  document.getElementById('coachCats').onclick = coachCatalogCSV;
+  coachBindAnswers();
+}
+
+async function coachAsk(label) {
+  if (COACH.tpl === 'production' && !PROD.loaded) { toast('Loading production data…'); try { await prodLoadAll(); } catch (e) {} }
+  const p = Object.assign({}, COACH.p);
+  let res;
+  try { res = coachRun(COACH.tpl, p); }
+  catch (e) { res = { headline: 'Coach couldn\'t answer that: ' + esc(e.message || String(e)), cols: [], rows: [], how: [], file: 'coach' }; }
+  COACH.history.unshift(Object.assign({ id: ++COACH.seq, q: label || coachPhrase(COACH.tpl, p), showAll: false }, res));
+  renderCoach();
+}
+
+function coachCell(v, key) {
+  if (v instanceof Date) return coachDay(v);
+  if (key === 'rev') return coachUSD(v);
+  if (typeof v === 'number') return v.toLocaleString();
+  return esc(v == null || v === '' ? '—' : String(v));
+}
+function coachAnswerHTML(a) {
+  const LIMIT = 25, rows = a.showAll ? a.rows : a.rows.slice(0, LIMIT);
+  const num = k => ['cases', 'units', 'rev', 'days', 'doctors', 'tasks', 'share'].includes(k);
+  return `<div class="card coach-a" data-id="${a.id}">
+    <div class="coach-qline"><span class="coach-you">You</span>${esc(a.q)}</div>
+    <div class="coach-head"><span class="coach-me">Coach</span><div>${a.headline}</div></div>
+    ${a.how.length ? `<details class="coach-how"><summary>How Coach counted this</summary><ul>${a.how.map(h => `<li>${h}</li>`).join('')}</ul></details>` : ''}
+    ${a.rows.length ? `<div class="coach-table"><table class="sv-docs"><thead><tr>${a.cols.map(([k, l]) => `<th${num(k) ? ' class="r"' : ''}>${esc(l)}</th>`).join('')}</tr></thead>
+      <tbody>${rows.map(r => `<tr>${a.cols.map(([k]) => `<td${num(k) ? ' class="r"' : ''}>${coachCell(r[k], k)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
+      <div class="coach-actions">
+        ${a.rows.length > LIMIT ? `<button class="btn-text coach-more">${a.showAll ? 'Show the first ' + LIMIT : 'Show all ' + a.rows.length.toLocaleString() + ' rows'}</button>` : ''}
+        <button class="btn-text coach-csv">⬇ Download CSV (${a.rows.length.toLocaleString()} rows)</button>
+        <button class="btn-text coach-rm" title="Remove this answer">✕</button>
+      </div>` : `<div class="coach-actions"><button class="btn-text coach-rm" title="Remove this answer">✕</button></div>`}
+  </div>`;
+}
+function coachBindAnswers() {
+  document.querySelectorAll('#coachLog .coach-a').forEach(card => {
+    const a = COACH.history.find(x => x.id === +card.dataset.id); if (!a) return;
+    const more = card.querySelector('.coach-more'); if (more) more.onclick = () => { a.showAll = !a.showAll; card.outerHTML = coachAnswerHTML(a); coachBindAnswers(); };
+    const csv = card.querySelector('.coach-csv'); if (csv) csv.onclick = () => downloadCSV(a.file + '-' + isoDate(new Date()) + '.csv',
+      a.rows.map(r => Object.fromEntries(a.cols.map(([k, l]) => [l, r[k] instanceof Date ? isoDate(r[k]) : (k === 'rev' ? Math.round((r[k] || 0) * 100) / 100 : r[k])]))));
+    const rm = card.querySelector('.coach-rm'); if (rm) rm.onclick = () => { COACH.history = COACH.history.filter(x => x.id !== a.id); renderCoach(); };
+  });
+}
+
+/* every product in the data with its group and category — for review */
+function coachCatalogCSV() {
+  const by = new Map();
+  (APP.raw || []).forEach(r => { if (!r || !String(r.product || '').trim()) return; const a = by.get(r.product) || { lines: 0, rev: 0 }; a.lines++; a.rev += r.netCost || 0; by.set(r.product, a); });
+  downloadCSV('coach-product-categories-' + isoDate(new Date()) + '.csv', [...by.entries()].sort((a, b) => b[1].lines - a[1].lines).map(([n, a]) => {
+    const c = coachCat(n);
+    return { Product: n, Group: c.group, Category: c.cat, 'How it was placed': c.how === 'catalog' ? 'Listed' : c.how === 'rule' ? 'Rule — please check' : 'Unclassified — please place',
+             'Invoice lines': a.lines, Revenue: Math.round(a.rev) };
+  }));
+}
+
+
 async function renderEmployeeGrid() {
   const el = document.getElementById('panel-empgrid');
   el.innerHTML = '<div class="empty-state"><div class="empty-icon">⏳</div>Loading production data…</div>';
@@ -9436,8 +10023,24 @@ function renderBridge() {
     if (!v) return null;
     const m = String(v).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
     if (m) return new Date(+m[3], +m[1] - 1, +m[2]);
+    const iso = localDayFromIso(v);          // "2026-10-21" = that day, not 7 pm the evening before
+    if (iso) return iso;
     const d = new Date(v);
     return isNaN(d) ? null : d;
+  }
+  /* The database loader reads these exact column names. Pilot's reports spell
+     some differently — the daily JG report says "Remake_Percent" — and a key
+     that doesn't match exactly was stored as blank. Rows are renamed to the
+     loader's spelling (matched ignoring case) before they are sent. */
+  const LAB_STAGE_COLS = ['Case_Number', 'Case_Status', 'Case_Received_Date', 'Days_On_Hold', 'On_Hold_Reason', 'Tooth_Number', 'Shade',
+    'Dentist_Last_Name', 'Dentist_First_Name', 'Invoice_Date', 'Quantity', 'Unit_Price', 'phone', 'Net_Cost', 'Product_ID', 'Product_Name',
+    'email', 'address', 'Scanner_Source', 'Transaction_Type', 'Remake', 'Product_Remake', 'Remake_Qty', 'Remake_Discount', 'Remake_percent',
+    'Remake_Reason', 'Shipped', 'state', 'city', 'dd', 'pracname'];
+  const LAB_COL_BY_LOWER = new Map(LAB_STAGE_COLS.map(c => [c.toLowerCase(), c]));
+  function labStageShape(r) {
+    const o = {};
+    for (const k in r) { const c = LAB_COL_BY_LOWER.get(String(k).trim().toLowerCase()); if (c && (o[c] == null || o[c] === '')) o[c] = r[k]; }
+    return o;
   }
   async function labPushRaw(opts) {
     opts = opts || {};
@@ -9515,7 +10118,7 @@ function renderBridge() {
 
       let sent = 0;
       for (let i = 0; i < rows.length; i += LAB_CHUNK) {
-        const chunk = rows.slice(i, i + LAB_CHUNK);
+        const chunk = rows.slice(i, i + LAB_CHUNK).map(labStageShape);
         const { error } = await db.rpc('lab_stage_rows', { p_rows: chunk });
         if (error) throw new Error(error.message);
         sent += chunk.length;
