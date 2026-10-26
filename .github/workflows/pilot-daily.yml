@@ -1,0 +1,87 @@
+# ════════════════════════════════════════════════════════════════════════════
+#  Pilot LMS → Supabase, every morning
+#
+#  Pulls the invoice and production reports from Pilot for yesterday plus the
+#  two days before, and loads them into Supabase through the dashboard's own
+#  loaders. Also runnable by hand: Actions tab → "Pilot daily pull" → Run workflow.
+#
+#  THIS REPO IS PUBLIC: anyone can read these logs. The script prints dates and
+#  counts only. Secrets are encrypted, never shown, and blanked out of logs.
+#  Only the schedule and a manual run can start this — never a pull request.
+# ════════════════════════════════════════════════════════════════════════════
+name: Pilot daily pull
+
+on:
+  schedule:
+    # GitHub schedules in UTC: 11:30 UTC = 6:30 am Chicago in summer (CDT), 5:30 am in winter (CST).
+    # Runs can start a few minutes late when GitHub is busy.
+    - cron: '30 11 * * *'
+  workflow_dispatch:
+    inputs:
+      days_back:
+        description: 'How many days to pull, ending on the last day (default 3)'
+        required: false
+        default: '3'
+      end_date:
+        description: 'Last day to pull, YYYY-MM-DD (blank = yesterday)'
+        required: false
+        default: ''
+      dry_run:
+        description: 'Fetch and check only — load nothing'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write   # only to record the counts-only status on the automation-status branch
+
+concurrency:
+  group: pilot-daily
+  cancel-in-progress: false
+
+jobs:
+  pull:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Pull from Pilot and load into Supabase
+        env:
+          PILOT_API_KEY: ${{ secrets.PILOT_API_KEY }}
+          AUTOMATION_EMAIL: ${{ secrets.AUTOMATION_EMAIL }}
+          AUTOMATION_PASSWORD: ${{ secrets.AUTOMATION_PASSWORD }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          DAYS_BACK: ${{ inputs.days_back || '3' }}
+          END_DATE: ${{ inputs.end_date || '' }}
+          DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
+          STATUS_FILE: ${{ runner.temp }}/last-run.json
+        run: node automation/pilot-sync.mjs
+
+      # A public repo's scheduled jobs are switched off by GitHub after 60 days
+      # with no activity. Recording each run on its own branch keeps the repo
+      # active and leaves a visible "last ran" record — dates and counts only.
+      # It never touches the branch the dashboard is published from.
+      - name: Record the run (counts only)
+        if: always()
+        env:
+          STATUS: ${{ runner.temp }}/last-run.json
+        run: |
+          [ -f "$STATUS" ] || exit 0
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git ls-remote --exit-code --heads origin automation-status >/dev/null 2>&1; then
+            git fetch --depth=1 origin automation-status
+            git checkout -B automation-status FETCH_HEAD
+          else
+            git checkout --orphan automation-status
+            git rm -rf --quiet . || true
+          fi
+          cp "$STATUS" last-run.json
+          git add last-run.json
+          git commit --quiet -m "Pilot pull $(date -u +%Y-%m-%d)" || exit 0
+          git push --quiet origin automation-status
