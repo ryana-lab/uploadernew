@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.10.26-DL9</title>
+<title>Lab Sales Dashboard v2026.10.26-DL10</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -169,6 +169,7 @@ html, body {
 .sv-legend { display: flex; justify-content: center; gap: 14px; margin-top: 10px; font-size: 11.5px; color: var(--mut); }
 .sv-legend span { display: inline-flex; align-items: center; gap: 5px; }
 .sv-daylist { display: flex; flex-direction: column; gap: 10px; min-width: 0; margin-top: 14px; }
+.sv-dupe-note { color: #a16207; }
 .sv-group-label { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; color: var(--mut); margin: 2px 0 -2px; }
 .sv-cl { align-self: stretch; text-align: center; font-size: 10.5px; font-weight: 800; color: #92400e; background: #fef3c7;
          border-radius: 5px; padding: 1px 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -6696,24 +6697,52 @@ function svIndex() {
     byId.set(String(r.id), k); if (r.name) byName.set(svNameKey(r.name), k);
     SV.repInfo.set(k, { key: k, name: r.name || 'Unnamed rep', territory: r.territory || '', role: r.role || '' });
   });
+  const byFirst = new Map();
+  SV.reps.forEach(r => { const f = svNameKey(String(r.name || '').split(/\s+/)[0]);
+    if (f) byFirst.set(f, byFirst.has(f) ? null : 'id:' + String(r.id)); });   // null = two reps share it
   const keyFor = (uid, name) => {
     if (uid && byId.has(String(uid))) return byId.get(String(uid));
     const n = svNameKey(name);
     if (n && byName.has(n)) return byName.get(n);
+    if (n && !/\s/.test(n) && byFirst.get(n)) return byFirst.get(n);
     const k = 'nm:' + (n || 'unknown');
     if (!SV.repInfo.has(k)) SV.repInfo.set(k, { key: k, name: name || 'No rep recorded', territory: '', role: '' });
     return k;
   };
-  SV.visits = [];
+  SV.visits = []; SV.dupesHidden = 0; SV.dupeOffices = 0;
+  /* The same visit can be stored twice on an office — one copy with the rep's
+     login id, one with only the name (our merges/restores combined them that
+     way). Entries on the same day by the same rep are ONE visit unless two
+     different notes or ratings say otherwise; the kept one takes the fullest
+     details. Same rule as sl_dedupe_visits() in the database. */
+  const normNote = t => String(t || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const dedupe = list => {
+    const out = [];
+    list.slice().sort((a, b) => (b.uid ? 1 : 0) - (a.uid ? 1 : 0) || (b.color ? 1 : 0) - (a.color ? 1 : 0) || b.note.length - a.note.length)
+      .forEach(v => {
+        const nn = normNote(v.note);
+        const k = out.find(x => x.date === v.date && x.key === v.key &&
+          (!nn || !normNote(x.note) || nn === normNote(x.note)) && (!v.color || !x.color || v.color === x.color));
+        if (!k) { out.push(Object.assign({}, v)); return; }
+        if (!k.color && v.color) k.color = v.color;
+        if (!normNote(k.note) && nn) k.note = v.note;
+        if (!k.uid && v.uid) k.uid = v.uid;
+        if ((v.rep || '').length > (k.rep || '').length) k.rep = v.rep;
+      });
+    return out.sort((a, b) => a.date < b.date ? 1 : a.date > b.date ? -1 : 0);
+  };
   SV.offices.forEach(o => {
-    o._visits = svParseVisits(o.visits);
+    const raw = svParseVisits(o.visits);
+    raw.forEach(v => { v.key = keyFor(v.uid, v.rep); });
+    o._visits = dedupe(raw);
+    if (o._visits.length < raw.length) { SV.dupesHidden += raw.length - o._visits.length; SV.dupeOffices++; }
     o._docs = svLabFigures(o.notes);
     o._rev90 = o._docs.reduce((t, d) => t + (d.rev90 || 0), 0);
     o._life = o._docs.reduce((t, d) => t + (d.lifetime || 0), 0);
     // the close date as stored — the office's first case — not shifted by timezone
     o._closedDay = o.closed_at ? (svNormDate(o.first_case_date) || String(o.closed_at).slice(0, 10)) : '';
     o._closedKey = o.closed_at ? keyFor(o.claimed_by, o.claimed_by_name) : null;
-    o._visits.forEach(v => { v.key = keyFor(v.uid, v.rep); v.o = o; SV.visits.push(v); });
+    o._visits.forEach(v => { v.o = o; SV.visits.push(v); });
   });
   SV.visits.sort((a, b) => a.date < b.date ? 1 : a.date > b.date ? -1 : 0);
 }
@@ -6763,6 +6792,10 @@ function svByRep() {
   }));
 }
 
+function svDupeNote() {
+  return SV.dupesHidden ? ` <span class="sv-dupe-note" title="Run salesly_dedupe_visits.sql to remove them from Salesly too">· ${SV.dupesHidden} doubled visit entr${SV.dupesHidden === 1 ? 'y' : 'ies'} on ${SV.dupeOffices} office${SV.dupeOffices === 1 ? '' : 's'} counted once</span>` : '';
+}
+
 function svNotConnected(el, title) {
   const msg = SV.error === 'not-connected'
     ? 'Connect to Supabase on the <b>Salesly Bridge</b> tab — the visits come from the same database Salesly uses.'
@@ -6782,7 +6815,7 @@ async function renderSalesVisits() {
     <div class="section-header">
       <div>
         <div class="section-title">Sales Visits</div>
-        <div class="section-sub">Each rep's Salesly visits and closed accounts · ${esc(svRangeText(R))}. Click a rep for their calendar.</div>
+        <div class="section-sub">Each rep's Salesly visits and closed accounts · ${esc(svRangeText(R))}. Click a rep for their calendar.${svDupeNote()}</div>
       </div>
       <div class="section-actions">
         <button class="btn-text" id="svReload">↻ Reload</button>
@@ -6902,7 +6935,7 @@ async function renderSalesVisitDetail() {
     <div class="section-header">
       <div>
         <div class="section-title">Sales Visit Detail</div>
-        <div class="section-sub">${all ? 'Every rep' : esc(me.name)} · ${esc(svRangeText(R))} · the calendar shows every visit, the same as in Salesly.</div>
+        <div class="section-sub">${all ? 'Every rep' : esc(me.name)} · ${esc(svRangeText(R))} · the calendar shows every visit, the same as in Salesly.${svDupeNote()}</div>
       </div>
       <div class="section-actions">
         <select class="gf-select" id="svRepPick">${opts.join('')}</select>
