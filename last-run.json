@@ -1,9 +1,12 @@
 {
-  "ran_at": "2026-10-26T20:38:44.857Z",
+  "ran_at": "2026-10-26T20:48:29.562Z",
   "ok": false,
   "dry_run": false,
-  "days": [],
+  "days": [
+    "2026-10-24",
+    "2026-10-25"
+  ],
   "invoices": {},
   "production": {},
-  "error": "missing secrets: PILOT_API_KEY, AUTOMATION_EMAIL, AUTOMATION_PASSWORD, SUPABASE_URL, SUPABASE_KEY"
+  "error": "signing in to Supabase: HTTP 400 (400) — AUTOMATION_EMAIL / AUTOMATION_PASSWORD were not accepted"
 }
