@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.10.23-DL6</title>
+<title>Lab Sales Dashboard v2026.10.23-DL7</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -140,6 +140,63 @@ html, body {
 .sidebar .tab-btn[data-tab="bridge"] { margin-top: 10px; position: relative; }
 .sidebar .tab-btn[data-tab="bridge"]::before { content: ''; position: absolute; left: 18px; right: 6px; top: -6px;
                                                border-top: 1px solid var(--border); }
+/* ── SALES VISITS: calendar + office cards ── */
+.sv-split { display: grid; grid-template-columns: minmax(300px, 380px) minmax(0, 1fr); gap: 16px; align-items: start; margin-top: 16px; }
+@media (max-width: 1100px) { .sv-split { grid-template-columns: minmax(0, 1fr); } }
+.sv-cal-card { position: sticky; top: 104px; padding: 16px; }
+.sv-cal-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.sv-cal-top .nav-back { margin: 0; }
+.sv-cal-title { font-weight: 800; font-size: 15px; color: var(--ink); }
+.sv-cal-sub { text-align: center; font-size: 12px; color: var(--mut); margin: 4px 0 10px; }
+.sv-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.sv-dow { text-align: center; font-size: 10.5px; font-weight: 700; color: var(--mut); text-transform: uppercase; letter-spacing: .04em; padding: 2px 0 4px; }
+.sv-cell { position: relative; aspect-ratio: 1 / 1; border: 1px solid transparent; border-radius: 8px; background: var(--card-2);
+           font-family: inherit; color: var(--mut-2); cursor: default; padding: 4px 5px; display: flex; flex-direction: column; align-items: stretch; justify-content: space-between; }
+.sv-cell.blank { background: transparent; }
+.sv-cell.has { background: var(--card); border-color: var(--border); color: var(--ink); cursor: pointer; }
+.sv-cell.has:hover { border-color: var(--accent); }
+.sv-cell.today .sv-dnum { color: var(--accent-ink); font-weight: 800; text-decoration: underline; text-underline-offset: 2px; }
+.sv-cell.sel { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); background: var(--accent-soft); }
+.sv-cell:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* day number top-left, visit count top-right, outcome dots along the bottom —
+   the count no longer sits on top of the number in a narrow cell */
+.sv-dnum { align-self: flex-start; font-size: 12px; font-weight: 600; line-height: 1; }
+.sv-badge { position: absolute; top: 3px; right: 3px; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 8px;
+            background: var(--accent); color: var(--on-accent); font-size: 9.5px; font-weight: 800; line-height: 15px; text-align: center; }
+.sv-dots { display: flex; justify-content: center; gap: 2px; height: 6px; }
+.sv-dots i, .sv-legend i, .sv-visit i { display: inline-block; width: 6px; height: 6px; border-radius: 50%; }
+.sv-legend { display: flex; justify-content: center; gap: 14px; margin-top: 10px; font-size: 11.5px; color: var(--mut); }
+.sv-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.sv-daylist { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.sv-day-head { font-weight: 800; font-size: 15px; color: var(--ink); }
+.sv-office { padding: 16px 18px; }
+.sv-o-head { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 8px; }
+.sv-o-name { font-weight: 800; font-size: 15px; color: var(--ink); }
+.sv-chips { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.sv-chip { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700;
+           color: var(--c); background: color-mix(in srgb, var(--c) 10%, white); border: 1px solid color-mix(in srgb, var(--c) 30%, white); white-space: nowrap; }
+.sv-visit { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px; font-size: 12.5px; color: var(--dim); padding: 3px 0; }
+.sv-visit i { transform: translateY(-1px); }
+.sv-vnote { color: var(--ink); font-style: italic; }
+.sv-money { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 10px; margin: 10px 0; padding: 10px 12px;
+            background: var(--card-2); border-radius: 10px; }
+.sv-fl { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--mut); }
+.sv-mv { font-size: 17px; font-weight: 800; color: var(--ink); margin-top: 2px; }
+.sv-facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px 16px; }
+.sv-fv { font-size: 13px; color: var(--ink); margin-top: 1px; overflow-wrap: anywhere; }
+.sv-fv a { color: var(--accent-ink); }
+.sv-sub { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; color: var(--mut); margin: 14px 0 6px; }
+.sv-docs { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.sv-docs th { text-align: left; font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--mut); font-weight: 700;
+              padding: 6px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.sv-docs td { padding: 6px 8px; border-bottom: 1px solid var(--card-2); color: var(--ink); }
+.sv-docs .r { text-align: right; font-variant-numeric: tabular-nums; }
+.sv-docs .sv-total td { font-weight: 800; border-top: 1px solid var(--border); border-bottom: none; }
+.sv-notes { white-space: pre-wrap; font-size: 13px; color: var(--ink); background: var(--card-2); border-radius: 8px; padding: 10px 12px; }
+.sv-hist { margin-top: 12px; font-size: 12.5px; }
+.sv-hist summary { cursor: pointer; color: var(--accent-ink); font-weight: 600; }
+.sv-hist[open] summary { margin-bottom: 6px; }
+
 /* narrow screens: the sidebar folds back into a scrolling bar across the top */
 @media (max-width: 900px) {
   #dashboard { padding-left: 0; }
@@ -907,6 +964,8 @@ html, body {
       <button class="tab-btn" data-tab="empgrid">🧑‍🔧 Employee Grid</button>
       <button class="tab-btn" data-tab="empdetail">🔬 Employee Detail</button>
       <button class="tab-btn" data-tab="status">📋 Retention</button>
+      <button class="tab-btn" data-tab="svgrid">🚗 Sales Visits</button>
+      <button class="tab-btn" data-tab="svdetail">📅 Sales Visit Detail</button>
       <button class="tab-btn" data-tab="bridge">🔗 Salesly Bridge</button>
       <button class="tab-btn" data-tab="reports">📧 Reports</button>
       <button class="tab-btn" data-tab="prospects">🎯 Prospects (A/B)</button>
@@ -962,6 +1021,8 @@ html, body {
     <div class="tab-panel" id="panel-empgrid"></div>
     <div class="tab-panel" id="panel-empdetail"></div>
     <div class="tab-panel" id="panel-status"></div>
+    <div class="tab-panel" id="panel-svgrid"></div>
+    <div class="tab-panel" id="panel-svdetail"></div>
     <div class="tab-panel" id="panel-prodgrid"></div>
     <div class="tab-panel" id="panel-proddetail"></div>
     <div class="tab-panel" id="panel-bridge"></div>
@@ -3439,7 +3500,7 @@ function switchTab(tab) {
 /* Detail tabs depend on the current selection, so they must re-render on every
    visit — never serve them from the rendered-cache. */
 const ALWAYS_RENDER = { docdetail: 1, proddetail: 1, bridge: 1, reports: 1, prospects: 1, queue: 1,
-                        empgrid: 1, empdetail: 1 };
+                        empgrid: 1, empdetail: 1, svgrid: 1, svdetail: 1 };
 
 function renderTab(tab, force) {
   if (!force && !ALWAYS_RENDER[tab] && APP.rendered[tab]) return;
@@ -3452,6 +3513,8 @@ function renderTab(tab, force) {
     case 'status':    renderStatus(); break;
     case 'empgrid':   renderEmployeeGrid(); break;
     case 'empdetail': renderEmployeeDetail(); break;
+    case 'svgrid':    renderSalesVisits(); break;
+    case 'svdetail':  renderSalesVisitDetail(); break;
     case 'prodgrid':  renderProductGrid(); break;
     case 'proddetail':renderProductDetail(); break;
     case 'bridge':    renderBridge(); break;
@@ -6475,6 +6538,488 @@ function prodEmptyState(el, title) {
       </span>
     </div>`;
 }
+
+/* ══ SALES VISITS — the reps' Salesly activity, inside the dashboard ══════════
+   Two tabs: a grid with one tile per rep (visits, offices, closed accounts,
+   revenue from those accounts) and a detail tab with Salesly's month calendar
+   — every office a rep visited, with what a rep sees in the app: status, tier,
+   address, phone, email, scanner, lab, hours, 90-day and lifetime revenue, the
+   doctors and their figures, the visit note and the office notes.
+
+   Reads the SAME Supabase tables Salesly uses (offices + reps), READ-ONLY, and
+   parses them with ports of Salesly's own readers (parseVisits and
+   labDoctorFigures), so every figure matches the app.
+     • a visit belongs to a rep by login id first, then by name;
+     • a closed account is an office with closed_at set (the gold star),
+       credited to claimed_by — the rule the database applies;
+     • revenue is what the office's 📊 LAB lines say (per doctor, summed) — the
+       numbers the dashboard last synced to Salesly.
+   Merged and deleted offices are left out: their visits were moved to the
+   office they merged into. */
+const SV = { loaded: false, loading: null, offices: [], visits: [], reps: [], repInfo: new Map(),
+             error: '', loadedAt: null, rep: null, sort: 'visits', query: '',
+             calY: null, calM: null, day: null };
+
+const SV_OUTCOME = { green: { label: 'Good', c: '#059669' }, yellow: { label: 'Okay', c: '#d97706' },
+                     red: { label: 'Poor', c: '#dc2626' } };
+const SV_LAB_LABEL = { new: 'New', winback: 'Winback', falloff: 'Falloff', inactive: 'Inactive', active: 'Active' };
+const SV_LAB_COLOR = { new: '#2563eb', winback: '#7c3aed', falloff: '#d97706', inactive: '#dc2626', active: '#059669' };
+
+/* ── Salesly's readers, ported unchanged in behaviour ─────────────────────── */
+function svNormDate(s) {   // → 'YYYY-MM-DD' or ''
+  if (!s) return ''; s = String(s).trim();
+  const ok = (y, mo, da) => { y = +y; mo = +mo; da = +da; return y >= 1900 && y <= 2100 && mo >= 1 && mo <= 12 && da >= 1 && da <= 31; };
+  let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (m) return ok(m[1], m[2], m[3]) ? m[1] + '-' + m[2].padStart(2, '0') + '-' + m[3].padStart(2, '0') : '';
+  m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (m) return ok(m[3], m[1], m[2]) ? m[3] + '-' + m[1].padStart(2, '0') + '-' + m[2].padStart(2, '0') : '';
+  return '';
+}
+function svParseVisits(v) {  // "date~color~note~rep~uid | …", newest first
+  if (!v) return [];
+  const arr = typeof v === 'string' ? v.split(/[|,]/).map(s => s.trim()).filter(Boolean) : (Array.isArray(v) ? v : []);
+  return arr.map(item => {
+    if (item && typeof item === 'object') {
+      const d = svNormDate(item.date); if (!d) return null;
+      return { date: d, color: item.color || '', note: item.note || '', rep: item.rep || '', uid: item.uid || '' };
+    }
+    const p = String(item).split('~'); const d = svNormDate(p[0]); if (!d) return null;
+    return { date: d, color: (p[1] || '').trim(), note: (p[2] || '').trim(), rep: (p[3] || '').trim(), uid: (p[4] || '').trim() };
+  }).filter(Boolean).sort((a, b) => a.date < b.date ? 1 : a.date > b.date ? -1 : 0);
+}
+function svLabFigures(nts) {   // one entry per 📊 LAB line (per doctor at this practice)
+  if (!nts) return [];
+  const money = v => { const n = parseFloat(String(v || '').replace(/[^0-9.]/g, '')); return isFinite(n) ? n : null; };
+  const out = [];
+  String(nts).split('\n').forEach(l => {
+    if (!/LAB:\s*[A-Za-z]/i.test(l)) return;
+    l = String(l).replace(/\u00C2(?=[\u00B7·])/g, '');
+    const w = ((l.match(/LAB:\s*([A-Za-z][A-Za-z ]*?)\s*(?:[·\u00B7]|$)/i) || [])[1] || '').trim().toLowerCase();
+    let st = '';
+    if (w.indexOf('new') === 0) st = 'new'; else if (w.indexOf('winback') === 0) st = 'winback';
+    else if (w.indexOf('falloff') === 0) st = 'falloff'; else if (w.indexOf('inactive') === 0) st = 'inactive';
+    else if (w.indexOf('active') === 0 || w.indexOf('current') === 0) st = 'active';
+    const dr    = ((l.match(/Dr\.?\s*([^·\u00B7\n]+?)\s*(?:[·\u00B7]|$)/i) || [])[1] || '').trim();
+    const last  = ((l.match(/last case\s*([0-9]{1,2}\/[0-9]{1,2}\/[0-9]{2,4})/i) || [])[1] || '');
+    const cases = (l.match(/([0-9][0-9,]*)\s*cases?\b/i) || [])[1];
+    const r90   = (l.match(/\$\s*([0-9][0-9,]*(?:\.[0-9]+)?)\s*last\s*90/i) || [])[1];
+    const life  = (l.match(/\$\s*([0-9][0-9,]*(?:\.[0-9]+)?)\s*lifetime/i) || [])[1];
+    const rmk   = (l.match(/([0-9]+(?:\.[0-9]+)?)\s*%\s*remakes?/i) || [])[1];
+    const tat   = (l.match(/([0-9]+(?:\.[0-9]+)?)\s*d\s*avg\s*turnaround/i) || [])[1];
+    out.push({ st, dr, last,
+      cases: cases != null ? parseInt(String(cases).replace(/,/g, ''), 10) : null,
+      rev90: money(r90), lifetime: money(life),
+      remakePct: rmk != null ? parseFloat(rmk) : null, avgTat: tat != null ? parseFloat(tat) : null });
+  });
+  return out;
+}
+function svStripLab(nts) {   // the rep's own notes, without the 📊 LAB lines
+  return String(nts || '').split('\n').filter(l => !/LAB:\s*[A-Za-z]/i.test(l)).join('\n').replace(/^\n+|\n+$/g, '');
+}
+
+/* ── small formatting helpers ─────────────────────────────────────────────── */
+const svNameKey = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+const svUSD = n => (n == null ? '—' : '$' + Math.round(n).toLocaleString());
+function svDay(ds, opts) {
+  if (!ds) return '—';
+  const [y, m, d] = ds.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString('en-US', opts || { month: 'short', day: 'numeric', year: 'numeric' });
+}
+function svIsoToday() { return isoDate(new Date()); }
+
+/* ── load (read-only, paged: Supabase returns at most 1,000 rows a request) ── */
+async function svLoad(force) {
+  if (SV.loaded && !force) return;
+  if (SV.loading) return SV.loading;
+  SV.loading = (async () => {
+    const db = pgClient();
+    if (!db) { SV.error = 'not-connected'; return; }
+    try {
+      const PAGE = 1000, byId = new Map();
+      const pull = async (build) => {
+        for (let from = 0; ; from += PAGE) {
+          const { data, error } = await build().order('id').range(from, from + PAGE - 1);
+          if (error) throw new Error(error.message);
+          (data || []).forEach(r => byId.set(String(r.id), r));
+          if (!data || data.length < PAGE || from > 60000) break;
+        }
+      };
+      await pull(() => db.from('offices').select('*').neq('visits', ''));             // every visited office
+      await pull(() => db.from('offices').select('*').not('closed_at', 'is', null));   // every closed account
+      const { data: reps, error: rErr } = await db.from('reps').select('*');
+      if (rErr) throw new Error(rErr.message);
+      SV.reps = reps || [];
+      SV.offices = [...byId.values()].filter(o => !o.deleted_at && o.active !== false && !o.merged_into);
+      svIndex();
+      SV.loaded = true; SV.error = ''; SV.loadedAt = new Date();
+    } catch (e) { SV.error = e.message || String(e); }
+  })();
+  try { await SV.loading; } finally { SV.loading = null; }
+}
+
+/* A visit or a closed account belongs to a rep by LOGIN ID first (what Salesly
+   credits on), then by name; a name with no account still gets its own tile. */
+function svIndex() {
+  const byId = new Map(), byName = new Map();
+  SV.repInfo = new Map();
+  SV.reps.forEach(r => {
+    const k = 'id:' + String(r.id);
+    byId.set(String(r.id), k); if (r.name) byName.set(svNameKey(r.name), k);
+    SV.repInfo.set(k, { key: k, name: r.name || 'Unnamed rep', territory: r.territory || '', role: r.role || '' });
+  });
+  const keyFor = (uid, name) => {
+    if (uid && byId.has(String(uid))) return byId.get(String(uid));
+    const n = svNameKey(name);
+    if (n && byName.has(n)) return byName.get(n);
+    const k = 'nm:' + (n || 'unknown');
+    if (!SV.repInfo.has(k)) SV.repInfo.set(k, { key: k, name: name || 'No rep recorded', territory: '', role: '' });
+    return k;
+  };
+  SV.visits = [];
+  SV.offices.forEach(o => {
+    o._visits = svParseVisits(o.visits);
+    o._docs = svLabFigures(o.notes);
+    o._rev90 = o._docs.reduce((t, d) => t + (d.rev90 || 0), 0);
+    o._life = o._docs.reduce((t, d) => t + (d.lifetime || 0), 0);
+    // the close date as stored — the office's first case — not shifted by timezone
+    o._closedDay = o.closed_at ? (svNormDate(o.first_case_date) || String(o.closed_at).slice(0, 10)) : '';
+    o._closedKey = o.closed_at ? keyFor(o.claimed_by, o.claimed_by_name) : null;
+    o._visits.forEach(v => { v.key = keyFor(v.uid, v.rep); v.o = o; SV.visits.push(v); });
+  });
+  SV.visits.sort((a, b) => a.date < b.date ? 1 : a.date > b.date ? -1 : 0);
+}
+
+/* The dashboard's date range, applied to visit and close dates. Invoice data
+   runs a day behind; visits run to today. So when the range ends on the
+   invoice data's last day (the default), visits are NOT cut off there — a
+   custom earlier end date still applies. */
+function svRange() {
+  const f = APP.filters || {};
+  const md = (typeof getMaxDate === 'function') ? getMaxDate() : null;
+  const from = f.fromDate ? isoDate(f.fromDate) : '';
+  const to = (f.toDate && md && isoDate(f.toDate) < isoDate(md)) ? isoDate(f.toDate) : '';
+  return { from, to };
+}
+const svIn = (d, R) => !!d && (!R.from || d >= R.from) && (!R.to || d <= R.to);
+function svRangeText(R) {
+  if (!R.from && !R.to) return 'all visits';
+  return (R.from ? svDay(R.from) : 'the start') + ' → ' + (R.to ? svDay(R.to) : 'today');
+}
+
+function svByRep() {
+  const R = svRange(), m = new Map();
+  const get = k => {
+    let x = m.get(k);
+    if (!x) {
+      const info = SV.repInfo.get(k) || { name: 'Unknown rep', territory: '' };
+      x = { key: k, name: info.name, territory: info.territory, visits: 0, offices: new Set(), days: new Set(),
+            last: '', closed: [], closedRev: 0, closedRev90: 0, mix: { green: 0, yellow: 0, red: 0, none: 0 } };
+      m.set(k, x);
+    }
+    return x;
+  };
+  SV.visits.forEach(v => {
+    if (!svIn(v.date, R)) return;
+    const x = get(v.key); x.visits++; x.offices.add(v.o.id); x.days.add(v.date);
+    if (v.date > x.last) x.last = v.date;
+    x.mix[SV_OUTCOME[v.color] ? v.color : 'none']++;
+  });
+  SV.offices.forEach(o => {
+    if (!o._closedKey || !svIn(o._closedDay, R)) return;
+    const x = get(o._closedKey); x.closed.push(o); x.closedRev += o._life; x.closedRev90 += o._rev90;
+  });
+  return [...m.values()].map(x => Object.assign(x, {
+    officeCount: x.offices.size, dayCount: x.days.size, closedCount: x.closed.length,
+    closeRate: x.offices.size ? x.closed.length / x.offices.size : 0
+  }));
+}
+
+function svNotConnected(el, title) {
+  const msg = SV.error === 'not-connected'
+    ? 'Connect to Supabase on the <b>Salesly Bridge</b> tab — the visits come from the same database Salesly uses.'
+    : 'Could not load visits: ' + esc(SV.error);
+  el.innerHTML = `<div class="section-header"><div><div class="section-title">${title}</div></div></div>
+    <div class="empty-state"><div class="empty-icon">🚗</div>${msg}</div>`;
+}
+
+/* ══ GRID ═════════════════════════════════════════════════════════════════════ */
+async function renderSalesVisits() {
+  const el = document.getElementById('panel-svgrid');
+  el.innerHTML = '<div class="empty-state"><div class="empty-icon">⏳</div>Loading visits from Salesly…</div>';
+  await svLoad();
+  if (SV.error) return svNotConnected(el, 'Sales Visits');
+  const R = svRange();
+  el.innerHTML = `
+    <div class="section-header">
+      <div>
+        <div class="section-title">Sales Visits</div>
+        <div class="section-sub">Each rep's Salesly visits and closed accounts · ${esc(svRangeText(R))}. Click a rep for their calendar.</div>
+      </div>
+      <div class="section-actions">
+        <button class="btn-text" id="svReload">↻ Reload</button>
+        <button class="btn-text" id="svExport">⬇ Export Visible</button>
+      </div>
+    </div>
+    <div class="filter-bar">
+      <div class="search-wrap"><input type="text" class="search-input" id="svQuery" placeholder="Search reps or offices visited…" value="${esc(SV.query)}"></div>
+      <div class="pill-group" id="svSort">
+        ${[['visits', 'Visits'], ['officeCount', 'Offices'], ['closedCount', 'Closed'], ['closedRev', 'Closed revenue'], ['last', 'Last visit']]
+          .map(([k, l]) => `<button class="pill${SV.sort === k ? ' active' : ''}" data-sort="${k}">${l}</button>`).join('')}
+      </div>
+      <div class="text-mut" style="font-size:12px;margin-left:auto" id="svCount"></div>
+    </div>
+    <div id="svGrid" class="dr-grid"></div>`;
+  document.getElementById('svQuery').addEventListener('input', e => { SV.query = e.target.value; drawSVGrid(); });
+  document.querySelectorAll('#svSort .pill').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('#svSort .pill').forEach(x => x.classList.remove('active'));
+    b.classList.add('active'); SV.sort = b.dataset.sort; drawSVGrid();
+  }));
+  document.getElementById('svReload').addEventListener('click', async () => { await svLoad(true); renderSalesVisits(); });
+  document.getElementById('svExport').addEventListener('click', () => {
+    downloadCSV('sales-visits.csv', svFiltered().map(x => ({
+      rep: x.name, territory: x.territory, visits: x.visits, offices_visited: x.officeCount, field_days: x.dayCount,
+      last_visit: x.last, closed_accounts: x.closedCount, closed_revenue_lifetime: Math.round(x.closedRev),
+      closed_revenue_90d: Math.round(x.closedRev90), close_rate: Math.round(x.closeRate * 100) + '%',
+      good: x.mix.green, okay: x.mix.yellow, poor: x.mix.red })));
+  });
+  drawSVGrid();
+}
+
+function svFiltered() {
+  let list = svByRep().filter(x => x.visits || x.closedCount);
+  const q = svNameKey(SV.query);
+  if (q) list = list.filter(x => svNameKey(x.name).includes(q) ||
+                                 SV.visits.some(v => v.key === x.key && svNameKey(v.o.name).includes(q)));
+  const k = SV.sort;
+  list.sort((a, b) => k === 'last' ? (a.last < b.last ? 1 : a.last > b.last ? -1 : 0) : (b[k] || 0) - (a[k] || 0));
+  return list;
+}
+
+function drawSVGrid() {
+  const list = svFiltered();
+  const cnt = document.getElementById('svCount');
+  if (cnt) cnt.textContent = `${list.length} rep${list.length === 1 ? '' : 's'} · ${list.reduce((t, x) => t + x.visits, 0).toLocaleString()} visits`;
+  const grid = document.getElementById('svGrid'); if (!grid) return;
+  if (!list.length) {
+    grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><div class="empty-icon">🚗</div>No visits in this date range.</div>';
+    return;
+  }
+  const stat = (label, val) => `<div><div class="text-mut" style="font-size:10px;text-transform:uppercase">${label}</div>
+                                    <div style="font-size:17px;font-weight:700">${val}</div></div>`;
+  grid.innerHTML = list.map(x => {
+    const tot = x.mix.green + x.mix.yellow + x.mix.red + x.mix.none || 1;
+    const seg = (n, c) => n ? `<div style="width:${n / tot * 100}%;background:${c}"></div>` : '';
+    const top = x.closed.slice().sort((a, b) => b._life - a._life);
+    return `<div class="dr-card clk" data-rep="${esc(x.key)}" style="cursor:pointer">
+      <div style="display:flex;align-items:baseline;gap:8px">
+        <div class="dr-name" style="flex:1">${esc(x.name)}</div>
+        ${x.territory ? `<span class="tag">${esc(x.territory)}</span>` : ''}
+      </div>
+      <div class="text-mut" style="font-size:12px;margin-bottom:8px">${x.dayCount} field day${x.dayCount === 1 ? '' : 's'}${x.last ? ' · last visit ' + esc(svDay(x.last, { month: 'short', day: 'numeric' })) : ''}${x.officeCount ? ' · ' + Math.round(x.closeRate * 100) + '% close rate' : ''}</div>
+      <div style="display:flex;gap:14px;margin-bottom:10px;flex-wrap:wrap">
+        ${stat('Visits', x.visits.toLocaleString())}${stat('Offices', x.officeCount.toLocaleString())}
+        ${stat('Closed', x.closedCount.toLocaleString())}${stat('Closed revenue', svUSD(x.closedRev))}
+      </div>
+      <div class="text-mut" style="font-size:10px;text-transform:uppercase;letter-spacing:.4px">Visit outcomes</div>
+      <div style="display:flex;height:7px;border-radius:4px;overflow:hidden;background:#eef1f5;margin:5px 0 4px">
+        ${seg(x.mix.green, SV_OUTCOME.green.c)}${seg(x.mix.yellow, SV_OUTCOME.yellow.c)}${seg(x.mix.red, SV_OUTCOME.red.c)}${seg(x.mix.none, '#cbd5e1')}
+      </div>
+      <div class="text-mut" style="font-size:11px">${x.mix.green} good · ${x.mix.yellow} okay · ${x.mix.red} poor${x.mix.none ? ' · ' + x.mix.none + ' unrated' : ''}</div>
+      ${top.length ? `<div class="text-mut" style="font-size:10px;text-transform:uppercase;letter-spacing:.4px;margin-top:10px">Closed accounts</div>
+        ${top.slice(0, 3).map(o => `<div style="display:flex;gap:8px;margin-top:4px;font-size:12px">
+           <div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">★ ${esc(o.name)}</div>
+           <div style="font-weight:600">${svUSD(o._life)}</div></div>`).join('')}
+        ${top.length > 3 ? `<div class="text-mut" style="font-size:11px;margin-top:3px">+${top.length - 3} more</div>` : ''}` : ''}
+    </div>`;
+  }).join('');
+  grid.querySelectorAll('.clk').forEach(c => c.addEventListener('click', () => {
+    SV.rep = c.dataset.rep; SV.calY = SV.calM = SV.day = null; switchTab('svdetail');
+  }));
+}
+
+/* ══ DETAIL: Salesly's calendar + everything about each office visited ══════ */
+async function renderSalesVisitDetail() {
+  const el = document.getElementById('panel-svdetail');
+  el.innerHTML = '<div class="empty-state"><div class="empty-icon">⏳</div>Loading visits from Salesly…</div>';
+  await svLoad();
+  if (SV.error) return svNotConnected(el, 'Sales Visit Detail');
+  const reps = svByRep().filter(x => x.visits || x.closedCount).sort((a, b) => b.visits - a.visits);
+  const allTime = new Map();
+  SV.visits.forEach(v => allTime.set(v.key, (allTime.get(v.key) || 0) + 1));
+  const repKeys = [...SV.repInfo.keys()].filter(k => allTime.get(k) || SV.offices.some(o => o._closedKey === k));
+  if (!SV.rep || (SV.rep !== '__all__' && !repKeys.includes(SV.rep))) SV.rep = (reps[0] && reps[0].key) || repKeys[0] || '__all__';
+  const all = SV.rep === '__all__';
+  const mine = all ? SV.visits : SV.visits.filter(v => v.key === SV.rep);
+  const me = all ? null : (reps.find(x => x.key === SV.rep) || { name: (SV.repInfo.get(SV.rep) || {}).name, visits: 0, officeCount: 0, dayCount: 0, closedCount: 0, closedRev: 0, closeRate: 0, closed: [] });
+  const R = svRange();
+  const tot = all ? reps.reduce((t, x) => ({ visits: t.visits + x.visits, officeCount: t.officeCount + x.officeCount, dayCount: Math.max(t.dayCount, x.dayCount),
+                                             closedCount: t.closedCount + x.closedCount, closedRev: t.closedRev + x.closedRev }),
+                                   { visits: 0, officeCount: 0, dayCount: 0, closedCount: 0, closedRev: 0 }) : me;
+  const closedList = all ? SV.offices.filter(o => o._closedKey && svIn(o._closedDay, R)) : me.closed;
+
+  // the month shown: the month of the latest visit, until the user moves it
+  if (SV.calY == null) {
+    const latest = mine[0] ? mine[0].date : svIsoToday();
+    SV.calY = +latest.slice(0, 4); SV.calM = +latest.slice(5, 7) - 1;
+    if (!SV.day) SV.day = mine[0] ? mine[0].date : null;
+  }
+  const opts = [`<option value="__all__"${all ? ' selected' : ''}>Everyone</option>`]
+    .concat(repKeys.map(k => ({ k, n: (SV.repInfo.get(k) || {}).name || k }))
+      .sort((a, b) => (allTime.get(b.k) || 0) - (allTime.get(a.k) || 0))
+      .map(r => `<option value="${esc(r.k)}"${r.k === SV.rep ? ' selected' : ''}>${esc(r.n)}</option>`));
+  const kpi = (label, val, sub) => `<div class="kpi"><div class="kpi-label">${label}</div><div class="kpi-value">${val}</div>${sub ? `<div class="kpi-sub">${sub}</div>` : ''}</div>`;
+
+  el.innerHTML = `
+    <div class="section-header">
+      <div>
+        <div class="section-title">Sales Visit Detail</div>
+        <div class="section-sub">${all ? 'Every rep' : esc(me.name)} · ${esc(svRangeText(R))} · the calendar shows every visit, the same as in Salesly.</div>
+      </div>
+      <div class="section-actions">
+        <select class="gf-select" id="svRepPick">${opts.join('')}</select>
+        <button class="btn-text" id="svReload2">↻ Reload</button>
+      </div>
+    </div>
+    <div class="kpi-row">
+      ${kpi('Visits', tot.visits.toLocaleString(), 'in the date range')}
+      ${kpi('Offices visited', tot.officeCount.toLocaleString(), all ? 'summed across reps' : 'different offices')}
+      ${kpi('Field days', tot.dayCount.toLocaleString(), all ? 'busiest rep' : 'days with a visit')}
+      ${kpi('Closed accounts', tot.closedCount.toLocaleString(), 'gold stars, by first case')}
+      ${kpi('Closed revenue', svUSD(tot.closedRev), 'lifetime, from those accounts')}
+      ${kpi('Close rate', tot.officeCount ? Math.round(tot.closedCount / tot.officeCount * 100) + '%' : '—', 'closed ÷ offices visited')}
+    </div>
+    <div class="sv-split">
+      <div class="card sv-cal-card" id="svCal"></div>
+      <div class="sv-daylist" id="svDayList"></div>
+    </div>
+    <div class="card" style="margin-top:16px">
+      <div class="card-title" style="margin-bottom:8px">★ Closed accounts${all ? '' : ' — ' + esc(me.name)} <span class="text-mut" style="font-weight:500">· ${closedList.length}</span></div>
+      ${svClosedTable(closedList, all)}
+    </div>`;
+  document.getElementById('svRepPick').addEventListener('change', e => { SV.rep = e.target.value; SV.calY = SV.calM = SV.day = null; renderSalesVisitDetail(); });
+  document.getElementById('svReload2').addEventListener('click', async () => { await svLoad(true); renderSalesVisitDetail(); });
+  svDrawCalendar(mine, all);
+  svDrawDay(mine, all);
+}
+
+function svDrawCalendar(mine, all) {
+  const host = document.getElementById('svCal'); if (!host) return;
+  const byDay = new Map();
+  mine.forEach(v => { const a = byDay.get(v.date) || []; a.push(v); byDay.set(v.date, a); });
+  const y = SV.calY, m = SV.calM;
+  const first = new Date(y, m, 1), days = new Date(y, m + 1, 0).getDate(), today = svIsoToday();
+  const pad = n => String(n).padStart(2, '0');
+  let monthVisits = 0, monthDays = 0, cells = '';
+  for (let i = 0; i < first.getDay(); i++) cells += '<div class="sv-cell blank"></div>';
+  for (let d = 1; d <= days; d++) {
+    const ds = `${y}-${pad(m + 1)}-${pad(d)}`, hits = byDay.get(ds) || [];
+    if (hits.length) { monthVisits += hits.length; monthDays++; }
+    const dots = ['green', 'yellow', 'red'].filter(c => hits.some(v => v.color === c))
+      .map(c => `<i style="background:${SV_OUTCOME[c].c}"></i>`).join('');
+    cells += `<button class="sv-cell${hits.length ? ' has' : ''}${ds === today ? ' today' : ''}${ds === SV.day ? ' sel' : ''}" data-day="${ds}"${hits.length ? '' : ' tabindex="-1"'}>
+      <span class="sv-dnum">${d}</span>${hits.length ? `<span class="sv-badge">${hits.length}</span><span class="sv-dots">${dots}</span>` : ''}</button>`;
+  }
+  host.innerHTML = `
+    <div class="sv-cal-top">
+      <button class="nav-back" id="svPrev" aria-label="Previous month">‹</button>
+      <div class="sv-cal-title">${first.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</div>
+      <button class="nav-back" id="svNext" aria-label="Next month">›</button>
+    </div>
+    <div class="sv-cal-sub">${monthVisits} visit${monthVisits === 1 ? '' : 's'} on ${monthDays} day${monthDays === 1 ? '' : 's'}${all ? ' · everyone' : ''}</div>
+    <div class="sv-grid">${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => `<div class="sv-dow">${d}</div>`).join('')}${cells}</div>
+    <div class="sv-legend">${Object.values(SV_OUTCOME).map(o => `<span><i style="background:${o.c}"></i>${o.label}</span>`).join('')}</div>`;
+  const move = dm => { const t = new Date(SV.calY, SV.calM + dm, 1); SV.calY = t.getFullYear(); SV.calM = t.getMonth(); svDrawCalendar(mine, all); };
+  document.getElementById('svPrev').onclick = () => move(-1);
+  document.getElementById('svNext').onclick = () => move(1);
+  host.querySelectorAll('.sv-cell.has').forEach(b => b.addEventListener('click', () => {
+    SV.day = b.dataset.day; svDrawCalendar(mine, all); svDrawDay(mine, all);
+  }));
+}
+
+function svDrawDay(mine, all) {
+  const host = document.getElementById('svDayList'); if (!host) return;
+  if (!SV.day) { host.innerHTML = '<div class="empty-state">Pick a day with visits on the calendar.</div>'; return; }
+  const visits = mine.filter(v => v.date === SV.day);
+  const byOffice = new Map();
+  visits.forEach(v => { const a = byOffice.get(v.o.id) || []; a.push(v); byOffice.set(v.o.id, a); });
+  host.innerHTML = `<div class="sv-day-head">${esc(svDay(SV.day, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }))}
+      <span class="text-mut">· ${visits.length} visit${visits.length === 1 ? '' : 's'} · ${byOffice.size} office${byOffice.size === 1 ? '' : 's'}</span></div>` +
+    ([...byOffice.values()].map(vs => svOfficeCard(vs[0].o, vs, all)).join('') ||
+     '<div class="empty-state">No visits on this day.</div>');
+}
+
+function svOfficeCard(o, dayVisits, all) {
+  const status = String(o.status || '').trim();
+  const stKey = status.toLowerCase().replace(/^current$/, 'active');
+  const chip = (txt, c) => `<span class="sv-chip" style="--c:${c}">${esc(txt)}</span>`;
+  const addr = [o.addr, o.city, [o.state, o.zip].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+  const fact = (label, val) => val ? `<div class="sv-fact"><div class="sv-fl">${label}</div><div class="sv-fv">${val}</div></div>` : '';
+  const yes = v => v === true || /^(yes|true|y|1)$/i.test(String(v || ''));
+  const onboarding = [yes(o.starter_kit) ? 'Starter kit sent' : '', yes(o.welcome_email) ? 'Welcome email sent' : '',
+                      o.pricelist ? 'Price list: ' + esc(o.pricelist) : ''].filter(Boolean).join(' · ');
+  const docs = o._docs.filter(d => d.cases != null || d.lifetime != null || d.rev90 != null).sort((a, b) => (b.lifetime || 0) - (a.lifetime || 0));
+  const notes = svStripLab(o.notes);
+  const history = o._visits;
+  const closer = o._closedKey ? (SV.repInfo.get(o._closedKey) || {}).name : '';
+  return `<div class="card sv-office">
+    <div class="sv-o-head">
+      <div style="flex:1;min-width:0">
+        <div class="sv-o-name">${o.closed_at ? '<span title="Closed account" style="color:#d4a017">★</span> ' : ''}${esc(o.name || 'Unnamed office')}</div>
+        <div class="text-mut" style="font-size:12px">${esc(addr)}</div>
+      </div>
+      <div class="sv-chips">
+        ${status ? chip(status, SV_LAB_COLOR[stKey] || '#64748b') : ''}${o.tier ? chip('Tier ' + o.tier, o.tier === 'S' ? '#18818b' : '#64748b') : ''}
+      </div>
+    </div>
+    ${dayVisits.map(v => `<div class="sv-visit"><i style="background:${(SV_OUTCOME[v.color] || {}).c || '#cbd5e1'}"></i>
+        <b>${esc((SV_OUTCOME[v.color] || {}).label || 'Visit')}</b>${all || v.rep ? ' · ' + esc(v.rep || (SV.repInfo.get(v.key) || {}).name || '') : ''}
+        ${v.note ? `<span class="sv-vnote">“${esc(v.note)}”</span>` : ''}</div>`).join('')}
+    <div class="sv-money">
+      <div><div class="sv-fl">Last 90 days</div><div class="sv-mv">${o._docs.length ? svUSD(o._rev90) : '—'}</div></div>
+      <div><div class="sv-fl">Lifetime</div><div class="sv-mv">${o._docs.length ? svUSD(o._life) : '—'}</div></div>
+      <div><div class="sv-fl">Doctors</div><div class="sv-mv">${docs.length || '—'}</div></div>
+      ${o.closed_at ? `<div><div class="sv-fl">Closed</div><div class="sv-mv" style="font-size:13px">${esc(svDay(o._closedDay))}${closer ? '<div class="text-mut" style="font-size:11px;font-weight:500">by ' + esc(closer) + '</div>' : ''}</div></div>` : ''}
+    </div>
+    <div class="sv-facts">
+      ${fact('Phone', o.phone ? `<a href="tel:${esc(String(o.phone).replace(/[^0-9+]/g, ''))}">${esc(o.phone)}</a>` : '')}
+      ${fact('Email', o.email ? `<a href="mailto:${esc(o.email)}">${esc(o.email)}</a>` : '')}
+      ${fact('Scanner', esc(o.scanner || ''))}
+      ${fact('Current lab', esc(o.lab || ''))}
+      ${fact('Doctors (Salesly)', esc(o.drs || ''))}
+      ${fact('Office hours', esc(o.hours || ''))}
+      ${fact('Best visit day / time', esc(o.visit_day || ''))}
+      ${fact('Onboarding', onboarding)}
+      ${fact('Address', addr ? `<a href="https://maps.google.com/?q=${encodeURIComponent(addr)}" target="_blank" rel="noopener">Open in Maps ↗</a>` : '')}
+      ${fact('Added by', esc(o.added_by || ''))}
+    </div>
+    ${docs.length ? `<div class="sv-sub">Doctors at this practice</div>
+      <div style="overflow-x:auto"><table class="sv-docs"><thead><tr><th>Doctor</th><th>Status</th><th class="r">Cases</th><th>Last case</th><th class="r">90 days</th><th class="r">Lifetime</th><th class="r">Remake</th><th class="r">Avg TAT</th></tr></thead><tbody>
+      ${docs.map(d => `<tr><td>${d.dr ? 'Dr. ' + esc(d.dr) : 'This practice'}</td>
+        <td>${d.st ? `<span class="sv-chip" style="--c:${SV_LAB_COLOR[d.st]}">${SV_LAB_LABEL[d.st]}</span>` : ''}</td>
+        <td class="r">${d.cases != null ? d.cases.toLocaleString() : '—'}</td><td>${esc(d.last || '—')}</td>
+        <td class="r">${svUSD(d.rev90)}</td><td class="r">${svUSD(d.lifetime)}</td>
+        <td class="r">${d.remakePct != null ? d.remakePct + '%' : '—'}</td><td class="r">${d.avgTat != null ? d.avgTat + 'd' : '—'}</td></tr>`).join('')}
+      </tbody></table></div>` : ''}
+    ${notes ? `<div class="sv-sub">Notes</div><div class="sv-notes">${esc(notes)}</div>` : ''}
+    ${history.length > 1 ? `<details class="sv-hist"><summary>All ${history.length} visits to this office</summary>
+      ${history.map(v => `<div class="sv-visit"><i style="background:${(SV_OUTCOME[v.color] || {}).c || '#cbd5e1'}"></i>
+         ${esc(svDay(v.date))} · ${esc(v.rep || '—')}${v.note ? ` <span class="sv-vnote">“${esc(v.note)}”</span>` : ''}</div>`).join('')}</details>` : ''}
+  </div>`;
+}
+
+function svClosedTable(list, all) {
+  if (!list.length) return '<div class="text-mut" style="font-size:13px">No closed accounts in this date range.</div>';
+  const rows = list.slice().sort((a, b) => b._life - a._life);
+  return `<div style="overflow-x:auto"><table class="sv-docs"><thead><tr><th>Office</th><th>City</th>${all ? '<th>Closed by</th>' : ''}<th>Closed</th><th>Status</th><th class="r">Doctors</th><th class="r">90 days</th><th class="r">Lifetime</th></tr></thead><tbody>
+    ${rows.map(o => `<tr><td>★ ${esc(o.name || '')}</td><td>${esc([o.city, o.state].filter(Boolean).join(', '))}</td>
+      ${all ? `<td>${esc((SV.repInfo.get(o._closedKey) || {}).name || '')}</td>` : ''}
+      <td>${esc(svDay(o._closedDay))}</td><td>${esc(o.status || '—')}</td><td class="r">${o._docs.length || '—'}</td>
+      <td class="r">${svUSD(o._rev90)}</td><td class="r">${svUSD(o._life)}</td></tr>`).join('')}
+    <tr class="sv-total"><td colspan="${all ? 5 : 4}">Total</td><td class="r">${rows.reduce((t, o) => t + o._docs.length, 0)}</td>
+      <td class="r">${svUSD(rows.reduce((t, o) => t + o._rev90, 0))}</td><td class="r">${svUSD(rows.reduce((t, o) => t + o._life, 0))}</td></tr>
+  </tbody></table></div>`;
+}
+
 
 async function renderEmployeeGrid() {
   const el = document.getElementById('panel-empgrid');
