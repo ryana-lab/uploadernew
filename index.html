@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.10.26-DL8</title>
+<title>Lab Sales Dashboard v2026.10.26-DL9</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -141,24 +141,10 @@ html, body {
 .sidebar .tab-btn[data-tab="bridge"]::before { content: ''; position: absolute; left: 18px; right: 6px; top: -6px;
                                                border-top: 1px solid var(--border); }
 /* ── SALES VISITS: calendar + office cards ── */
-.sv-split { display: grid; grid-template-columns: minmax(300px, 380px) minmax(0, 1fr); gap: 16px; align-items: start; margin-top: 16px; }
-@media (max-width: 1100px) { .sv-split { grid-template-columns: minmax(0, 1fr); } }
-.sv-cal-card { padding: 16px; }
-.sv-closed-card { padding: 14px 16px 12px; min-width: 0; }
-.sv-closed-head { display: flex; align-items: baseline; gap: 8px; width: 100%; background: none; border: none; padding: 2px 0 8px;
-                  font-family: inherit; text-align: left; cursor: pointer; color: var(--ink); }
-.sv-closed-head:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
-.sv-closed-title { font-weight: 800; font-size: 15px; }
-.sv-closed-sum { margin-left: auto; font-weight: 800; font-size: 14px; color: var(--ink); white-space: nowrap; }
-.sv-caret { display: inline-block; width: 14px; color: var(--mut); font-size: 12px; }
-.sv-closed-nav { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin: 2px 0 10px; }
-.sv-stepper { display: flex; align-items: center; gap: 8px; }
-.sv-stepper .nav-back { margin: 0; }
-.sv-step-label { min-width: 132px; text-align: center; font-weight: 800; font-size: 14px; color: var(--ink); }
-.sv-step-label.muted { font-weight: 600; color: var(--mut); }
-.sv-closed-body { max-height: 520px; overflow: auto; }
-.sv-docs .sv-mgroup td { background: var(--card-2); font-weight: 700; cursor: pointer; border-bottom: 1px solid var(--border); }
-.sv-docs .sv-mgroup:hover td { background: var(--accent-soft); }
+.sv-cal-big { margin-top: 14px; padding: 14px 16px 12px; }
+.sv-cal-big .sv-grid { gap: 6px; }
+.sv-cal-big .sv-cell { aspect-ratio: auto; height: 60px; }
+@media (max-width: 760px) { .sv-cal-big .sv-cell { height: 58px; } }
 .sv-cal-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .sv-cal-top .nav-back { margin: 0; }
 .sv-cal-title { font-weight: 800; font-size: 15px; color: var(--ink); }
@@ -182,14 +168,21 @@ html, body {
 .sv-dots i, .sv-legend i, .sv-visit i { display: inline-block; width: 6px; height: 6px; border-radius: 50%; }
 .sv-legend { display: flex; justify-content: center; gap: 14px; margin-top: 10px; font-size: 11.5px; color: var(--mut); }
 .sv-legend span { display: inline-flex; align-items: center; gap: 5px; }
-.sv-daylist { display: flex; flex-direction: column; gap: 12px; min-width: 0; margin-top: 18px; }
+.sv-daylist { display: flex; flex-direction: column; gap: 10px; min-width: 0; margin-top: 14px; }
+.sv-group-label { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; color: var(--mut); margin: 2px 0 -2px; }
+.sv-cl { align-self: stretch; text-align: center; font-size: 10.5px; font-weight: 800; color: #92400e; background: #fef3c7;
+         border-radius: 5px; padding: 1px 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sv-cl-text { color: #a16207; font-weight: 700; }
+.sv-cal-foot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.sv-cal-foot .sv-legend { margin: 0 0 0 auto; }
+.sv-tile.closed { border-left: 3px solid #d4a017; }
 /* the day's offices: four even tiles to a row on a laptop, fewer as it narrows */
-.sv-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.sv-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; align-items: start; }
 @media (max-width: 1279px) { .sv-tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 1023px) { .sv-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 600px)  { .sv-tiles { grid-template-columns: minmax(0, 1fr); } }
-.sv-tile { display: flex; flex-direction: column; gap: 6px; text-align: left; font-family: inherit; cursor: pointer; min-width: 0;
-           background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 14px 12px; box-shadow: var(--shadow-sm);
+.sv-tile { display: flex; flex-direction: column; gap: 5px; text-align: left; font-family: inherit; cursor: pointer; min-width: 0;
+           background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 12px 13px 10px; box-shadow: var(--shadow-sm);
            transition: border-color .15s, box-shadow .15s; color: var(--ink); }
 .sv-tile:hover { border-color: var(--accent); }
 .sv-tile.sel { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); background: var(--accent-soft); }
@@ -197,10 +190,11 @@ html, body {
 .sv-t-name { font-weight: 800; font-size: 14px; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .sv-t-sub { font-size: 12px; color: var(--mut); margin-top: -3px; }
 .sv-tile .sv-t-chips { justify-content: flex-start; min-height: 20px; }   /* chips sit under the city, not off to the right */
-.sv-t-note { font-size: 12px; font-style: italic; color: var(--dim); line-height: 1.35; min-height: 32px;
+.sv-t-note { font-size: 12px; font-style: italic; color: var(--dim); line-height: 1.35;
              display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.sv-t-money { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; margin-top: auto; padding-top: 8px; border-top: 1px solid var(--card-2); }
+.sv-t-money { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; padding-top: 7px; border-top: 1px solid var(--card-2); }
 .sv-t-mv { font-size: 14px; font-weight: 800; color: var(--ink); margin-top: 1px; }
+.sv-t-none { padding-top: 7px; border-top: 1px solid var(--card-2); font-size: 12px; color: var(--mut); }
 .sv-selected { margin-top: 4px; }
 .sv-day-head { font-weight: 800; font-size: 15px; color: var(--ink); }
 .sv-office { padding: 16px 18px; }
@@ -6593,7 +6587,7 @@ function prodEmptyState(el, title) {
 const SV = { loaded: false, loading: null, offices: [], visits: [], reps: [], repInfo: new Map(),
              error: '', loadedAt: null, rep: null, sort: 'visits', query: '',
              calY: null, calM: null, day: null,
-             closedMonth: '', closedOpen: true, closedGroups: {}, dayOffice: null };
+             view: 'day', cScope: 'month', cSel: null, dayOffice: null, _ctx: null };
 
 const SV_OUTCOME = { green: { label: 'Good', c: '#059669' }, yellow: { label: 'Okay', c: '#d97706' },
                      red: { label: 'Poor', c: '#dc2626' } };
@@ -6923,94 +6917,174 @@ async function renderSalesVisitDetail() {
       ${kpi('Closed revenue', svUSD(tot.closedRev), 'lifetime, from those accounts')}
       ${kpi('Close rate', tot.officeCount ? Math.round(tot.closedCount / tot.officeCount * 100) + '%' : '—', 'closed ÷ offices visited')}
     </div>
-    <div class="sv-split">
-      <div class="card sv-cal-card" id="svCal"></div>
-      <div class="card sv-closed-card" id="svClosed"></div>
-    </div>
+    <div class="card sv-cal-card sv-cal-big" id="svCal"></div>
     <div class="sv-daylist" id="svDayList"></div>`;
-  document.getElementById('svRepPick').addEventListener('change', e => { SV.rep = e.target.value; SV.calY = SV.calM = SV.day = null; SV.closedMonth = ''; renderSalesVisitDetail(); });
+  document.getElementById('svRepPick').addEventListener('change', e => {
+    SV.rep = e.target.value; SV.calY = SV.calM = SV.day = null; SV.view = 'day'; renderSalesVisitDetail(); });
   document.getElementById('svReload2').addEventListener('click', async () => { await svLoad(true); renderSalesVisitDetail(); });
-  svDrawCalendar(mine, all);
-  svDrawClosed(closedList, all, all ? 'Everyone' : me.name);
-  svDrawDay(mine, all);
+  SV._ctx = { mine, closedList, all };
+  svRedraw();
 }
 
-function svDrawCalendar(mine, all) {
+/* One redraw for everything below the headline tiles: both calendars and the
+   area under them, which shows whatever was picked last — a day of visits
+   (visits calendar) or closed accounts (closed calendar). */
+/* One redraw for everything below the headline tiles: the calendar and the
+   area under it — a picked day (its visits and its closed accounts), or the
+   month's / every closed account. */
+function svRedraw() {
+  const c = SV._ctx; if (!c) return;
+  svDrawCalendar(c.mine, c.closedList, c.all); svDrawDetail();
+}
+function svDrawDetail() {
+  const c = SV._ctx; if (!c) return;
+  if (SV.view === 'closed') svDrawClosedList(c.closedList, c.all); else svDrawDay(c.mine, c.closedList, c.all);
+}
+const svShortUSD = n => n >= 1000 ? '$' + (n / 1000).toFixed(n >= 10000 ? 0 : 1).replace(/\.0$/, '') + 'k' : '$' + Math.round(n);
+const svMonthKey = o => String(o._closedDay || '').slice(0, 7);
+const svMonthLabel = m => { const [y, mo] = m.split('-').map(Number);
+  return new Date(y, mo - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }); };
+
+/* ── ONE calendar: visits and closed accounts together ────────────────────────
+   Each day: the visit count with Good/Okay/Poor dots, and a gold ★ with the
+   lifetime revenue of any account closed that day. Click a day and its visits
+   and closes expand underneath as tiles. Closes are sparse, so two buttons
+   also expand the month's or every closed account. */
+function svDrawCalendar(mine, closedList, all) {
   const host = document.getElementById('svCal'); if (!host) return;
-  const byDay = new Map();
+  const byDay = new Map(), byDayC = new Map();
   mine.forEach(v => { const a = byDay.get(v.date) || []; a.push(v); byDay.set(v.date, a); });
-  const y = SV.calY, m = SV.calM;
+  closedList.forEach(o => { const a = byDayC.get(o._closedDay) || []; a.push(o); byDayC.set(o._closedDay, a); });
+  const y = SV.calY, m = SV.calM, mk = `${y}-${String(m + 1).padStart(2, '0')}`;
   const first = new Date(y, m, 1), days = new Date(y, m + 1, 0).getDate(), today = svIsoToday();
   const pad = n => String(n).padStart(2, '0');
   let monthVisits = 0, monthDays = 0, cells = '';
+  const monthClosed = closedList.filter(o => svMonthKey(o) === mk), monthLife = monthClosed.reduce((t, o) => t + o._life, 0);
   for (let i = 0; i < first.getDay(); i++) cells += '<div class="sv-cell blank"></div>';
   for (let d = 1; d <= days; d++) {
-    const ds = `${y}-${pad(m + 1)}-${pad(d)}`, hits = byDay.get(ds) || [];
+    const ds = `${y}-${pad(m + 1)}-${pad(d)}`, hits = byDay.get(ds) || [], cl = byDayC.get(ds) || [];
     if (hits.length) { monthVisits += hits.length; monthDays++; }
     const dots = ['green', 'yellow', 'red'].filter(c => hits.some(v => v.color === c))
       .map(c => `<i style="background:${SV_OUTCOME[c].c}"></i>`).join('');
-    cells += `<button class="sv-cell${hits.length ? ' has' : ''}${ds === today ? ' today' : ''}${ds === SV.day ? ' sel' : ''}" data-day="${ds}"${hits.length ? '' : ' tabindex="-1"'}>
-      <span class="sv-dnum">${d}</span>${hits.length ? `<span class="sv-badge">${hits.length}</span><span class="sv-dots">${dots}</span>` : ''}</button>`;
+    const has = hits.length || cl.length, sel = SV.view !== 'closed' && ds === SV.day;
+    cells += `<button class="sv-cell${has ? ' has' : ''}${ds === today ? ' today' : ''}${sel ? ' sel' : ''}" data-day="${ds}"${has ? '' : ' tabindex="-1"'}>
+      <span class="sv-dnum">${d}</span>${hits.length ? `<span class="sv-badge">${hits.length}</span>` : ''}
+      <span class="sv-dots">${dots}</span>
+      ${cl.length ? `<span class="sv-cl">★${cl.length > 1 ? ' ' + cl.length : ''} ${svShortUSD(cl.reduce((t, o) => t + o._life, 0))}</span>` : ''}</button>`;
   }
+  const monthOn = SV.view === 'closed' && SV.cScope === 'month', allOn = SV.view === 'closed' && SV.cScope === 'all';
   host.innerHTML = `
     <div class="sv-cal-top">
       <button class="nav-back" id="svPrev" aria-label="Previous month">‹</button>
       <div class="sv-cal-title">${first.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</div>
       <button class="nav-back" id="svNext" aria-label="Next month">›</button>
     </div>
-    <div class="sv-cal-sub">${monthVisits} visit${monthVisits === 1 ? '' : 's'} on ${monthDays} day${monthDays === 1 ? '' : 's'}${all ? ' · everyone' : ''}</div>
+    <div class="sv-cal-sub">${monthVisits} visit${monthVisits === 1 ? '' : 's'} on ${monthDays} day${monthDays === 1 ? '' : 's'}
+      · <span class="sv-cl-text">★ ${monthClosed.length} closed${monthClosed.length ? ' · ' + svUSD(monthLife) + ' lifetime' : ''}</span>${all ? ' · everyone' : ''}</div>
     <div class="sv-grid">${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => `<div class="sv-dow">${d}</div>`).join('')}${cells}</div>
-    <div class="sv-legend">${Object.values(SV_OUTCOME).map(o => `<span><i style="background:${o.c}"></i>${o.label}</span>`).join('')}</div>`;
-  const move = dm => { const t = new Date(SV.calY, SV.calM + dm, 1); SV.calY = t.getFullYear(); SV.calM = t.getMonth(); svDrawCalendar(mine, all); };
+    <div class="sv-cal-foot">
+      <button class="pill${monthOn ? ' active' : ''}" id="svCMonth"${monthClosed.length ? '' : ' disabled'}>★ This month's closed (${monthClosed.length})</button>
+      <button class="pill${allOn ? ' active' : ''}" id="svCAll"${closedList.length ? '' : ' disabled'}>★ All closed (${closedList.length})</button>
+      <div class="sv-legend">${Object.values(SV_OUTCOME).map(o => `<span><i style="background:${o.c}"></i>${o.label}</span>`).join('')}<span class="sv-cl-text">★ Closed</span></div>
+    </div>`;
+  const move = dm => { const t = new Date(SV.calY, SV.calM + dm, 1); SV.calY = t.getFullYear(); SV.calM = t.getMonth();
+    if (SV.view === 'closed' && SV.cScope === 'month') svRedraw(); else svDrawCalendar(mine, closedList, all); };
   document.getElementById('svPrev').onclick = () => move(-1);
   document.getElementById('svNext').onclick = () => move(1);
   host.querySelectorAll('.sv-cell.has').forEach(b => b.addEventListener('click', () => {
-    SV.day = b.dataset.day; SV.dayOffice = null; svDrawCalendar(mine, all); svDrawDay(mine, all);
+    SV.view = 'day'; SV.day = b.dataset.day; SV.dayOffice = null; svRedraw();
   }));
+  const pick = scope => { SV.view = 'closed'; SV.cScope = scope; SV.cSel = null; svRedraw(); };
+  document.getElementById('svCMonth').onclick = () => monthClosed.length && pick('month');
+  document.getElementById('svCAll').onclick = () => closedList.length && pick('all');
 }
 
-function svDrawDay(mine, all) {
+/* a picked day: its visits, then any accounts closed that day */
+function svDrawDay(mine, closedList, all) {
   const host = document.getElementById('svDayList'); if (!host) return;
-  if (!SV.day) { host.innerHTML = '<div class="empty-state">Pick a day with visits on the calendar.</div>'; return; }
+  if (!SV.day) { host.innerHTML = '<div class="empty-state">Pick a day on the calendar.</div>'; return; }
   const visits = mine.filter(v => v.date === SV.day);
+  const closes = closedList.filter(o => o._closedDay === SV.day).sort((a, b) => b._life - a._life);
   const byOffice = new Map();
   visits.forEach(v => { const a = byOffice.get(v.o.id) || []; a.push(v); byOffice.set(v.o.id, a); });
-  /* The day's offices as compact tiles, four to a row, so a busy day reads at
-     a glance; the chosen tile's full Salesly card opens underneath. */
   const groups = [...byOffice.values()];
-  if (!groups.some(vs => vs[0].o.id === SV.dayOffice)) SV.dayOffice = groups[0] ? groups[0][0].o.id : null;
-  const sel = groups.find(vs => vs[0].o.id === SV.dayOffice);
+  const ids = groups.map(vs => vs[0].o.id).concat(closes.map(o => o.id));
+  if (!ids.includes(SV.dayOffice)) SV.dayOffice = ids[0] || null;
+  const selGroup = groups.find(vs => vs[0].o.id === SV.dayOffice);
+  const selOffice = selGroup ? selGroup[0].o : closes.find(o => o.id === SV.dayOffice);
+  const both = groups.length && closes.length;
   host.innerHTML = `<div class="sv-day-head">${esc(svDay(SV.day, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }))}
-      <span class="text-mut">· ${visits.length} visit${visits.length === 1 ? '' : 's'} · ${byOffice.size} office${byOffice.size === 1 ? '' : 's'}</span></div>` +
-    (groups.length
-      ? `<div class="sv-tiles">${groups.map(vs => svOfficeTile(vs[0].o, vs, all, vs[0].o.id === SV.dayOffice)).join('')}</div>` +
-        (sel ? `<div class="sv-selected" id="svSelected">${svOfficeCard(sel[0].o, sel, all)}</div>` : '')
-      : '<div class="empty-state">No visits on this day.</div>');
+      ${visits.length ? `<span class="text-mut">· ${visits.length} visit${visits.length === 1 ? '' : 's'} · ${byOffice.size} office${byOffice.size === 1 ? '' : 's'}</span>` : ''}
+      ${closes.length ? `<span class="sv-cl-text">· ★ ${closes.length} closed</span>` : ''}</div>` +
+    (groups.length ? (both ? '<div class="sv-group-label">🚗 Visits</div>' : '') +
+      `<div class="sv-tiles">${groups.map(vs => svOfficeTile(vs[0].o, vs, all, vs[0].o.id === SV.dayOffice)).join('')}</div>` : '') +
+    (closes.length ? `<div class="sv-group-label">★ Closed this day · ${svUSD(closes.reduce((t, o) => t + o._life, 0))} lifetime</div>
+      <div class="sv-tiles">${closes.map(o => svClosedTile(o, o.id === SV.dayOffice, all)).join('')}</div>` : '') +
+    (!ids.length ? '<div class="empty-state">Nothing on this day.</div>' : '') +
+    (selOffice ? `<div class="sv-selected" id="svSelected">${svOfficeCard(selOffice, selGroup || [], all)}</div>` : '');
   host.querySelectorAll('.sv-tile').forEach(t => t.addEventListener('click', () => {
-    SV.dayOffice = t.dataset.oid; svDrawDay(mine, all);
-    const card = document.getElementById('svSelected');
-    if (card && card.getBoundingClientRect().top > window.innerHeight - 120) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    SV.dayOffice = t.dataset.oid; svDrawDay(mine, closedList, all); svScrollToCard();
   }));
 }
 
-function svOfficeTile(o, vs, all, isSel) {
+/* the month's, or every, closed account — from the two buttons under the calendar */
+function svDrawClosedList(list, all) {
+  const host = document.getElementById('svDayList'); if (!host) return;
+  const mk = `${SV.calY}-${String(SV.calM + 1).padStart(2, '0')}`;
+  const items = (SV.cScope === 'month' ? list.filter(o => svMonthKey(o) === mk) : list.slice())
+    .sort((a, b) => a._closedDay < b._closedDay ? 1 : a._closedDay > b._closedDay ? -1 : b._life - a._life);
+  if (!items.some(o => o.id === SV.cSel)) SV.cSel = items[0] ? items[0].id : null;
+  const sel = items.find(o => o.id === SV.cSel);
+  const title = SV.cScope === 'month' ? 'Closed in ' + svMonthLabel(mk) : 'All closed accounts';
+  host.innerHTML = `<div class="sv-day-head">★ ${esc(title)} <span class="text-mut">· ${items.length} account${items.length === 1 ? '' : 's'} · ${svUSD(items.reduce((t, o) => t + o._life, 0))} lifetime · ${svUSD(items.reduce((t, o) => t + o._rev90, 0))} last 90 days</span></div>` +
+    (items.length ? `<div class="sv-tiles">${items.map(o => svClosedTile(o, o.id === SV.cSel, all)).join('')}</div>` +
+                    (sel ? `<div class="sv-selected" id="svSelected">${svOfficeCard(sel, [], all)}</div>` : '')
+                  : '<div class="empty-state">No accounts closed here.</div>');
+  host.querySelectorAll('.sv-tile').forEach(t => t.addEventListener('click', () => {
+    SV.cSel = t.dataset.oid; svDrawClosedList(list, all); svScrollToCard();
+  }));
+}
+function svScrollToCard() {
+  const card = document.getElementById('svSelected');
+  if (card && card.getBoundingClientRect().top > window.innerHeight - 120) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+/* tiles: no reserved space — a note line only when there is a note, and one
+   quiet line instead of three dashes for an office the lab hasn't invoiced */
+function svTileMoney(o) {
+  if (!o._docs.length) return '<div class="sv-t-none">No lab cases yet</div>';
+  return `<div class="sv-t-money">
+      <div><div class="sv-fl">90 days</div><div class="sv-t-mv">${svUSD(o._rev90)}</div></div>
+      <div><div class="sv-fl">Lifetime</div><div class="sv-t-mv">${svUSD(o._life)}</div></div>
+      <div><div class="sv-fl">Drs</div><div class="sv-t-mv">${o._docs.length}</div></div>
+    </div>`;
+}
+function svTileChips(o) {
   const status = String(o.status || '').trim(), stKey = status.toLowerCase().replace(/^current$/, 'active');
   const chip = (txt, c) => `<span class="sv-chip" style="--c:${c}">${esc(txt)}</span>`;
+  const h = (status ? chip(status, SV_LAB_COLOR[stKey] || '#64748b') : '') + (o.tier ? chip('Tier ' + o.tier, o.tier === 'S' ? '#18818b' : '#64748b') : '');
+  return h ? `<div class="sv-chips sv-t-chips">${h}</div>` : '';
+}
+function svOfficeTile(o, vs, all, isSel) {
   const v = vs[0], oc = SV_OUTCOME[v.color];
   const note = vs.map(x => x.note).filter(Boolean).join(' · ');
   return `<button class="sv-tile${isSel ? ' sel' : ''}" data-oid="${esc(o.id)}" aria-pressed="${isSel}">
-    <div class="sv-t-top">
-      <div class="sv-t-name">${o.closed_at ? '<span style="color:#d4a017">★</span> ' : ''}${esc(o.name || 'Unnamed office')}</div>
-    </div>
+    <div class="sv-t-name">${o.closed_at ? '<span style="color:#d4a017">★</span> ' : ''}${esc(o.name || 'Unnamed office')}</div>
     <div class="sv-t-sub">${esc([o.city, o.state].filter(Boolean).join(', ') || '—')}</div>
-    <div class="sv-chips sv-t-chips">${status ? chip(status, SV_LAB_COLOR[stKey] || '#64748b') : ''}${o.tier ? chip('Tier ' + o.tier, o.tier === 'S' ? '#18818b' : '#64748b') : ''}</div>
+    ${svTileChips(o)}
     <div class="sv-visit"><i style="background:${(oc || {}).c || '#cbd5e1'}"></i><b>${esc((oc || {}).label || 'Visit')}</b>${vs.length > 1 ? ' ×' + vs.length : ''}${all || v.rep ? ' · ' + esc(v.rep || (SV.repInfo.get(v.key) || {}).name || '') : ''}</div>
-    ${note ? `<div class="sv-t-note">“${esc(note)}”</div>` : '<div class="sv-t-note"></div>'}
-    <div class="sv-t-money">
-      <div><div class="sv-fl">90 days</div><div class="sv-t-mv">${o._docs.length ? svUSD(o._rev90) : '—'}</div></div>
-      <div><div class="sv-fl">Lifetime</div><div class="sv-t-mv">${o._docs.length ? svUSD(o._life) : '—'}</div></div>
-      <div><div class="sv-fl">Drs</div><div class="sv-t-mv">${o._docs.length || '—'}</div></div>
-    </div>
+    ${note ? `<div class="sv-t-note">“${esc(note)}”</div>` : ''}
+    ${svTileMoney(o)}
+  </button>`;
+}
+function svClosedTile(o, isSel, all) {
+  const closer = (SV.repInfo.get(o._closedKey) || {}).name || '';
+  return `<button class="sv-tile closed${isSel ? ' sel' : ''}" data-oid="${esc(o.id)}" aria-pressed="${isSel}">
+    <div class="sv-t-name"><span style="color:#d4a017">★</span> ${esc(o.name || 'Unnamed office')}</div>
+    <div class="sv-t-sub">${esc([o.city, o.state].filter(Boolean).join(', ') || '—')}</div>
+    ${svTileChips(o)}
+    <div class="sv-visit">Closed <b>${esc(svDay(o._closedDay))}</b>${all && closer ? ' · ' + esc(closer) : ''}</div>
+    ${svTileMoney(o)}
   </button>`;
 }
 
@@ -7040,12 +7114,12 @@ function svOfficeCard(o, dayVisits, all) {
     ${dayVisits.map(v => `<div class="sv-visit"><i style="background:${(SV_OUTCOME[v.color] || {}).c || '#cbd5e1'}"></i>
         <b>${esc((SV_OUTCOME[v.color] || {}).label || 'Visit')}</b>${all || v.rep ? ' · ' + esc(v.rep || (SV.repInfo.get(v.key) || {}).name || '') : ''}
         ${v.note ? `<span class="sv-vnote">“${esc(v.note)}”</span>` : ''}</div>`).join('')}
-    <div class="sv-money">
+    ${!o._docs.length && !o.closed_at ? '<div class="sv-t-none" style="margin:6px 0 10px">No lab cases yet — revenue and doctors appear once the lab invoices this office.</div>' : `<div class="sv-money">
       <div><div class="sv-fl">Last 90 days</div><div class="sv-mv">${o._docs.length ? svUSD(o._rev90) : '—'}</div></div>
       <div><div class="sv-fl">Lifetime</div><div class="sv-mv">${o._docs.length ? svUSD(o._life) : '—'}</div></div>
       <div><div class="sv-fl">Doctors</div><div class="sv-mv">${docs.length || '—'}</div></div>
       ${o.closed_at ? `<div><div class="sv-fl">Closed</div><div class="sv-mv" style="font-size:13px">${esc(svDay(o._closedDay))}${closer ? '<div class="text-mut" style="font-size:11px;font-weight:500">by ' + esc(closer) + '</div>' : ''}</div></div>` : ''}
-    </div>
+    </div>`}
     <div class="sv-facts">
       ${fact('Phone', o.phone ? `<a href="tel:${esc(String(o.phone).replace(/[^0-9+]/g, ''))}">${esc(o.phone)}</a>` : '')}
       ${fact('Email', o.email ? `<a href="mailto:${esc(o.email)}">${esc(o.email)}</a>` : '')}
@@ -7078,69 +7152,6 @@ function svOfficeCard(o, dayVisits, all) {
    stepping only through months that HAVE a closed account, so it never lands
    on an empty month — or shows every month grouped, newest first, each month
    collapsible on its own with its count and revenue still visible when shut. */
-const svMonthKey = o => String(o._closedDay || '').slice(0, 7);
-const svMonthLabel = m => { const [y, mo] = m.split('-').map(Number);
-  return new Date(y, mo - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }); };
-
-function svDrawClosed(list, all, who) {
-  const host = document.getElementById('svClosed'); if (!host) return;
-  const months = [...new Set(list.map(svMonthKey).filter(Boolean))].sort().reverse();   // newest first
-  if (SV.closedMonth && !months.includes(SV.closedMonth)) SV.closedMonth = '';
-  const cur = SV.closedMonth, i = months.indexOf(cur), open = SV.closedOpen !== false;
-  const shown = cur ? list.filter(o => svMonthKey(o) === cur) : list;
-  host.innerHTML = `
-    <button class="sv-closed-head" id="svClosedToggle" aria-expanded="${open}">
-      <span class="sv-caret">${open ? '▾' : '▸'}</span>
-      <span class="sv-closed-title">★ Closed accounts</span>
-      <span class="text-mut">${all ? '' : '· ' + esc(who) + ' '}· ${list.length}</span>
-      <span class="sv-closed-sum">${svUSD(list.reduce((t, o) => t + o._life, 0))} lifetime</span>
-    </button>
-    ${open ? `
-    <div class="sv-closed-nav">
-      <button class="pill${cur ? '' : ' active'}" id="svClosedAll">All months</button>
-      <div class="sv-stepper">
-        <button class="nav-back" id="svClosedPrev" aria-label="Earlier month"${!months.length || (cur && i === months.length - 1) ? ' disabled' : ''}>‹</button>
-        <span class="sv-step-label${cur ? '' : ' muted'}">${cur ? svMonthLabel(cur) : 'Month by month'}</span>
-        <button class="nav-back" id="svClosedNext" aria-label="Later month"${!cur || i === 0 ? ' disabled' : ''}>›</button>
-      </div>
-    </div>
-    <div class="sv-closed-body">${svClosedBody(shown, months, cur, all)}</div>` : ''}`;
-  const redraw = () => svDrawClosed(list, all, who);
-  document.getElementById('svClosedToggle').onclick = () => { SV.closedOpen = !open; redraw(); };
-  if (!open) return;
-  document.getElementById('svClosedAll').onclick = () => { SV.closedMonth = ''; redraw(); };
-  document.getElementById('svClosedPrev').onclick = () => { SV.closedMonth = cur ? months[i + 1] : months[0]; redraw(); };
-  document.getElementById('svClosedNext').onclick = () => { if (cur && i > 0) { SV.closedMonth = months[i - 1]; redraw(); } };
-  host.querySelectorAll('.sv-mgroup').forEach(r => r.addEventListener('click', () => {
-    SV.closedGroups[r.dataset.m] = SV.closedGroups[r.dataset.m] === false; redraw();
-  }));
-}
-
-function svClosedBody(shown, months, cur, all) {
-  if (!shown.length) return '<div class="text-mut" style="font-size:13px;padding:8px 2px">No closed accounts in this date range.</div>';
-  const span = all ? 5 : 4;   // columns before the three number columns
-  const sums = arr => ({ d: arr.reduce((t, o) => t + o._docs.length, 0), r90: arr.reduce((t, o) => t + o._rev90, 0), life: arr.reduce((t, o) => t + o._life, 0) });
-  const byLife = arr => arr.slice().sort((a, b) => b._life - a._life);
-  const row = o => `<tr><td>★ ${esc(o.name || '')}</td><td>${esc([o.city, o.state].filter(Boolean).join(', '))}</td>
-      ${all ? `<td>${esc((SV.repInfo.get(o._closedKey) || {}).name || '')}</td>` : ''}
-      <td style="white-space:nowrap">${esc(svDay(o._closedDay))}</td><td>${esc(o.status || '—')}</td><td class="r">${o._docs.length || '—'}</td>
-      <td class="r">${svUSD(o._rev90)}</td><td class="r">${svUSD(o._life)}</td></tr>`;
-  const totalRow = (arr, label, cls) => { const t = sums(arr);
-    return `<tr class="${cls}"><td colspan="${span}">${label}</td><td class="r">${t.d}</td><td class="r">${svUSD(t.r90)}</td><td class="r">${svUSD(t.life)}</td></tr>`; };
-  let body;
-  if (cur) {
-    body = byLife(shown).map(row).join('') + totalRow(shown, 'Total', 'sv-total');
-  } else {
-    body = months.map(m => {
-      const g = shown.filter(o => svMonthKey(o) === m), openG = SV.closedGroups[m] !== false, t = sums(g);
-      return `<tr class="sv-mgroup" data-m="${m}" aria-expanded="${openG}"><td colspan="${span}"><span class="sv-caret">${openG ? '▾' : '▸'}</span>${esc(svMonthLabel(m))}
-          <span class="text-mut">· ${g.length} account${g.length === 1 ? '' : 's'}</span></td>
-          <td class="r">${t.d}</td><td class="r">${svUSD(t.r90)}</td><td class="r">${svUSD(t.life)}</td></tr>` +
-        (openG ? byLife(g).map(row).join('') : '');
-    }).join('') + totalRow(shown, 'Total', 'sv-total');
-  }
-  return `<div style="overflow-x:auto"><table class="sv-docs"><thead><tr><th>Office</th><th>City</th>${all ? '<th>Closed by</th>' : ''}<th>Closed</th><th>Status</th><th class="r">Drs</th><th class="r">90 days</th><th class="r">Lifetime</th></tr></thead><tbody>${body}</tbody></table></div>`;
-}
 
 
 async function renderEmployeeGrid() {
