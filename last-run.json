@@ -1,12 +1,20 @@
 {
-  "ran_at": "2026-10-26T20:49:17.807Z",
-  "ok": false,
+  "ran_at": "2026-10-26T21:05:54.929Z",
+  "ok": true,
   "dry_run": false,
   "days": [
+    "2026-10-23",
     "2026-10-24",
     "2026-10-25"
   ],
-  "invoices": {},
-  "production": {},
-  "error": "signing in to Supabase: HTTP 400 (400) — AUTOMATION_EMAIL / AUTOMATION_PASSWORD were not accepted"
+  "invoices": {
+    "fetched": 489,
+    "days_sent": 1,
+    "days_already_complete": 0,
+    "loaded": 489
+  },
+  "production": {
+    "fetched": 2127,
+    "loaded": 709
+  }
 }
