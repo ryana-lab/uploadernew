@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.10.26-DL12</title>
+<title>Lab Sales Dashboard v2026.10.26-DL13</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -171,6 +171,25 @@ html, body {
 .sv-daylist { display: flex; flex-direction: column; gap: 10px; min-width: 0; margin-top: 14px; }
 .sv-dupe-note { color: #a16207; }
 /* ── COACH ── */
+.coach-nl { padding: 12px 14px; margin-bottom: 12px; }
+.coach-nl-row { display: flex; gap: 8px; align-items: center; }
+.coach-nl-input { flex: 1; min-width: 0; height: 40px; padding: 0 14px; font-size: 14.5px; font-family: inherit; color: var(--ink);
+                  border: 1px solid var(--border); border-radius: 10px; background: var(--card); }
+.coach-nl-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.coach-nl-row .sb-btn-primary { height: 40px; padding: 0 18px; }
+.coach-nl-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; font-size: 12.5px; }
+.coach-understood { margin: -2px 0 8px; }
+.coach-chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 4px 3px 9px; border-radius: 999px; background: var(--accent-soft);
+              color: var(--ink); border: 1px solid color-mix(in srgb, var(--accent) 35%, white); }
+.coach-understood .coach-chip { padding-right: 9px; }
+.coach-chip-t { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; color: var(--accent-ink); }
+.coach-chip-x { border: none; background: transparent; color: var(--mut); font-size: 14px; line-height: 1; cursor: pointer; padding: 0 4px; border-radius: 50%; }
+.coach-chip-x:hover { background: var(--card); color: var(--ink); }
+.coach-unused { color: #a16207; font-style: italic; margin-left: 4px; }
+.coach-row-clk { cursor: pointer; }
+.coach-row-clk:hover td { background: var(--accent-soft); }
+.coach-open { border: 1px solid var(--border); background: var(--card); border-radius: 6px; cursor: pointer; font-size: 12px; padding: 1px 7px; color: var(--accent-ink); }
+.coach-hint { font-size: 11.5px; color: var(--mut); margin-top: 6px; }
 .coach-buckets { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 10px; }
 .coach-bucket { font-family: inherit; font-size: 13px; font-weight: 600; padding: 6px 12px; border-radius: 999px; cursor: pointer;
                 background: var(--card); color: var(--dim); border: 1px solid var(--border); }
@@ -7676,6 +7695,7 @@ const CX_D = {   // the breakdowns
   none:     { label: 'Total', key: () => 'All' },
   month:    { label: 'Month', time: true, key: r => r.anchorDate ? cxMonthKey(r.anchorDate) : '',
               show: k => { const [y, m] = k.split('-').map(Number); return new Date(y, m - 1, 1).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }); } },
+  day:      { label: 'Day', time: true, key: r => r.anchorDate ? isoDate(r.anchorDate) : '', show: k => coachDay(parseDate(k)) },
   week:     { label: 'Week', time: true, key: r => r.anchorDate ? isoDate(cxMonday(r.anchorDate)) : '', show: k => 'Week of ' + coachDay(parseDate(k)) },
   weekday:  { label: 'Weekday', time: true, key: r => r.anchorDate ? String((r.anchorDate.getDay() + 6) % 7) : '', show: k => CX_WD[(+k + 1) % 7] },
   quarter:  { label: 'Quarter', time: true, key: r => r.anchorDate ? r.anchorDate.getFullYear() + ' Q' + (Math.floor(r.anchorDate.getMonth() / 3) + 1) : '' },
@@ -7796,18 +7816,22 @@ function cxExplore(tpl, p) {
   });
   const hidden = minOn && minN ? out.filter(x => (minField === 'units' ? x._units : x._cases) < minN).length : 0;
   if (minOn && minN) out = out.filter(x => (minField === 'units' ? x._units : x._cases) >= minN);
+  const asc = p.order === 'asc';
   const byTime = D.time && !(tpl.builder && p.sort) && !tpl.sortable;
   if (byTime) out.sort((a, b) => a._k < b._k ? -1 : a._k > b._k ? 1 : 0);
+  else if (asc) out.sort((a, b) => (a[sortBy] ?? Infinity) - (b[sortBy] ?? Infinity));
   else out.sort((a, b) => (b[sortBy] ?? -Infinity) - (a[sortBy] ?? -Infinity));
+  const shownAll = out.length, limit = +(p.limit || 0);
+  if (limit > 0 && !byTime) out = out.slice(0, limit);
 
   // the answer in words
   const totalTxt = measures.map(k => `${CX_M[k].label.toLowerCase()} <b>${cxFmt(total[k], CX_M[k].fmt)}</b>`).join(' · ');
   let headline;
   if (dim === 'none' || !out.length) headline = `For ${esc(R.label)}${sel.label !== 'any product' ? ' (' + esc(sel.label) + ')' : ''}: ${totalTxt}.`;
   else {
-    const top = out.slice().sort((a, b) => (b[sortBy] ?? -Infinity) - (a[sortBy] ?? -Infinity))[0];
-    headline = `${out.length.toLocaleString()} ${esc(cxPlural(D.label, out.length))} in ${esc(R.label)}. Overall: ${totalTxt}. `
-      + `Highest ${esc(CX_M[sortBy].label.toLowerCase())}: <b>${esc(top.dim)}</b> (${cxFmt(top[sortBy], CX_M[sortBy].fmt)}).`;
+    const top = out.slice().sort((a, b) => asc ? (a[sortBy] ?? Infinity) - (b[sortBy] ?? Infinity) : (b[sortBy] ?? -Infinity) - (a[sortBy] ?? -Infinity))[0];
+    headline = `${limit > 0 && shownAll > out.length ? (asc ? 'Bottom ' : 'Top ') + out.length + ' of ' + shownAll.toLocaleString() : shownAll.toLocaleString()} ${esc(cxPlural(D.label, shownAll))} in ${esc(R.label)}. Overall: ${totalTxt}. `
+      + `${asc ? 'Lowest' : 'Highest'} ${esc(CX_M[sortBy].label.toLowerCase())}: <b>${esc(top.dim)}</b> (${cxFmt(top[sortBy], CX_M[sortBy].fmt)}).`;
   }
   const how = measures.map(k => `<b>${esc(CX_M[k].label)}</b> — ${esc(CX_M[k].def)}`);
   how.push('Dates: ' + esc(R.label) + (R.from ? ' (' + coachDay(R.from) + ' – ' + coachDay(R.to) + ')' : '') + ' — by invoice date (received date for cases not yet invoiced)');
@@ -7863,7 +7887,7 @@ const COACH_X = [
   { key: 'sc_cmp', bucket: 'scanners', q: 'Scanner sources compared', measures: ['cases', 'doctors', 'revenue', 'remakeRate', 'tatMedian'], dim: 'scanner', sortable: true, slots: ['sort'].concat(CXF) },
   { key: 'sc_who', bucket: 'scanners', q: 'Who uses a scanner', measures: ['cases', 'revenue'], dim: 'doctor', slots: ['scanner', 'range', 'product', 'group', 'state'] },
   // Build your own
-  { key: 'build', bucket: 'build', q: 'Build your own', builder: true, dim: 'month', slots: ['measures', 'dim', 'sort', 'min', 'range', 'product', 'status', 'group', 'state', 'scanner', 'customer'] }
+  { key: 'build', bucket: 'build', q: 'Build your own', builder: true, dim: 'month', slots: ['measures', 'dim', 'sort', 'order', 'limit', 'min', 'range', 'product', 'status', 'group', 'state', 'scanner', 'customer'] }
 ];
 COACH_X.forEach(t => { t.kind = 'explore'; if (!t.dims) t.dims = t.builder ? CX_D_ORDER : [t.dim]; });
 const COACH_BUCKET_OF = { who_sent: 'products', came_back: 'doctors', first_time: 'products', stopped: 'products', top: 'products', mix: 'practices', production: 'production' };
@@ -7888,6 +7912,382 @@ const COACH_PRESETS_BY_BUCKET = {
   production: [['Who produced crowns (all loaded production)?', 'production', { product: 'grp:Crowns', range: 'all' }]],
   build: []
 };
+
+/* ══ TYPE-TO-ASK — Coach reads a question you type ════════════════════════════
+   No AI service: a built-in vocabulary turns "remake rate by doctor last 90
+   days crowns Heartland" into the same settings the dropdowns make, so the
+   answer comes from the same tested engine. The vocabulary includes your own
+   data — every product, category, dental group, scanner, state, doctor and
+   practice — plus everyday words ("redos", "TAT", "since June", "top 10").
+   What Coach understood is shown as chips you can remove, and any word it did
+   NOT use is listed: a misunderstanding is visible, never silent. */
+
+const NL_MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+const NL_MON_RE = '(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sept?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)';
+const nlMonIdx = w => NL_MONTHS.findIndex(m => m.startsWith(w.slice(0, 3)));
+const NL_STOP = new Set(('a an the of for in on at to by per with and or is are was were what whats which who whom how many much show me give list please ' +
+  'our my we us do does did has have had that this those these from over during between vs versus than any all each every there their its it be ' +
+  'been being can could would should get got tell find see compare comparing breakdown broken split grouped across total totals overall number count ' +
+  'doctors doctor dentists dentist drs dr practices practice offices office clinics clinic groups group dental cases case sent send sends sending ' +
+  'did do which ones one most top best biggest highest largest lowest least worst fewest our lab labs where when why rate rates trend trending ' +
+  'time times first back came come stopped stop quit longer produced made built technician technicians employee employees production by per ' +
+  'just only also me i id like want need know report reports data numbers figures value values amount amounts send us ' +
+  'product products provide you your list lists item items them they can could will gave get got look looking using use used ordered order ' +
+  'were was been versus there here then than into onto out up down sort sorted rank ranked ranking please thanks thank ' +
+  'tried try trying go goes going went come comes coming came back winback winbacks won').split(' '));
+
+const NL_MEASURES = [   // longest phrases first; each → measure keys (first one leads)
+  [/\b(remake|redo) (rate|%|percent(age)?)\b/, ['remakeRate', 'remakeUnits', 'units']],
+  [/\bunits? remade\b|\bremade units?\b/, ['remakeUnits']],
+  [/\bremake (cases|count)\b|\bnumber of remakes\b|\bhow many remakes\b/, ['remakeCases']],
+  [/\bremake (discounts?|credits?)\b/, ['remakeDisc']],
+  [/\b(remakes?|redos?|remade)\b/, ['remakeRate', 'remakeUnits', 'units']],
+  [/\b(on[- ]?)?hold rate\b/, ['holdRate', 'holdCases']],
+  [/\bdays on hold\b|\bhold (time|days|length)\b/, ['holdDays', 'holdCases']],
+  [/\b(on[- ]?hold|holds?|held( cases?)?)\b/, ['holdCases', 'holdRate', 'holdDays']],
+  [/\bmedian (turnaround|turn around|tat)\b/, ['tatMedian', 'cases']],
+  [/\b(average|avg|mean) (turnaround|turn around|tat)\b/, ['tatAvg', 'cases']],
+  [/\b(slowest 10%|p90|90th percentile)\b/, ['tatP90', 'cases']],
+  [/\bon[- ]?time\b/, ['onTimePct', 'latePct', 'cases']],
+  [/\b(late|lateness|behind schedule|overdue)\b/, ['latePct', 'onTimePct', 'cases']],
+  [/\b(turnaround|turn around|tat|lead time|how long|speed)\b/, ['tatMedian', 'tatAvg', 'cases']],
+  [/\bmedian case (value|size)\b/, ['medianCase', 'cases']],
+  [/\b(average|avg|mean) (case|order) (value|size|\$)\b|\baov\b|\bcase value\b/, ['avgCase', 'medianCase', 'cases']],
+  [/\b(price per unit|unit price|per unit price|pricing|prices?)\b/, ['unitPrice', 'units', 'revenue']],
+  [/\b(revenue|sales|dollars|money|billing|billed|spend|spending|income|\$)\b/, ['revenue']],
+  [/\b(how many|number of|count of) (doctors|dentists|drs|customers|clients)\b/, ['doctors']],
+  [/\b(how many|number of|count of) (practices|offices|clinics)\b/, ['practices']],
+  [/\b(how many|number of|count of) products\b/, ['products']],
+  [/\b(line items?|lines)\b/, ['lines']],
+  [/\bunits?\b/, ['units']],
+  [/\b(cases?|case count|volume|orders?)\b/, ['cases']]
+];
+const NL_DIMS = [   // "by …" words → breakdowns
+  [/^(day of (the )?week|days of (the )?week|weekdays?)/, 'weekday'], [/^(months?|monthly)/, 'month'], [/^(weeks?|weekly)/, 'week'],
+  [/^(days?|daily|dates?)/, 'day'], [/^(quarters?|quarterly)/, 'quarter'], [/^(years?|yearly|annual(ly)?)/, 'year'],
+  [/^(product groups?|product famil(y|ies)|famil(y|ies))/, 'pgroup'], [/^(product )?(categor(y|ies)|types?)/, 'category'], [/^products?/, 'product'],
+  [/^(doctors?|dentists?|drs?|providers?)/, 'doctor'], [/^(practices?|offices?|clinics?|locations?)/, 'practice'],
+  [/^((dental )?groups?|dsos?)/, 'group'], [/^(retention|statuse?s?)/, 'status'], [/^states?/, 'state'], [/^(cit(y|ies)|towns?)/, 'city'],
+  [/^(scanners?( sources?)?|sources?)/, 'scanner'], [/^(hold reasons?)/, 'holdReason'], [/^(remake reasons?|reasons?)/, 'remakeReason'],
+  [/^(case status(es)?)/, 'caseStatus'], [/^shades?/, 'shade']
+];
+const NL_PROD_SYN = [
+  [/\bscrew[- ]?retained (implant )?bridges?\b/, 'cat:Screw-Retained Implant Bridge'],
+  [/\bscrew[- ]?retained( implants?)?( crowns?)?\b/, 'cat:Screw-Retained Implant Crown'],
+  [/\b(custom )?abutments?\b/, 'cat:Custom Abutment'],
+  [/\b(hybrids?|full[- ]arch|all[- ]on[- ]?[x4]|overdentures?)\b/, 'cat:Implant Hybrid / Full Arch'],
+  [/\bimplant (temps?|temporar(y|ies))\b/, 'cat:Implant Temporary'],
+  [/\bimplant parts?\b/, 'cat:Implant Parts'],
+  [/\bimplants?\b/, 'grp:Implants'],
+  [/\b(immediate|reference) dentures?\b/, 'cat:Immediate / Reference Denture'],
+  [/\bdentures?\b/, 'grp:Dentures'],
+  [/\b(partial )?frameworks?\b/, 'cat:Partial Framework'],
+  [/\bflippers?\b/, 'cat:Flipper'],
+  [/\bpartials?\b/, 'grp:Partials & Flippers'],
+  [/\b(night ?guards?|splints?|bite guards?|occlusal guards?)\b/, 'cat:Nightguard / Splint'],
+  [/\b(retainers?|essix)\b/, 'cat:Retainer / Essix'],
+  [/\b(whitening|bleaching)( trays?)?\b/, 'cat:Whitening Tray'],
+  [/\b(surgical (guides?|stents?))\b/, 'cat:Surgical Guide'],
+  [/\b(models?|dies)\b/, 'cat:Model'],
+  [/\bwax ?ups?\b/, 'cat:Wax-up & Design'],
+  [/\bmaryland( bridges?)?\b/, 'cat:Maryland Bridge'],
+  [/\bzirconia bridges?\b/, 'cat:Zirconia Bridge'], [/\be\.?max bridges?\b/, 'cat:E.max Bridge'], [/\bpfm bridges?\b/, 'cat:PFM Bridge'],
+  [/\bbridges?\b/, 'grp:Bridges'],
+  [/\b(zirconia|zirc)( crowns?)?\b/, 'cat:Zirconia Crown'], [/\be\.?max( crowns?)?\b/, 'cat:E.max Crown'], [/\bpfms?( crowns?)?\b/, 'cat:PFM Crown'],
+  [/\b(full cast|gold)( crowns?)?\b/, 'cat:Full Cast Crown'],
+  [/\bcrowns?\b/, 'grp:Crowns'],
+  [/\b(inlays?|onlays?)\b/, 'cat:Inlay / Onlay'], [/\bveneers?\b/, 'cat:Veneer'],
+  [/\b(temps?|temporar(y|ies)|provisionals?)\b/, 'cat:Temporary'],
+  [/\b(copings?|post (and|&) cores?)\b/, 'cat:Coping / Post & Core'],
+  [/\bshipping\b/, 'cat:Shipping'], [/\brush( fees?)?\b/, 'cat:Rush Fee'], [/\bappliances?\b/, 'grp:Appliances']
+];
+const NL_GENERIC = new Set('dental dentistry dentist dds dmd pc llc pllc pa inc family care group associates assoc the of and center centre office studio smile smiles clinic practice hl insp dr general cosmetic implant implants elite midwest heartland new'.split(' '));
+
+let _nlVocab = null;
+function nlVocab() {   // built from the loaded data; rebuilt when the data changes
+  const raw = APP.raw || [];
+  if (_nlVocab && _nlVocab.n === raw.length) return _nlVocab;
+  const groups = new Set(), scanners = new Set(), states = new Map(), abbrs = new Set(), prods = new Set(), pracs = new Map(), docs = new Map();
+  raw.forEach(r => {
+    if (!r) return;
+    if (r.group) groups.add(r.group);
+    const sc = String(r.scanner || '').trim(); if (sc) scanners.add(sc);
+    if (r.stateAbbr) { abbrs.add(r.stateAbbr); if (r.state) states.set(String(r.state).toLowerCase(), r.stateAbbr); }
+    if (String(r.product || '').trim()) prods.add(r.product);
+    if (r.practice && !pracs.has(r.practice)) pracs.set(r.practice, null);
+    if (r.drName) docs.set(r.drName + ' · ' + (r.practice || ''), r.drName);
+  });
+  const toks = t => String(t || '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').split(/\s+/).filter(w => w.length >= 3 && !NL_STOP.has(w) && !NL_GENERIC.has(w));
+  _nlVocab = {
+    n: raw.length, groups: [...groups].sort((a, b) => b.length - a.length), scanners: [...scanners],
+    states, abbrs, prods: [...prods].filter(p => p.length >= 6).sort((a, b) => b.length - a.length),
+    prodWords: new Set([...prods].flatMap(p => p.toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').split(/\s+/)).filter(w => w.length >= 4)),
+    pracs: [...pracs.keys()].map(p => ({ kind: 'Practice', label: p, key: 'Practice: ' + p, toks: [...new Set(toks(p))] })).filter(x => x.toks.length),
+    docs: [...docs.entries()].map(([k, n]) => ({ kind: 'Doctor', label: k, key: 'Doctor: ' + k, toks: [...new Set(toks(n))] })).filter(x => x.toks.length >= 2)
+  };
+  return _nlVocab;
+}
+
+/* Spelling tolerance for Coach's OWN vocabulary: a word one or two letters off
+   one of these is read as it ("remke" → "remake", "docter" → "doctor"), and
+   the correction is shown on a chip. Names in your data aren't guessed at. */
+const NL_WORDS = ('remake remakes redo redos turnaround revenue sales doctor doctors dentist dentists practice practices office offices product products ' +
+  'category categories month monthly week weekly weekday quarter quarterly year yearly scanner scanners crown crowns zirconia implant implants denture dentures ' +
+  'nightguard nightguards bridge bridges partial partials veneer veneers inlay onlay abutment abutments retainer retainers flipper flippers average median ' +
+  'hold holds held late cases units price state states group groups winback winbacks inactive falloff stopped produced technician employee ' +
+  'january february march april june july august september october november december between since previous compare reasons reason').split(' ');
+function nlEdit(a, b) {
+  if (Math.abs(a.length - b.length) > 2) return 9;
+  const d = Array.from({ length: a.length + 1 }, (_, i) => [i]);
+  for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++)
+    d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1),
+                       i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1] ? d[i - 2][j - 2] + 1 : 99);
+  return d[a.length][b.length];
+}
+function nlSpell(s, V) {
+  const fixes = [], known = new Set(NL_WORDS.concat([...NL_STOP]));
+  const out = s.split(' ').map(w => {
+    if (w.length < 4 || known.has(w) || /\d/.test(w)) return w;
+    if (V.groups.some(g => g.toLowerCase() === w) || V.prodWords.has(w)) return w;
+    let best = null, bd = 9;
+    for (const k of NL_WORDS) { const dd = nlEdit(w, k); if (dd < bd) { bd = dd; best = k; } }
+    if (best && (bd === 1 || (bd === 2 && w.length >= 7))) { fixes.push([w, best]); return best; }
+    return w;
+  });
+  return { s: out.join(' '), fixes };
+}
+
+/* the question → { tpl, p, chips, unused } */
+function coachParse(text) {
+  const V = nlVocab(), md = getMaxDate() || new Date();
+  const raw = String(text || '').trim();
+  let s = ' ' + raw.toLowerCase().replace(/[’']/g, '').replace(/[^a-z0-9$%&.\/+\- ]+/g, ' ').replace(/\s+/g, ' ') + ' ';
+  const spelled = nlSpell(s, V); s = spelled.s;
+  const full = s;
+  const p = {}, chips = [], set = (k, v, chip) => { p[k] = v; if (chip) chips.push(chip); };
+  if (spelled.fixes.length) chips.push({ k: 'spell', t: 'Read', v: spelled.fixes.map(([a, b]) => '“' + a + '” as “' + b + '”').join(', ') });
+  const take = (re, fn) => { const m = s.match(re); if (!m) return false; const r = fn(m); if (r !== false) s = s.replace(m[0], ' '); return r !== false; };
+  const iso = d => isoDate(d), day0 = (y, m, d) => new Date(y, m, d);
+
+  // ── what kind of question (read from the whole sentence)
+  const has = re => re.test(full);
+  let intent = 'explore';
+  if (has(/\b(stopped|quit|no longer|stop(ped)? sending|havent sent|hasnt sent|dropped)\b/)) intent = 'stopped';
+  else if (has(/\b(came back|come back|returned|won back) to\b|\bwin ?backs?\b.*\b(came back|returned)\b/)) intent = 'came_back';
+  else if (has(/\b(first time|for the first time|started sending|tried)\b/)) intent = 'first_time';
+  else if (has(/\b(produced|made|built|technicians?|techs?|employees?|production)\b/)) intent = 'production';
+  else if (has(/\b(what does|what do|product mix|mix for|sends? us)\b/)) intent = 'mix';
+  else if (has(/\b(who|which|how many)\b.*\b(sent|send|sends|sending|ordered|order|orders|use|uses|used)\b/)) intent = 'who_sent';
+
+  // ── dates (against the data's last day, like the rest of Coach)
+  let dated = false;
+  const mdY = md.getFullYear(), mdM = md.getMonth();
+  const lastOf = (y, m) => new Date(y, m + 1, 0);
+  const latestMonth = (mi, y) => (y != null ? y : (mi > mdM ? mdY - 1 : mdY));
+  const setCustom = (f, t, label) => { set('range', 'custom'); set('from', iso(f)); set('to', iso(t)); dated = true; chips.push({ k: 'range', t: 'Dates', v: label }); };
+  const setRange = (k, label) => { set('range', k); dated = true; chips.push({ k: 'range', t: 'Dates', v: label }); };
+  take(/\b(last|past|previous) (\d+) (days?|weeks?|months?|years?)\b/, m => {
+    const n = +m[2], u = m[3][0];
+    if (u === 'd' && ['30', '90', '180', '365'].includes(String(n))) return setRange(String(n), 'last ' + n + ' days');
+    const f = new Date(md); if (u === 'd') f.setDate(f.getDate() - (n - 1)); else if (u === 'w') f.setDate(f.getDate() - (n * 7 - 1));
+    else if (u === 'm') { f.setMonth(f.getMonth() - n); f.setDate(f.getDate() + 1); } else { f.setFullYear(f.getFullYear() - n); f.setDate(f.getDate() + 1); }
+    setCustom(f, md, 'last ' + n + ' ' + m[3]);
+  }) ||
+  take(/\b(between|from) ([a-z]+)(?: (\d{4}))? (and|to|through|thru|-) ([a-z]+)(?: (\d{4}))?\b/, m => {
+    const a = nlMonIdx(m[2]), b = nlMonIdx(m[5]); if (a < 0 || b < 0) return false;
+    const yb = latestMonth(b, m[6] ? +m[6] : null), ya = m[3] ? +m[3] : (a > b ? yb - 1 : yb);
+    setCustom(day0(ya, a, 1), lastOf(yb, b), NL_MONTHS[a].slice(0, 3) + ' ' + ya + ' – ' + NL_MONTHS[b].slice(0, 3) + ' ' + yb);
+  }) ||
+  take(new RegExp('\\bsince ' + NL_MON_RE + '(?: (\\d{4}))?\\b'), m => {
+    const a = nlMonIdx(m[1]), y = latestMonth(a, m[2] ? +m[2] : null); setCustom(day0(y, a, 1), md, 'since ' + NL_MONTHS[a].slice(0, 3) + ' ' + y);
+  }) ||
+  take(new RegExp('\\b(?:in |for |during )?' + NL_MON_RE + '(?: (\\d{4}))?\\b'), m => {
+    if (/^(may|mar)$/.test(m[1]) && !m[2] && !/\b(in|for|during|since) (may|mar)\b/.test(full)) return false;   // "may" the verb
+    const a = nlMonIdx(m[1]), y = latestMonth(a, m[2] ? +m[2] : null); setCustom(day0(y, a, 1), lastOf(y, a), NL_MONTHS[a].slice(0, 1).toUpperCase() + NL_MONTHS[a].slice(1) + ' ' + y);
+  }) ||
+  take(/\bq([1-4])(?: (\d{4}))?\b/, m => {
+    const q = +m[1] - 1; let y = m[2] ? +m[2] : mdY; if (!m[2] && q * 3 > mdM) y--;
+    setCustom(day0(y, q * 3, 1), lastOf(y, q * 3 + 2), 'Q' + m[1] + ' ' + y);
+  }) ||
+  take(/\b(this|current) (month|mtd)\b|\bmtd\b|\bmonth to date\b/, () => setRange('mtd', 'this month')) ||
+  take(/\b(last|previous|prior) month\b/, () => setRange('lastm', 'last month')) ||
+  take(/\b(this|current) (year|ytd)\b|\bytd\b|\byear to date\b/, () => setRange('ytd', 'this year')) ||
+  take(/\b(last|previous|prior) year\b/, () => setCustom(day0(mdY - 1, 0, 1), day0(mdY - 1, 11, 31), 'last year (' + (mdY - 1) + ')')) ||
+  take(/\b(this|current) quarter\b|\bqtd\b/, () => { const q = Math.floor(mdM / 3); setCustom(day0(mdY, q * 3, 1), md, 'this quarter'); }) ||
+  take(/\b(last|previous|prior) quarter\b/, () => { let q = Math.floor(mdM / 3) - 1, y = mdY; if (q < 0) { q = 3; y--; } setCustom(day0(y, q * 3, 1), lastOf(y, q * 3 + 2), 'last quarter'); }) ||
+  take(/\b(this|current) week\b/, () => { const f = new Date(md); f.setDate(f.getDate() - ((f.getDay() + 6) % 7)); setCustom(f, md, 'this week'); }) ||
+  take(/\b(last|previous|prior) week\b/, () => { const t = new Date(md); t.setDate(t.getDate() - ((t.getDay() + 6) % 7) - 1); const f = new Date(t); f.setDate(f.getDate() - 6); setCustom(f, t, 'last week'); }) ||
+  take(/\b(yesterday|today|latest day|last day)\b/, () => setCustom(md, md, coachDay(md))) ||
+  take(/\b(?:in )?(20\d{2})\b/, m => setCustom(day0(+m[1], 0, 1), day0(+m[1], 11, 31), m[1])) ||
+  take(/\b(all time|ever|since (the )?(start|beginning)|overall|lifetime)\b/, () => setRange('all', 'all time'));
+
+  // ── minimum volume, ranking and top N
+  take(/\b(at least|min(imum)?|over|more than) (\d+) (units?|cases?)\b|\b(\d+)\+ (units?|cases?)\b/, m => { set('min', m[3] || m[5]); chips.push({ k: 'min', t: 'Only if at least', v: (m[3] || m[5]) + ' ' + (m[4] || m[6]) }); });
+  let rank = null, limit = 0;
+  take(/\b(top|best|most|highest|biggest|largest|leading|busiest|bottom|lowest|least|fewest|smallest|worst|slowest|fastest|quickest)( \d+)?\b/, m => { rank = m[1] === 'busiest' ? 'most' : m[1]; limit = m[2] ? +m[2] : 0; });
+  const comparing = /\b(compare|comparing|comparison|versus|vs|each|every)\b/.test(full);
+
+  // ── breakdown
+  let dim = null;
+  { const re = /\b(broken down by|grouped by|split by|for each|by|per|each|across) /g; let mm;
+    while (!dim && (mm = re.exec(s))) {
+      const tail = s.slice(mm.index + mm[0].length), hit = NL_DIMS.find(([r]) => r.test(tail));
+      if (hit) { const w = tail.match(hit[0])[0]; dim = hit[1]; s = s.slice(0, mm.index) + ' ' + s.slice(mm.index + mm[0].length + w.length); }
+    } }
+  if (!dim) take(/\b(over time|trend(ing|s)?|monthly|weekly|daily|quarterly|yearly|annually)\b/, m => { dim = ({ weekly: 'week', daily: 'day', quarterly: 'quarter', yearly: 'year', annually: 'year' })[m[1]] || 'month'; });
+
+  // ── product (exact product names first, then everyday words)
+  let product = null;
+  for (const name of V.prods) { const n = ' ' + name.toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim() + ' ';
+    if (n.trim().split(' ').length >= 2 && s.includes(n)) { product = 'prd:' + name; s = s.replace(n, ' '); break; } }
+  if (!product) for (const [re, v] of NL_PROD_SYN) { if (take(re, () => {})) { product = v; break; } }
+  if (product) { set('product', product); chips.push({ k: 'product', t: 'Product', v: coachProdSel(product).label }); }
+
+  // ── retention status
+  const st = [[/\bnew (doctors?|dentists?|customers?|clients?|accounts?)\b|\bnewly started\b|\bnew\b/, 'new'], [/\b(win ?backs?|won back|returning)\b/, 'winback'],
+              [/\b(fall ?offs?|falling off|slipping|at risk)\b/, 'falloff'], [/\b(inactive|churned|dormant|lost (doctors?|customers?|clients?))\b/, 'inactive'],
+              [/\b(current|active) (doctors?|customers?|clients?)\b|\bcurrent\b/, 'current']];
+  if (intent !== 'came_back') for (const [re, k] of st) if (take(re, () => {})) {
+    if (k === 'new' && !dated) setRange('90', 'last 90 days (assumed for “new”)');
+    const key = k === 'new' ? 'newrange' : k;
+    set('status', key); chips.push({ k: 'status', t: 'Doctors', v: key === 'newrange' ? 'new — first case in these dates' : k });
+    break;
+  }
+
+  // ── dental group, scanner, state
+  for (const g of V.groups) { const re = new RegExp('\\b' + g.toLowerCase().replace(/[^a-z0-9]+/g, '\\W*') + '\\b'); if (take(re, () => {})) { set('group', g); chips.push({ k: 'group', t: 'Dental group', v: g }); break; } }
+  for (const sc of V.scanners) { const w = sc.toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').split(/\s+/).find(x => x.length >= 4 && !/^(scan|scanner|intraoral|digital|other|none)$/.test(x));
+    if (w && take(new RegExp('\\b' + w + '\\b'), () => {})) { set('scanner', sc); chips.push({ k: 'scanner', t: 'Scanner', v: sc }); break; } }
+  for (const [name, ab] of [...V.states.entries()].sort((a, b) => b[0].length - a[0].length)) if (take(new RegExp('\\b' + name + '\\b'), () => {})) { set('state', ab); chips.push({ k: 'state', t: 'State', v: ab }); break; }
+  if (!p.state) { const m = raw.match(/\b([A-Z]{2})\b/g); const ab = m && m.find(x => V.abbrs.has(x) && x !== 'US');
+    if (ab) { set('state', ab); chips.push({ k: 'state', t: 'State', v: ab }); s = s.replace(new RegExp('\\b' + ab.toLowerCase() + '\\b'), ' '); } }
+
+  // ── a specific doctor or practice: every distinctive word of its name must be there
+  const words = new Set(s.split(/\s+/).filter(Boolean));
+  let best = null, ties = 0;
+  for (const c of V.docs.concat(V.pracs)) {
+    if (!c.toks.every(t => words.has(t)) || !c.toks.some(t => t.length >= 4)) continue;
+    const sc = c.toks.length * 10 + (c.kind === 'Practice' ? 1 : 0);
+    if (!best || sc > best.sc) { best = { c, sc }; ties = 0; } else if (sc === best.sc) ties++;
+  }
+  if (best && !ties) { set('customer', best.c.key); chips.push({ k: 'customer', t: best.c.kind, v: best.c.label }); best.c.toks.forEach(t => { s = s.replace(new RegExp('\\b' + t + '\\b'), ' '); }); }
+
+  // ── measures
+  let measures = [];
+  for (const [re, ks] of NL_MEASURES) {
+    if (take(re, () => {})) ks.forEach(k => { if (!measures.includes(k)) measures.push(k); });
+  }
+  measures = measures.slice(0, 4);
+
+  // ── a ranking with no "by …": the thing being ranked is the breakdown
+  if (!dim && (rank || comparing || intent === 'explore')) {
+    const nounDims = [[/\b(weekdays?|day of (the )?week)\b/, 'weekday'], [/\b(doctors|dentists|drs|providers|customers|clients)\b/, 'doctor'], [/\b(practices|offices|clinics)\b/, 'practice'],
+                      [/\bproducts\b/, 'product'], [/\b(categories|types)\b/, 'category'], [/\b(groups|dsos)\b/, 'group'],
+                      [/\bstates\b/, 'state'], [/\bcities\b/, 'city'], [/\bscanners\b/, 'scanner'], [/\breasons\b/, measures[0] && /hold/.test(measures[0]) ? 'holdReason' : 'remakeReason']];
+    for (const [re, d] of nounDims) if (re.test(full)) { if (rank || comparing || ['remakeReason', 'holdReason', 'weekday'].includes(d)) { dim = d; s = s.replace(re, ' '); break; } }
+  }
+  // "why …": the reasons behind remakes or holds
+  if (!dim && /\bwhy\b/.test(full) && measures[0]) { if (/hold/.test(measures[0])) dim = 'holdReason'; else if (/remake/.test(measures[0])) dim = 'remakeReason'; }
+  if (dim === 'remakeReason' && measures[0] && /hold/.test(measures[0])) dim = 'holdReason';
+
+  // ── what's left over (shown, so nothing is silently ignored)
+  const unused = [...new Set(s.split(/\s+/).filter(w => w && w.length > 1 && !NL_STOP.has(w) && !/^\d+$/.test(w) && !/^(dollars?|percent|%|\$|&|-|.|\/)$/.test(w)))];
+
+  // ── route it
+  let tpl = 'build';
+  if (intent === 'who_sent' && p.product) tpl = 'who_sent';
+  else if (intent === 'came_back' && p.product) tpl = 'came_back';
+  else if (intent === 'first_time' && p.product) tpl = 'first_time';
+  else if (intent === 'stopped' && p.product) { tpl = 'stopped'; const q = full.match(/\b(\d+) (days?|months?)\b/); p.quiet = q ? String(q[2][0] === 'm' ? +q[1] * 30 : +q[1]) : '90';
+    if (!['30', '60', '90', '180'].includes(p.quiet)) p.quiet = +p.quiet <= 45 ? '30' : +p.quiet <= 75 ? '60' : +p.quiet <= 135 ? '90' : '180';
+    chips.push({ k: 'quiet', t: 'Nothing for', v: (COACH_QUIET.find(x => x[0] === p.quiet) || [0, p.quiet + ' days'])[1] }); }
+  else if (intent === 'production') tpl = 'production';
+  else if (intent === 'mix' && p.customer) tpl = 'mix';
+
+  if (tpl === 'build') {
+    if (dim === 'remakeReason') measures = ['remakeCases', 'remakeUnits', 'remakeDisc'];
+    else if (dim === 'holdReason') measures = ['holdCases', 'holdDays'];
+    if (!measures.length) measures = dim && /^(doctor|practice|group|state|city|scanner|status)$/.test(dim) && !rank ? ['revenue', 'cases', 'doctors'] : ['cases', 'units', 'revenue'];
+    if (!dim) dim = 'none';
+    measures.forEach((m, i) => p['m' + (i + 1)] = m); for (let i = measures.length; i < 4; i++) p['m' + (i + 1)] = '';
+    p.dim = dim;
+    const lead = measures[0], higherIsBad = /remake|hold|late|tat/.test(lead);
+    let order = 'desc';
+    if (rank) {
+      if (/^(bottom|lowest|least|fewest|smallest)$/.test(rank)) order = 'asc';
+      else if (rank === 'worst') order = higherIsBad ? 'desc' : 'asc';
+      else if (rank === 'best') order = higherIsBad ? 'asc' : 'desc';
+      else if (rank === 'fastest' || rank === 'quickest') order = 'asc';
+      if ((rank === 'slowest' || rank === 'fastest' || rank === 'quickest') && !/tat|late|onTime/.test(lead)) { p.m1 = 'tatMedian'; p.m2 = 'tatAvg'; p.m3 = 'cases'; p.m4 = ''; }
+      p.sort = p.m1; p.order = order;
+      chips.push({ k: 'rank', t: 'Ranked', v: (order === 'asc' ? 'lowest' : 'highest') + ' ' + CX_M[p.m1].label.toLowerCase() + ' first' + (limit ? ' · top ' + limit : '') });
+    }
+    if (limit) p.limit = String(limit);
+    // a rate list with no minimum gets one, so one case can't top it
+    if (dim !== 'none' && (CX_M[p.m1].rate || /tat|holdDays|avgCase|medianCase|unitPrice/.test(p.m1)) && !p.min && /^(doctor|practice|product|category|scanner|shade|city)$/.test(dim)) {
+      p.min = '20'; chips.push({ k: 'min', t: 'Only if at least', v: '20 cases / units (to keep a handful of cases off a rate list)' });
+    }
+    chips.unshift({ k: 'measures', t: 'Measure', v: [p.m1, p.m2, p.m3, p.m4].filter(Boolean).map(m => CX_M[m].label).join(', ') });
+    if (dim !== 'none') chips.splice(1, 0, { k: 'dim', t: 'By', v: CX_D[dim].label });
+  } else {
+    chips.unshift({ k: 'tpl', t: 'Question', v: coachTplGet(tpl).q });
+  }
+  if (!dated && !p.range) { p.range = tpl === 'came_back' || tpl === 'stopped' ? p.range : 'all'; if (tpl !== 'came_back' && tpl !== 'stopped') chips.push({ k: 'range', t: 'Dates', v: 'all time' }); }
+  return { tpl, p, chips, unused, text: raw };
+}
+
+/* the facets a chip's × removes */
+const NL_DROP = { measures: ['m1', 'm2', 'm3', 'm4'], dim: ['dim'], range: ['range', 'from', 'to'], product: ['product'], status: ['status'], group: ['group'],
+                  scanner: ['scanner'], state: ['state'], customer: ['customer'], min: ['min'], rank: ['sort', 'order', 'limit'], quiet: ['quiet'] };
+const NL_DEFAULTS = { status: 'any', product: 'any', range: 'all', group: 'all', state: 'all', scanner: 'all', customer: '', from: '', to: '', dim: 'none',
+                      sort: '', order: 'desc', limit: '0', min: '0', quiet: '90', metric: 'revenue', m1: 'cases', m2: 'units', m3: 'revenue', m4: '' };
+function coachNLApply(parsed, dropped) {
+  const p = Object.assign({}, NL_DEFAULTS, parsed.p);
+  (dropped || []).forEach(k => (NL_DROP[k] || []).forEach(f => { p[f] = NL_DEFAULTS[f]; }));
+  if (parsed.tpl === 'build' && (dropped || []).includes('measures')) { p.m1 = 'cases'; p.m2 = 'units'; p.m3 = 'revenue'; p.m4 = ''; }
+  return p;
+}
+function coachNLChipsHTML(parsed, dropped, removable) {
+  if (!parsed || !parsed.text) return '';
+  const live = parsed.chips.filter(c => !(dropped || []).includes(c.k));
+  return `<span class="coach-lbl">${removable ? 'Coach will look at' : 'Understood as'}</span>` +
+    live.map(c => `<span class="coach-chip"><span class="coach-chip-t">${esc(c.t)}</span>${esc(c.v)}${removable && !['tpl', 'measures'].includes(c.k) ? `<button class="coach-chip-x" data-k="${c.k}" title="Remove">×</button>` : ''}</span>`).join('') +
+    (parsed.unused.length ? `<span class="coach-unused">Not used: ${parsed.unused.map(w => '“' + esc(w) + '”').join(', ')}</span>` : '');
+}
+
+/* ── click a row: the cases behind that number ───────────────────────────────
+   Every explore answer remembers how it was asked; clicking a row lists the
+   actual cases behind it, with the same filters — so any figure can be checked
+   down to case numbers. Doctor and product rows also link to their Detail tabs. */
+function coachCasesBehind(a, row) {
+  const d = a.drill; if (!d) return;
+  const ctx = cxContext(), D = CX_D[d.dim] || CX_D.none;
+  const rows = cxRows(d.p, d.dim, ctx).filter(r => d.dim === 'none' || D.key(r, ctx) === row._k);
+  const by = new Map();
+  rows.forEach(r => {
+    if (!r.caseKey) return;
+    let c = by.get(r.caseKey);
+    if (!c) { c = { caseNo: r.caseNo || r.caseKey, date: r.anchorDate, doctor: r.drName, practice: r.practice || '', products: new Set(), units: 0, rev: 0,
+                    remake: false, held: false, tat: null, ontime: r.onTimeStatus || '' }; by.set(r.caseKey, c); }
+    if (String(r.product || '').trim()) c.products.add(r.product);
+    c.units += r.qty || 0; c.rev += r.netCost || 0;
+    if (r.remake) c.remake = true; if (r.onHold) c.held = true;
+    if (c.tat == null && r.tat != null && r.tat >= 0 && r.tat <= 200) c.tat = r.tat;
+    if (r.anchorDate && r.anchorDate < c.date) c.date = r.anchorDate;
+  });
+  const list = [...by.values()].sort((x, y) => y.date - x.date);
+  const what = d.dim === 'none' ? 'this answer' : D.label.toLowerCase() + ' ' + (row.dim || row._k);
+  COACH.history.unshift({ id: ++COACH.seq, q: 'The cases behind ' + (d.dim === 'none' ? 'that answer' : '“' + (row.dim || row._k) + '”') + ' — ' + a.q, showAll: false,
+    headline: `<b>${list.length.toLocaleString()}</b> case${list.length === 1 ? '' : 's'} behind ${esc(what)} — ${Math.round(list.reduce((t, c) => t + c.units, 0)).toLocaleString()} units, <b>${coachUSD(list.reduce((t, c) => t + c.rev, 0))}</b>.`,
+    how: ['The same dates and filters as the answer above it.', 'Each case once, however many lines it has. Newest first.'],
+    cols: [['caseNo', 'Case'], ['date', 'Date'], ['doctor', 'Doctor'], ['practice', 'Practice'], ['products', 'Products'], ['units', 'Units'], ['rev', 'Revenue'],
+           ['remake', 'Remake'], ['held', 'On hold'], ['tat', 'Turnaround (days)'], ['ontime', 'vs product norm']],
+    rows: list.map(c => ({ caseNo: c.caseNo, date: c.date, doctor: c.doctor, practice: c.practice, products: [...c.products].join('; '), units: Math.round(c.units), rev: c.rev,
+                           remake: c.remake ? 'Yes' : '', held: c.held ? 'Yes' : '', tat: c.tat, ontime: c.ontime === 'ontime' ? 'on time' : c.ontime })),
+    file: 'coach-cases' });
+  renderCoach();
+}
 
 /* the question in words, for the conversation */
 function coachPhrase(tplKey, p) {
@@ -7958,6 +8358,8 @@ function coachSlotHTML(slot, p, tpl) {
     case 'metric':  return `<label class="coach-f"><span>Rank by</span>${sel('metric', COACH_METRICS, p.metric)}</label>`;
     case 'dim':     return tpl.dims.length > 1 ? `<label class="coach-f"><span>Broken down by</span>${sel('dim', tpl.dims.map(d => [d, CX_D[d].label]), p.dim)}</label>` : '';
     case 'sort':    return `<label class="coach-f"><span>Rank by</span>${sel('sort', (tpl.builder ? [['', 'First measure']] : []).concat((tpl.builder ? CX_M_ORDER : tpl.measures).map(m => [m, CX_M[m].label])), p.sort)}</label>`;
+    case 'order':   return `<label class="coach-f"><span>Order</span>${sel('order', [['desc', 'Highest first'], ['asc', 'Lowest first']], p.order || 'desc')}</label>`;
+    case 'limit':   return `<label class="coach-f"><span>Show</span>${sel('limit', [['0', 'All rows'], ['10', 'Top 10'], ['25', 'Top 25'], ['50', 'Top 50']], p.limit || '0')}</label>`;
     case 'min':     return `<label class="coach-f"><span>Only if at least</span>${sel('min', [['0', 'no minimum'], ['10', '10 cases / units'], ['20', '20 cases / units'], ['30', '30 cases / units'], ['50', '50 cases / units'], ['100', '100 cases / units']], p.min)}</label>`;
     case 'measures': return ['m1', 'm2', 'm3', 'm4'].map((k, i) => `<label class="coach-f"><span>Measure ${i + 1}</span>${sel(k, (i ? [['', '—']] : []).concat(CX_M_ORDER.map(m => [m, CX_M[m].label])), p[k] || '')}</label>`).join('');
     case 'customer': {
@@ -7994,6 +8396,14 @@ function renderCoach() {
         <button class="btn-text" id="coachClear"${COACH.history.length ? '' : ' disabled'}>Clear answers</button>
       </div>
     </div>
+    <div class="card coach-nl">
+      <div class="coach-nl-row">
+        <input id="coachNL" class="coach-nl-input" autocomplete="off" placeholder="Ask Coach anything — e.g. remake rate by doctor last 90 days crowns Heartland" value="${esc(COACH.nlText || '')}">
+        <button class="sb-btn-primary" id="coachNLGo">Ask</button>
+        <button class="btn-text" id="coachNLEdit" title="Load what Coach understood into the question builder below">Adjust</button>
+      </div>
+      <div class="coach-nl-chips" id="coachNLChips">${COACH.nlParsed ? coachNLChipsHTML(COACH.nlParsed, COACH.nlDrop, true) : '<span class="coach-lbl">Type a question, or pick a topic below</span>'}</div>
+    </div>
     <div class="coach-buckets">${COACH_BUCKETS.map(([k, l]) => `<button class="coach-bucket${k === COACH.bucket ? ' active' : ''}" data-b="${k}">${esc(l)}</button>`).join('')}</div>
     <div class="card coach-ask">
       ${presets.length ? `<div class="coach-try"><span class="coach-lbl">Try</span>${presets.map((x, i) => `<button class="pill coach-preset" data-i="${i}">${esc(x[0])}</button>`).join('')}</div>` : ''}
@@ -8007,6 +8417,20 @@ function renderCoach() {
     <div id="coachLog">${COACH.history.map(coachAnswerHTML).join('') ||
       '<div class="coach-empty">Pick a topic, then a suggested question — or build your own and press <b>Ask Coach</b>.</div>'}</div>`;
   el.querySelectorAll('.coach-bucket').forEach(b => b.addEventListener('click', () => { COACH.bucket = b.dataset.b; renderCoach(); }));
+  const nl = document.getElementById('coachNL'), nlChips = document.getElementById('coachNLChips');
+  const drawChips = () => { nlChips.innerHTML = COACH.nlParsed ? coachNLChipsHTML(COACH.nlParsed, COACH.nlDrop, true) : '<span class="coach-lbl">Type a question, or pick a topic below</span>';
+    nlChips.querySelectorAll('.coach-chip-x').forEach(x => x.onclick = () => { COACH.nlDrop = (COACH.nlDrop || []).concat(x.dataset.k); drawChips(); }); };
+  let nlT = null;
+  nl.addEventListener('input', () => { COACH.nlText = nl.value; clearTimeout(nlT);
+    nlT = setTimeout(() => { COACH.nlDrop = []; COACH.nlParsed = nl.value.trim() ? coachParse(nl.value) : null; drawChips(); }, 120); });
+  const loadNL = () => { if (!COACH.nlText || !COACH.nlText.trim()) return null;
+    const parsed = coachParse(COACH.nlText); COACH.nlParsed = parsed;
+    COACH.tpl = parsed.tpl; COACH.bucket = coachTplGet(parsed.tpl).bucket; COACH.p = coachNLApply(parsed, COACH.nlDrop); return parsed; };
+  const askNL = () => { const parsed = loadNL(); if (!parsed) return; coachAsk(COACH.nlText.trim(), coachNLChipsHTML(parsed, COACH.nlDrop, false)); };
+  nl.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); askNL(); } });
+  document.getElementById('coachNLGo').onclick = askNL;
+  document.getElementById('coachNLEdit').onclick = () => { if (loadNL()) renderCoach(); };
+  drawChips();
   document.getElementById('coachTpl').onchange = e => { COACH.tpl = e.target.value; coachFitParams(coachTplGet(COACH.tpl), true); renderCoach(); };
   el.querySelectorAll('.coach-slot').forEach(s => s.addEventListener('change', () => {
     COACH.p[s.dataset.slot] = s.value;
@@ -8025,14 +8449,15 @@ function renderCoach() {
   coachBindAnswers();
 }
 
-async function coachAsk(label) {
+async function coachAsk(label, understood) {
   const tpl = coachTplGet(COACH.tpl);
   if (tpl.key === 'production' && !PROD.loaded) { toast('Loading production data…'); try { await prodLoadAll(); } catch (e) {} }
   const p = Object.assign({}, COACH.p);
   let res;
   try { res = tpl.kind === 'explore' ? cxExplore(tpl, p) : coachRun(tpl.key, p); }
   catch (e) { res = { headline: 'Coach couldn\'t answer that: ' + esc(e.message || String(e)), cols: [], rows: [], how: [], file: 'coach' }; }
-  COACH.history.unshift(Object.assign({ id: ++COACH.seq, q: label || coachPhrase(tpl.key, p), showAll: false }, res));
+  COACH.history.unshift(Object.assign({ id: ++COACH.seq, q: label || coachPhrase(tpl.key, p), showAll: false, understood: understood || '',
+    drill: tpl.kind === 'explore' && res.rows && res.rows.length ? { tpl: tpl.key, p, dim: p.dim || tpl.dim || 'none' } : null }, res));
   renderCoach();
 }
 
@@ -8048,10 +8473,12 @@ function coachAnswerHTML(a) {
   const num = k => (a.fmts && a.fmts[k]) || ['cases', 'units', 'rev', 'days', 'doctors', 'tasks', 'share'].includes(k);
   return `<div class="card coach-a" data-id="${a.id}">
     <div class="coach-qline"><span class="coach-you">You</span>${esc(a.q)}</div>
+    ${a.understood ? `<div class="coach-nl-chips coach-understood">${a.understood}</div>` : ''}
     <div class="coach-head"><span class="coach-me">Coach</span><div>${a.headline}</div></div>
     ${a.how.length ? `<details class="coach-how"><summary>How Coach counted this</summary><ul>${a.how.map(h => `<li>${h}</li>`).join('')}</ul></details>` : ''}
     ${a.rows.length ? `<div class="coach-table"><table class="sv-docs"><thead><tr>${a.cols.map(([k, l]) => `<th${num(k) ? ' class="r"' : ''}>${esc(l)}</th>`).join('')}</tr></thead>
-      <tbody>${rows.map(r => `<tr>${a.cols.map(([k]) => `<td${num(k) ? ' class="r"' : ''}>${coachCell(r[k], k, a.fmts)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
+      <tbody>${rows.map((r, i) => `<tr${a.drill ? ` class="coach-row-clk" data-i="${i}" title="Show the cases behind this row"` : ''}>${a.cols.map(([k]) => `<td${num(k) ? ' class="r"' : ''}>${coachCell(r[k], k, a.fmts)}</td>`).join('')}${a.drill && /^(doctor|product)$/.test(a.drill.dim) ? `<td class="r"><button class="coach-open" data-i="${i}" title="Open in ${a.drill.dim === 'doctor' ? 'Doctor' : 'Product'} Detail">↗</button></td>` : ''}</tr>`).join('')}</tbody></table></div>
+      ${a.drill ? '<div class="coach-hint">Click a row to see the cases behind it.</div>' : ''}
       <div class="coach-actions">
         ${a.rows.length > LIMIT ? `<button class="btn-text coach-more">${a.showAll ? 'Show the first ' + LIMIT : 'Show all ' + a.rows.length.toLocaleString() + ' rows'}</button>` : ''}
         <button class="btn-text coach-csv">⬇ Download CSV (${a.rows.length.toLocaleString()} rows)</button>
@@ -8076,6 +8503,12 @@ function coachBindAnswers() {
     const csv = card.querySelector('.coach-csv'); if (csv) csv.onclick = () => downloadCSV(a.file + '-' + isoDate(new Date()) + '.csv',
       a.rows.map(r => Object.fromEntries(a.cols.map(([k, l]) => [l + (a.fmts && a.fmts[k] === 'pct' ? ' (%)' : a.fmts && /days/.test(a.fmts[k] || '') ? ' (days)' : ''), coachCsvValue(r[k], k, a.fmts)]))));
     const rm = card.querySelector('.coach-rm'); if (rm) rm.onclick = () => { COACH.history = COACH.history.filter(x => x.id !== a.id); renderCoach(); };
+    card.querySelectorAll('.coach-row-clk').forEach(tr => tr.addEventListener('click', e => {
+      if (e.target.closest('.coach-open')) return;
+      const vis = a.showAll ? a.rows : a.rows.slice(0, 25); coachCasesBehind(a, vis[+tr.dataset.i]); }));
+    card.querySelectorAll('.coach-open').forEach(b => b.addEventListener('click', () => {
+      const vis = a.showAll ? a.rows : a.rows.slice(0, 25), r = vis[+b.dataset.i];
+      if (a.drill.dim === 'doctor') { APP.selectedDoctorId = r._k; switchTab('docdetail'); } else { APP.selectedProduct = r._k; switchTab('proddetail'); } }));
   });
 }
 
