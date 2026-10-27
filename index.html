@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.10.26-DL11</title>
+<title>Lab Sales Dashboard v2026.10.26-DL12</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -171,6 +171,12 @@ html, body {
 .sv-daylist { display: flex; flex-direction: column; gap: 10px; min-width: 0; margin-top: 14px; }
 .sv-dupe-note { color: #a16207; }
 /* ── COACH ── */
+.coach-buckets { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 10px; }
+.coach-bucket { font-family: inherit; font-size: 13px; font-weight: 600; padding: 6px 12px; border-radius: 999px; cursor: pointer;
+                background: var(--card); color: var(--dim); border: 1px solid var(--border); }
+.coach-bucket:hover { border-color: var(--accent); color: var(--ink); }
+.coach-bucket.active { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.coach-bucket:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .coach-ask { padding: 14px 16px; margin-bottom: 14px; }
 .coach-try { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 12px; }
 .coach-lbl { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; color: var(--mut); margin-right: 4px; }
@@ -7406,8 +7412,9 @@ const COACH_PRESETS = [
   { label: 'Who stopped sending nightguards?',                     tpl: 'stopped', p: { product: 'cat:Nightguard / Splint', quiet: '90' } },
   { label: 'Who tried implants for the first time in 90 days?',    tpl: 'first_time', p: { product: 'grp:Implants', range: '90', status: 'any' } }
 ];
-const COACH = { tpl: 'who_sent', p: { status: 'any', product: 'cat:Screw-Retained Implant Crown', range: 'all', quiet: '90', metric: 'revenue',
-                group: 'all', state: 'all', customer: '', from: '', to: '' }, history: [], seq: 0 };
+const COACH = { bucket: 'cases', tpl: 'cr_trend', p: { status: 'any', product: 'any', range: 'all', quiet: '90', metric: 'revenue',
+                group: 'all', state: 'all', scanner: 'all', customer: '', from: '', to: '', dim: 'month', sort: '', min: '0',
+                m1: 'cases', m2: 'revenue', m3: '', m4: '' }, history: [], seq: 0 };
 
 /* ── helpers ──────────────────────────────────────────────────────────────── */
 const coachUSD = n => '$' + Math.round(n || 0).toLocaleString();
@@ -7622,9 +7629,279 @@ function coachRun(tplKey, p) {
   return { headline: 'Unknown question.', cols: [], rows: [], how: [], file: 'coach' };
 }
 
+/* ══ COACH ENGINE — any measure, broken down any way, over the whole dataset ══
+   Every figure uses the SAME helpers as the dashboard's tabs, so Coach and
+   the tabs always agree:
+     cases        = distinct cases (countCases), not line items
+     remake rate  = units remade ÷ units produced (by unit, like the Overview)
+     turnaround   = one figure per case, received → invoiced, 0–200 days (tatValues);
+                    the median is the headline, as on the Overview
+     on time      = each line against its product's normal turnaround (the
+                    dashboard's onTimeStatus), counted per line like the Doctor Grid
+     on-hold rate = held cases ÷ cases
+   Revenue includes invoice-level adjustments (lines with no product), as the
+   Overview's total does — unless a product is chosen, which leaves them out. */
+
+const CX_M = {   // the measures
+  cases:       { label: 'Cases', fmt: 'int', add: true, def: 'Distinct cases (a case with several lines counts once)' },
+  units:       { label: 'Units', fmt: 'int', add: true, def: 'Units produced (sum of quantity)' },
+  revenue:     { label: 'Revenue', fmt: 'usd', add: true, def: 'Sum of net cost, including invoice-level adjustments unless a product is chosen' },
+  lines:       { label: 'Line items', fmt: 'int', add: true, def: 'Invoice lines' },
+  avgCase:     { label: 'Avg case value', fmt: 'usd', def: 'Revenue ÷ cases' },
+  medianCase:  { label: 'Median case value', fmt: 'usd', def: 'The middle case value — case values are skewed by a few large cases' },
+  unitPrice:   { label: 'Price per unit', fmt: 'usd2', def: 'Revenue ÷ units' },
+  doctors:     { label: 'Doctors', fmt: 'int', def: 'Distinct doctors' },
+  practices:   { label: 'Practices', fmt: 'int', def: 'Distinct practices' },
+  products:    { label: 'Products', fmt: 'int', def: 'Distinct products' },
+  remakeRate:  { label: 'Remake rate', fmt: 'pct', rate: true, def: 'Units remade ÷ units produced (by unit, like the Overview)' },
+  remakeUnits: { label: 'Units remade', fmt: 'int', add: true, def: 'Units on lines marked as a remake' },
+  remakeCases: { label: 'Remake cases', fmt: 'int', add: true, def: 'Distinct cases with a remake line' },
+  remakeDisc:  { label: 'Remake discounts', fmt: 'usd', add: true, def: 'Sum of remake discounts' },
+  holdRate:    { label: 'On-hold rate', fmt: 'pct', rate: true, def: 'Held cases ÷ cases' },
+  holdCases:   { label: 'Held cases', fmt: 'int', add: true, def: 'Distinct cases that went on hold' },
+  holdDays:    { label: 'Avg days on hold', fmt: 'd1', def: 'Average days on hold, per held case' },
+  tatMedian:   { label: 'Median turnaround', fmt: 'days', def: 'Middle turnaround, one per case, received → invoiced (the Overview\'s headline)' },
+  tatAvg:      { label: 'Avg turnaround', fmt: 'days', def: 'Mean turnaround, one per case, received → invoiced' },
+  tatP90:      { label: 'Slowest 10% at', fmt: 'days', def: '90% of cases were invoiced within this many days' },
+  onTimePct:   { label: 'Early or on time', fmt: 'pct', rate: true, def: 'Lines finished on or before their product\'s normal turnaround' },
+  latePct:     { label: 'Late', fmt: 'pct', rate: true, def: 'Lines finished after their product\'s normal turnaround' }
+};
+const CX_M_ORDER = Object.keys(CX_M);
+
+const CX_WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const cxPad = n => String(n).padStart(2, '0');
+const cxMonthKey = d => d.getFullYear() + '-' + cxPad(d.getMonth() + 1);
+const cxMonday = d => { const t = new Date(d.getFullYear(), d.getMonth(), d.getDate()); t.setDate(t.getDate() - ((t.getDay() + 6) % 7)); return t; };
+const CX_D = {   // the breakdowns
+  none:     { label: 'Total', key: () => 'All' },
+  month:    { label: 'Month', time: true, key: r => r.anchorDate ? cxMonthKey(r.anchorDate) : '',
+              show: k => { const [y, m] = k.split('-').map(Number); return new Date(y, m - 1, 1).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }); } },
+  week:     { label: 'Week', time: true, key: r => r.anchorDate ? isoDate(cxMonday(r.anchorDate)) : '', show: k => 'Week of ' + coachDay(parseDate(k)) },
+  weekday:  { label: 'Weekday', time: true, key: r => r.anchorDate ? String((r.anchorDate.getDay() + 6) % 7) : '', show: k => CX_WD[(+k + 1) % 7] },
+  quarter:  { label: 'Quarter', time: true, key: r => r.anchorDate ? r.anchorDate.getFullYear() + ' Q' + (Math.floor(r.anchorDate.getMonth() / 3) + 1) : '' },
+  year:     { label: 'Year', time: true, key: r => r.anchorDate ? String(r.anchorDate.getFullYear()) : '' },
+  product:  { label: 'Product', key: r => String(r.product || '').trim() || '(invoice adjustment — no product)' },
+  category: { label: 'Product category', key: r => String(r.product || '').trim() ? coachCat(r.product).cat : '(invoice adjustment)' },
+  pgroup:   { label: 'Product group', key: r => String(r.product || '').trim() ? coachCat(r.product).group : '(invoice adjustment)' },
+  doctor:   { label: 'Doctor', key: r => r.drId || '', show: (k, g) => g.name || k, extra: 'practice' },
+  practice: { label: 'Practice', key: r => r.practice || '(no practice)' },
+  group:    { label: 'Dental group', key: r => r.group || '(no group)' },
+  status:   { label: 'Retention status', key: (r, ctx) => ctx.statusOf(r) },
+  state:    { label: 'State', key: r => r.stateAbbr || r.state || '(no state)' },
+  city:     { label: 'City', key: r => [r.city, r.stateAbbr].filter(Boolean).join(', ') || '(no city)' },
+  scanner:  { label: 'Scanner source', key: r => String(r.scanner || '').trim() || '(not recorded)' },
+  remakeReason: { label: 'Remake reason', only: r => r.remake, key: r => String(r.remakeReasonText || r.remakeReason || '').trim() || '(no reason given)' },
+  holdReason:   { label: 'Hold reason', only: r => r.onHold, key: r => String(r.onHoldReason || '').trim() || '(no reason given)' },
+  caseStatus:   { label: 'Case status', key: r => String(r.status || '').trim() || '(blank)' },
+  shade:    { label: 'Shade', key: r => String(r.shade || '').trim() || '(none)' }
+};
+const CX_D_ORDER = Object.keys(CX_D);
+// "category" → "categories", "status" → "statuses", "source" → "sources"
+const cxPlural = (label, n) => { const w = label.toLowerCase(); return n === 1 ? w : /[^aeiou]y$/.test(w) ? w.slice(0, -1) + 'ies' : /(s|x|ch|sh)$/.test(w) ? w + 'es' : w + 's'; };
+
+// all the measures for a set of lines, with the dashboard's own helpers
+function cxCompute(rows) {
+  let units = 0, rev = 0, remU = 0, remDisc = 0, early = 0, ontime = 0, late = 0;
+  const drs = new Set(), prs = new Set(), prods = new Set(), caseVal = new Map(), remC = new Set(), holdC = new Map();
+  for (const r of rows) {
+    units += r.qty || 0; rev += r.netCost || 0;
+    if (r.drId) drs.add(r.drId); if (r.practice) prs.add(r.practice);
+    if (String(r.product || '').trim()) prods.add(r.product);
+    if (r.caseKey) caseVal.set(r.caseKey, (caseVal.get(r.caseKey) || 0) + (r.netCost || 0));
+    if (r.remake) { remU += r.qty || 0; if (r.caseKey) remC.add(r.caseKey); }
+    remDisc += Math.abs(r.remakeDiscount || 0);
+    if (r.onHold && r.caseKey) holdC.set(r.caseKey, Math.max(holdC.get(r.caseKey) || 0, r.daysOnHold || 0));
+    if (r.onTimeStatus === 'early') early++; else if (r.onTimeStatus === 'ontime') ontime++; else if (r.onTimeStatus === 'late') late++;
+  }
+  const cases = caseVal.size, tv = tatValues(rows).sort((a, b) => a - b), otn = early + ontime + late;
+  const hd = [...holdC.values()];
+  return {
+    cases, units, revenue: rev, lines: rows.length,
+    avgCase: cases ? rev / cases : null, medianCase: medianOf([...caseVal.values()]), unitPrice: units ? rev / units : null,
+    doctors: drs.size, practices: prs.size, products: prods.size,
+    remakeRate: units ? remU / units : null, remakeUnits: remU, remakeCases: remC.size, remakeDisc: remDisc,
+    holdRate: cases ? holdC.size / cases : null, holdCases: holdC.size, holdDays: hd.length ? hd.reduce((a, b) => a + b, 0) / hd.length : null,
+    tatMedian: medianOf(tv), tatAvg: tv.length ? tv.reduce((a, b) => a + b, 0) / tv.length : null,
+    tatP90: tv.length ? tv[Math.min(tv.length - 1, Math.floor(0.9 * tv.length))] : null,
+    onTimePct: otn ? (early + ontime) / otn : null, latePct: otn ? late / otn : null,
+    _tatN: tv.length, _otN: otn
+  };
+}
+function cxFmt(v, f) {
+  if (v == null || (typeof v === 'number' && !isFinite(v))) return '—';
+  switch (f) {
+    case 'usd': return '$' + Math.round(v).toLocaleString();
+    case 'usd2': return '$' + v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    case 'pct': return (Math.round(v * 1000) / 10).toFixed(1) + '%';
+    case 'days': return (Math.round(v * 10) / 10).toFixed(1) + ' days';
+    case 'd1': return (Math.round(v * 10) / 10).toFixed(1);
+    default: return Math.round(v).toLocaleString();
+  }
+}
+
+/* the lines a question looks at: dates, product, retention status, group,
+   state, scanner and customer filters, plus the breakdown's own restriction
+   (a remake-reason breakdown only looks at remake lines) */
+function cxRows(p, dim, ctx) {
+  const sel = coachProdSel(p.product), R = coachRange(p);
+  const st = COACH_STATUS.find(s => s.key === (p.status || 'any')) || COACH_STATUS[0];
+  const c = String(p.customer || ''), ck = c.split(': ')[0], cv = c.split(': ').slice(1).join(': ');
+  const only = CX_D[dim] && CX_D[dim].only;
+  return rawByGroupState().filter(r => {
+    if (!r || !r.anchorDate || !coachIn(r.anchorDate, R)) return false;
+    if (p.product && p.product !== 'any' && !(String(r.product || '').trim() && sel.test(r.product))) return false;
+    if (p.group && p.group !== 'all' && r.group !== p.group) return false;
+    if (p.state && p.state !== 'all' && r.stateAbbr !== p.state) return false;
+    if (p.scanner && p.scanner !== 'all' && (String(r.scanner || '').trim() || '(not recorded)') !== p.scanner) return false;
+    if (cv) { if (ck === 'Doctor' && (r.drName + ' · ' + (r.practice || '')) !== cv) return false;
+              if (ck === 'Practice' && r.practice !== cv) return false; if (ck === 'Group' && r.group !== cv) return false; }
+    if (st.key !== 'any' && !st.test(ctx.entryOf(r) || {}, R)) return false;
+    if (only && !only(r)) return false;
+    return true;
+  });
+}
+
+function cxContext() {
+  const E = coachEntries();
+  const entryOf = r => E.get(r.drId + '|' + (r.practice || ''));
+  const statusOf = r => { const e = entryOf(r); if (!e) return '(unknown)';
+    return e.isWinbackSegment ? 'Winback' : e.status === 'winback' ? 'Current' : (e.status || '(unknown)').replace(/^./, x => x.toUpperCase()); };
+  return { E, entryOf, statusOf };
+}
+
+/* run an "explore" question: measures × breakdown × filters */
+function cxExplore(tpl, p) {
+  const ctx = cxContext(), dim = p.dim || tpl.dim || 'none', D = CX_D[dim];
+  const measures = (tpl.builder ? [p.m1, p.m2, p.m3, p.m4] : tpl.measures).filter((m, i, a) => m && CX_M[m] && a.indexOf(m) === i);
+  if (!measures.length) return { headline: 'Pick at least one measure.', cols: [], rows: [], how: [], file: 'coach' };
+  const rows = cxRows(p, dim, ctx), R = coachRange(p), sel = coachProdSel(p.product);
+  const total = cxCompute(rows);
+  const groups = new Map();
+  for (const r of rows) {
+    const k = D.key(r, ctx); if (k === '' || k == null) continue;
+    let g = groups.get(k); if (!g) { g = { key: k, rows: [], name: r.drName, practices: new Map() }; groups.set(k, g); }
+    g.rows.push(r);
+    if (dim === 'doctor' && r.practice) g.practices.set(r.practice, (g.practices.get(r.practice) || 0) + 1);
+  }
+  const sortBy = (p.sort && CX_M[p.sort]) ? p.sort : (tpl.sort || measures[0]);
+  const minN = +(p.min || tpl.min || 0), minOn = CX_M[sortBy].rate || ['tatMedian', 'tatAvg', 'tatP90', 'holdDays', 'avgCase', 'medianCase', 'unitPrice'].includes(sortBy);
+  const minField = /^tat|onTime|late/.test(sortBy) ? 'cases' : (/remake|unitPrice/.test(sortBy) ? 'units' : 'cases');
+  let out = [...groups.values()].map(g => {
+    const m = cxCompute(g.rows), row = { _k: g.key, dim: D.show ? D.show(g.key, g) : g.key };
+    if (dim === 'doctor') row.practice = [...g.practices.entries()].sort((a, b) => b[1] - a[1]).map(x => x[0])[0] || '';
+    measures.forEach(k => row[k] = m[k]);
+    row._cases = m.cases; row._units = m.units;
+    if (CX_M[measures[0]].add) row._share = total[measures[0]] ? m[measures[0]] / total[measures[0]] : null;
+    return row;
+  });
+  const hidden = minOn && minN ? out.filter(x => (minField === 'units' ? x._units : x._cases) < minN).length : 0;
+  if (minOn && minN) out = out.filter(x => (minField === 'units' ? x._units : x._cases) >= minN);
+  const byTime = D.time && !(tpl.builder && p.sort) && !tpl.sortable;
+  if (byTime) out.sort((a, b) => a._k < b._k ? -1 : a._k > b._k ? 1 : 0);
+  else out.sort((a, b) => (b[sortBy] ?? -Infinity) - (a[sortBy] ?? -Infinity));
+
+  // the answer in words
+  const totalTxt = measures.map(k => `${CX_M[k].label.toLowerCase()} <b>${cxFmt(total[k], CX_M[k].fmt)}</b>`).join(' · ');
+  let headline;
+  if (dim === 'none' || !out.length) headline = `For ${esc(R.label)}${sel.label !== 'any product' ? ' (' + esc(sel.label) + ')' : ''}: ${totalTxt}.`;
+  else {
+    const top = out.slice().sort((a, b) => (b[sortBy] ?? -Infinity) - (a[sortBy] ?? -Infinity))[0];
+    headline = `${out.length.toLocaleString()} ${esc(cxPlural(D.label, out.length))} in ${esc(R.label)}. Overall: ${totalTxt}. `
+      + `Highest ${esc(CX_M[sortBy].label.toLowerCase())}: <b>${esc(top.dim)}</b> (${cxFmt(top[sortBy], CX_M[sortBy].fmt)}).`;
+  }
+  const how = measures.map(k => `<b>${esc(CX_M[k].label)}</b> — ${esc(CX_M[k].def)}`);
+  how.push('Dates: ' + esc(R.label) + (R.from ? ' (' + coachDay(R.from) + ' – ' + coachDay(R.to) + ')' : '') + ' — by invoice date (received date for cases not yet invoiced)');
+  if (D.only) how.push(`Only ${dim === 'remakeReason' ? 'remake' : 'held'} lines are counted, since the breakdown is by their reason.`);
+  if (hidden) how.push(`${hidden.toLocaleString()} ${cxPlural(D.label, hidden)} with fewer than ${minN} ${minField} left out, so a handful of cases can't top a rate list.`);
+  coachProductNote(sel, rows).forEach(x => how.push(x));
+  const st = COACH_STATUS.find(s => s.key === (p.status || 'any'));
+  if (st && st.key !== 'any') how.push(COACH_STATUS_RULE[st.key]);
+  if (p.customer) how.push('Customer: ' + esc(String(p.customer)));
+  coachFilterNote(p).forEach(x => how.push(x));
+  if (p.scanner && p.scanner !== 'all') how.push('Scanner: ' + esc(p.scanner));
+  const cols = [['dim', D.label]].concat(dim === 'doctor' ? [['practice', 'Main practice']] : [])
+    .concat(measures.map(k => [k, CX_M[k].label])).concat(CX_M[measures[0]].add && dim !== 'none' ? [['_share', 'Share']] : []);
+  return { headline, how, cols, rows: out, file: 'coach-' + (tpl.key || 'explore'), fmts: Object.fromEntries(measures.map(k => [k, CX_M[k].fmt]).concat([['_share', 'pct']])) };
+}
+
+/* ── the buckets and their questions ─────────────────────────────────────── */
+const COACH_BUCKETS = [
+  ['cases', '💰 Cases & revenue'], ['remakes', '🔁 Remakes'], ['tat', '⏱ Turnaround'], ['hold', '⏸ On hold'],
+  ['doctors', '🩺 Doctors'], ['practices', '🏥 Practices'], ['groups', '🏢 Dental groups'], ['products', '📦 Products'],
+  ['scanners', '🖨 Scanners'], ['production', '🏭 Production'], ['build', '🧩 Build your own']
+];
+const CXF = ['range', 'product', 'status', 'group', 'state'];   // the usual filters
+const COACH_X = [
+  // Cases & revenue
+  { key: 'cr_trend', bucket: 'cases', q: 'Cases, units and revenue over time', measures: ['cases', 'units', 'revenue', 'avgCase', 'medianCase'], dim: 'month', dims: ['month', 'week', 'weekday', 'quarter', 'year'], slots: ['dim'].concat(CXF) },
+  { key: 'cr_where', bucket: 'cases', q: 'Where the revenue comes from', measures: ['revenue', 'cases', 'doctors', 'avgCase'], dim: 'state', dims: ['state', 'city', 'group', 'practice', 'doctor', 'status'], slots: ['dim', 'range', 'product', 'status'] },
+  { key: 'cr_value', bucket: 'cases', q: 'Case value by product category', measures: ['cases', 'revenue', 'avgCase', 'medianCase'], dim: 'category', dims: ['category', 'pgroup', 'product'], slots: ['dim', 'range', 'status', 'group', 'state'] },
+  { key: 'cr_status', bucket: 'cases', q: 'Cases by case status', measures: ['cases', 'units', 'revenue'], dim: 'caseStatus', slots: ['range', 'product', 'group', 'state'] },
+  // Remakes
+  { key: 'rm_trend', bucket: 'remakes', q: 'Remake rate over time', measures: ['remakeRate', 'remakeUnits', 'units', 'remakeCases', 'remakeDisc'], dim: 'month', dims: ['month', 'week', 'quarter', 'year'], slots: ['dim'].concat(CXF) },
+  { key: 'rm_by', bucket: 'remakes', q: 'Highest remake rates', measures: ['remakeRate', 'remakeUnits', 'units', 'remakeDisc'], dim: 'product', dims: ['product', 'category', 'doctor', 'practice', 'group', 'scanner', 'state', 'shade'], sort: 'remakeRate', min: 30, slots: ['dim', 'min'].concat(CXF) },
+  { key: 'rm_reason', bucket: 'remakes', q: 'Why remakes happen', measures: ['remakeCases', 'remakeUnits', 'remakeDisc'], dim: 'remakeReason', slots: CXF },
+  // Turnaround
+  { key: 'ta_trend', bucket: 'tat', q: 'Turnaround over time', measures: ['tatMedian', 'tatAvg', 'tatP90', 'onTimePct', 'cases'], dim: 'month', dims: ['month', 'week', 'weekday', 'quarter'], slots: ['dim'].concat(CXF) },
+  { key: 'ta_slow', bucket: 'tat', q: 'Slowest turnaround', measures: ['tatMedian', 'tatAvg', 'tatP90', 'cases'], dim: 'product', dims: ['product', 'category', 'doctor', 'practice', 'group', 'scanner'], sort: 'tatMedian', min: 20, slots: ['dim', 'min'].concat(CXF) },
+  { key: 'ta_late', bucket: 'tat', q: 'Late most often', measures: ['latePct', 'onTimePct', 'cases', 'tatMedian'], dim: 'doctor', dims: ['doctor', 'practice', 'product', 'category', 'group'], sort: 'latePct', min: 20, slots: ['dim', 'min'].concat(CXF) },
+  // On hold
+  { key: 'oh_trend', bucket: 'hold', q: 'Holds over time', measures: ['holdCases', 'holdRate', 'holdDays', 'cases'], dim: 'month', dims: ['month', 'week', 'quarter'], slots: ['dim'].concat(CXF) },
+  { key: 'oh_reason', bucket: 'hold', q: 'Why cases go on hold', measures: ['holdCases', 'holdDays'], dim: 'holdReason', slots: CXF },
+  { key: 'oh_who', bucket: 'hold', q: 'Most held cases', measures: ['holdCases', 'holdRate', 'holdDays', 'cases'], dim: 'doctor', dims: ['doctor', 'practice', 'group', 'product'], slots: ['dim', 'range', 'product', 'group', 'state'] },
+  // Doctors
+  { key: 'dr_top', bucket: 'doctors', q: 'Top doctors', measures: ['revenue', 'cases', 'units', 'avgCase', 'remakeRate', 'tatMedian'], dim: 'doctor', sortable: true, slots: ['sort', 'min'].concat(CXF) },
+  { key: 'dr_status', bucket: 'doctors', q: 'Doctors by retention status', measures: ['doctors', 'cases', 'revenue'], dim: 'status', slots: ['range', 'product', 'group', 'state'] },
+  // Practices
+  { key: 'pr_top', bucket: 'practices', q: 'Top practices', measures: ['revenue', 'cases', 'doctors', 'avgCase', 'remakeRate', 'tatMedian'], dim: 'practice', sortable: true, slots: ['sort', 'min'].concat(CXF) },
+  // Dental groups
+  { key: 'gr_cmp', bucket: 'groups', q: 'Dental groups compared', measures: ['revenue', 'practices', 'doctors', 'cases', 'remakeRate', 'tatMedian'], dim: 'group', sortable: true, slots: ['sort', 'range', 'product', 'status', 'state'] },
+  // Products
+  { key: 'pd_price', bucket: 'products', q: 'Price per unit by product', measures: ['unitPrice', 'units', 'revenue'], dim: 'product', dims: ['product', 'category'], sort: 'units', slots: ['dim', 'range', 'product', 'status', 'group', 'state'] },
+  { key: 'pd_trend', bucket: 'products', q: 'A product over time', measures: ['units', 'cases', 'revenue', 'doctors'], dim: 'month', dims: ['month', 'week', 'quarter'], slots: ['product', 'dim', 'range', 'status', 'group', 'state'] },
+  // Scanners
+  { key: 'sc_cmp', bucket: 'scanners', q: 'Scanner sources compared', measures: ['cases', 'doctors', 'revenue', 'remakeRate', 'tatMedian'], dim: 'scanner', sortable: true, slots: ['sort'].concat(CXF) },
+  { key: 'sc_who', bucket: 'scanners', q: 'Who uses a scanner', measures: ['cases', 'revenue'], dim: 'doctor', slots: ['scanner', 'range', 'product', 'group', 'state'] },
+  // Build your own
+  { key: 'build', bucket: 'build', q: 'Build your own', builder: true, dim: 'month', slots: ['measures', 'dim', 'sort', 'min', 'range', 'product', 'status', 'group', 'state', 'scanner', 'customer'] }
+];
+COACH_X.forEach(t => { t.kind = 'explore'; if (!t.dims) t.dims = t.builder ? CX_D_ORDER : [t.dim]; });
+const COACH_BUCKET_OF = { who_sent: 'products', came_back: 'doctors', first_time: 'products', stopped: 'products', top: 'products', mix: 'practices', production: 'production' };
+
+const COACH_PRESETS_BY_BUCKET = {
+  cases: [['Cases, units and revenue by month', 'cr_trend', { dim: 'month', range: 'all' }], ['Revenue by state', 'cr_where', { dim: 'state', range: '365' }],
+          ['Average case value by category', 'cr_value', { range: '365' }], ['Busiest weekday', 'cr_trend', { dim: 'weekday', range: '90' }]],
+  remakes: [['Remake rate by month', 'rm_trend', { range: 'all' }], ['Products with the highest remake rate', 'rm_by', { dim: 'product', range: '365', min: '30' }],
+            ['Doctors with the highest remake rate', 'rm_by', { dim: 'doctor', range: '365', min: '30' }], ['Top remake reasons', 'rm_reason', { range: '365' }]],
+  tat: [['Turnaround by month', 'ta_trend', { range: 'all' }], ['Slowest products', 'ta_slow', { dim: 'product', range: '90', min: '20' }],
+        ['Doctors whose cases run late most', 'ta_late', { dim: 'doctor', range: '90', min: '20' }]],
+  hold: [['Holds by month', 'oh_trend', { range: 'all' }], ['Why cases go on hold', 'oh_reason', { range: '365' }], ['Doctors with the most held cases', 'oh_who', { range: '365' }]],
+  doctors: [['Top doctors by revenue (90 days)', 'dr_top', { sort: 'revenue', range: '90' }], ['Doctors by retention status', 'dr_status', { range: 'all' }],
+            ['Which winback doctors came back to a crown product?', 'came_back', { product: 'grp:Crowns' }],
+            ['How many new doctors (started in the last 90 days) send dentures?', 'who_sent', { status: 'newrange', product: 'grp:Dentures', range: '90' }]],
+  practices: [['Top practices by revenue (90 days)', 'pr_top', { sort: 'revenue', range: '90' }], ['Practices with the most doctors', 'pr_top', { sort: 'doctors', range: '365' }]],
+  groups: [['Dental groups by revenue (this year)', 'gr_cmp', { sort: 'revenue', range: 'ytd' }], ['Dental groups by remake rate', 'gr_cmp', { sort: 'remakeRate', range: '365' }]],
+  products: [['How many doctors sent screw-retained implant crowns?', 'who_sent', { status: 'any', product: 'cat:Screw-Retained Implant Crown', range: 'all' }],
+             ['Top products in the last 30 days', 'top', { product: 'any', metric: 'revenue', range: '30' }], ['Who stopped sending nightguards?', 'stopped', { product: 'cat:Nightguard / Splint', quiet: '90' }],
+             ['Who tried implants for the first time in 90 days?', 'first_time', { product: 'grp:Implants', range: '90', status: 'any' }], ['Price per unit by product', 'pd_price', { range: '365' }]],
+  scanners: [['Scanner sources compared', 'sc_cmp', { sort: 'cases', range: '365' }]],
+  production: [['Who produced crowns (all loaded production)?', 'production', { product: 'grp:Crowns', range: 'all' }]],
+  build: []
+};
+
 /* the question in words, for the conversation */
 function coachPhrase(tplKey, p) {
   const sel = coachProdSel(p.product), R = coachRange(p), st = COACH_STATUS.find(s => s.key === (p.status || 'any')) || COACH_STATUS[0];
+  const xt = COACH_X.find(t => t.key === tplKey);
+  if (xt) {
+    const D = CX_D[p.dim] || CX_D[xt.dim];
+    const what = xt.builder ? [p.m1, p.m2, p.m3, p.m4].filter(m => m && CX_M[m]).map(m => CX_M[m].label).join(', ') : xt.q;
+    const bits = [sel.label !== 'any product' ? sel.label : '', st.key !== 'any' ? (st.key === 'newrange' ? 'newly started doctors' : st.label + ' doctors') : '',
+                  p.group && p.group !== 'all' ? p.group : '', p.state && p.state !== 'all' ? p.state : '',
+                  p.scanner && p.scanner !== 'all' ? p.scanner : '', p.customer ? String(p.customer).replace(/^(Doctor|Practice|Group): /, '') : ''].filter(Boolean);
+    return `${what}${(xt.dims.length > 1 || xt.builder) && D && p.dim !== 'none' ? ' — by ' + D.label.toLowerCase() : ''} — ${R.label}${bits.length ? ' · ' + bits.join(' · ') : ''}`
+      + (xt.sortable || xt.builder ? (p.sort && CX_M[p.sort] ? ', ranked by ' + CX_M[p.sort].label.toLowerCase() : '') : '');
+  }
   const where = [p.group && p.group !== 'all' ? p.group : '', p.state && p.state !== 'all' ? p.state : ''].filter(Boolean).join(', ');
   const tail = (where ? ' — ' + where : '');
   switch (tplKey) {
@@ -7651,8 +7928,22 @@ function coachProductOptions(cur) {
     order.map(g => `<optgroup label="${esc(g)}">${[...groups.get(g)].sort().map(c => opt('cat:' + c, c)).join('')}</optgroup>`).join('') +
     `<optgroup label="One specific product">${[...counts.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([n]) => opt('prd:' + n, n)).join('')}</optgroup>`;
 }
-function coachSlotHTML(slot, p) {
-  const sel = (id, opts, cur) => `<select class="gf-select coach-slot" data-slot="${id}">${opts.map(([v, l]) => `<option value="${esc(v)}"${v === cur ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
+/* every question Coach can answer: the original seven plus the explore ones */
+function coachTplAll() { return COACH_TPL.map(t => Object.assign({ bucket: COACH_BUCKET_OF[t.key] || 'products' }, t)).concat(COACH_X); }
+function coachTplGet(key) { const all = coachTplAll(); return all.find(t => t.key === key) || all[0]; }
+/* keep a question's blanks valid; "fresh" = the question was just picked */
+function coachFitParams(tpl, fresh) {
+  const p = COACH.p;
+  if (tpl.kind !== 'explore') return;
+  if (!tpl.dims.includes(p.dim)) p.dim = tpl.dim;
+  const ms = tpl.builder ? CX_M_ORDER : tpl.measures;
+  if (fresh || !p.sort || !ms.includes(p.sort)) p.sort = tpl.sort || (tpl.builder ? '' : tpl.measures[0]);
+  if (fresh || p.min == null || p.min === '') p.min = String(tpl.min || 0);
+  if (tpl.builder && !p.m1) { p.m1 = 'cases'; p.m2 = 'revenue'; }
+}
+
+function coachSlotHTML(slot, p, tpl) {
+  const sel = (id, opts, cur) => `<select class="gf-select coach-slot" data-slot="${id}">${opts.map(([v, l]) => `<option value="${esc(v)}"${String(v) === String(cur) ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
   const raw = APP.raw || [];
   switch (slot) {
     case 'status':  return `<label class="coach-f"><span>Status</span>${sel('status', COACH_STATUS.map(s => [s.key, s.key === 'any' ? 'Any status' : s.key === 'newrange' ? 'New in the date range' : s.key === 'new' ? 'New (last 15 days)' : s.label.replace(/^./, c => c.toUpperCase())]), p.status)}</label>`;
@@ -7662,15 +7953,20 @@ function coachSlotHTML(slot, p) {
                                <label class="coach-f"><span>To</span><input type="date" class="gf-select coach-slot" data-slot="to" value="${esc(p.to)}"></label>` : '');
     case 'group':   return `<label class="coach-f"><span>Dental group</span>${sel('group', [['all', 'All groups']].concat([...new Set(raw.map(r => r && r.group).filter(Boolean))].sort().map(g => [g, g])), p.group)}</label>`;
     case 'state':   return `<label class="coach-f"><span>State</span>${sel('state', [['all', 'All states']].concat([...new Set(raw.map(r => r && r.stateAbbr).filter(Boolean))].sort().map(s => [s, s])), p.state)}</label>`;
+    case 'scanner': return `<label class="coach-f"><span>Scanner</span>${sel('scanner', [['all', 'All scanners']].concat([...new Set(raw.map(r => r && (String(r.scanner || '').trim() || '(not recorded)')).filter(Boolean))].sort().map(s => [s, s])), p.scanner || 'all')}</label>`;
     case 'quiet':   return `<label class="coach-f"><span>Nothing for</span>${sel('quiet', COACH_QUIET, p.quiet)}</label>`;
     case 'metric':  return `<label class="coach-f"><span>Rank by</span>${sel('metric', COACH_METRICS, p.metric)}</label>`;
+    case 'dim':     return tpl.dims.length > 1 ? `<label class="coach-f"><span>Broken down by</span>${sel('dim', tpl.dims.map(d => [d, CX_D[d].label]), p.dim)}</label>` : '';
+    case 'sort':    return `<label class="coach-f"><span>Rank by</span>${sel('sort', (tpl.builder ? [['', 'First measure']] : []).concat((tpl.builder ? CX_M_ORDER : tpl.measures).map(m => [m, CX_M[m].label])), p.sort)}</label>`;
+    case 'min':     return `<label class="coach-f"><span>Only if at least</span>${sel('min', [['0', 'no minimum'], ['10', '10 cases / units'], ['20', '20 cases / units'], ['30', '30 cases / units'], ['50', '50 cases / units'], ['100', '100 cases / units']], p.min)}</label>`;
+    case 'measures': return ['m1', 'm2', 'm3', 'm4'].map((k, i) => `<label class="coach-f"><span>Measure ${i + 1}</span>${sel(k, (i ? [['', '—']] : []).concat(CX_M_ORDER.map(m => [m, CX_M[m].label])), p[k] || '')}</label>`).join('');
     case 'customer': {
       if (!coachSlotHTML._list) {
         const docs = new Set(), pracs = new Set(), grps = new Set();
         raw.forEach(r => { if (!r) return; if (r.drName) docs.add(r.drName + ' · ' + (r.practice || '')); if (r.practice) pracs.add(r.practice); if (r.group) grps.add(r.group); });
         coachSlotHTML._list = [...grps].sort().map(g => 'Group: ' + g).concat([...pracs].sort().map(x => 'Practice: ' + x), [...docs].sort().map(x => 'Doctor: ' + x));
       }
-      return `<label class="coach-f coach-wide"><span>Customer — type a doctor, practice or group</span>
+      return `<label class="coach-f coach-wide"><span>Customer${tpl.kind === 'explore' ? ' (optional)' : ''} — type a doctor, practice or group</span>
         <input class="gf-select coach-slot" data-slot="customer" list="coachCustList" value="${esc(p.customer)}" placeholder="e.g. Practice: Ideal Dental Lab">
         <datalist id="coachCustList">${coachSlotHTML._list.map(x => `<option value="${esc(x)}">`).join('')}</datalist></label>`;
     }
@@ -7681,38 +7977,47 @@ function coachSlotHTML(slot, p) {
 function renderCoach() {
   const el = document.getElementById('panel-coach'); if (!el) return;
   coachSlotHTML._list = null;
-  const tpl = COACH_TPL.find(t => t.key === COACH.tpl) || COACH_TPL[0];
-  const md = getMaxDate();
+  if (!COACH.bucket) COACH.bucket = 'cases';
+  const all = coachTplAll(), inBucket = all.filter(t => t.bucket === COACH.bucket);
+  let tpl = coachTplGet(COACH.tpl);
+  if (tpl.bucket !== COACH.bucket) { tpl = inBucket[0] || all[0]; COACH.tpl = tpl.key; coachFitParams(tpl, true); }
+  coachFitParams(tpl, false);
+  const md = getMaxDate(), presets = COACH_PRESETS_BY_BUCKET[COACH.bucket] || [];
   el.innerHTML = `
     <div class="section-header">
       <div>
         <div class="section-title">Coach</div>
-        <div class="section-sub">Ask about customers, products and production. Coach works out every answer from your data${md ? ' (through ' + esc(coachDay(md)) + ')' : ''}, with the same rules as the other tabs.</div>
+        <div class="section-sub">Ask about anything in your data${md ? ' (through ' + esc(coachDay(md)) + ')' : ''} — cases, remakes, turnaround, holds, doctors, practices, groups, products, scanners and production. Every answer uses the same rules as the other tabs.</div>
       </div>
       <div class="section-actions">
         <button class="btn-text" id="coachCats">⬇ Product categories</button>
         <button class="btn-text" id="coachClear"${COACH.history.length ? '' : ' disabled'}>Clear answers</button>
       </div>
     </div>
+    <div class="coach-buckets">${COACH_BUCKETS.map(([k, l]) => `<button class="coach-bucket${k === COACH.bucket ? ' active' : ''}" data-b="${k}">${esc(l)}</button>`).join('')}</div>
     <div class="card coach-ask">
-      <div class="coach-try"><span class="coach-lbl">Try</span>${COACH_PRESETS.map((x, i) => `<button class="pill coach-preset" data-i="${i}">${esc(x.label)}</button>`).join('')}</div>
+      ${presets.length ? `<div class="coach-try"><span class="coach-lbl">Try</span>${presets.map((x, i) => `<button class="pill coach-preset" data-i="${i}">${esc(x[0])}</button>`).join('')}</div>` : ''}
       <div class="coach-build">
-        <label class="coach-f coach-q"><span>Question</span><select class="gf-select" id="coachTpl">${COACH_TPL.map(t => `<option value="${t.key}"${t.key === tpl.key ? ' selected' : ''}>${esc(t.q)}</option>`).join('')}</select></label>
-        ${tpl.slots.map(s => coachSlotHTML(s, COACH.p)).join('')}
+        <label class="coach-f coach-q"><span>Question</span><select class="gf-select" id="coachTpl">${inBucket.map(t => `<option value="${t.key}"${t.key === tpl.key ? ' selected' : ''}>${esc(t.q)}</option>`).join('')}</select></label>
+        ${tpl.slots.map(s => coachSlotHTML(s, COACH.p, tpl)).join('')}
         <button class="sb-btn-primary coach-go" id="coachGo">Ask Coach</button>
       </div>
       <div class="coach-preview" id="coachPreview">${esc(coachPhrase(tpl.key, COACH.p))}</div>
     </div>
     <div id="coachLog">${COACH.history.map(coachAnswerHTML).join('') ||
-      '<div class="coach-empty">Pick a suggested question above, or build your own and press <b>Ask Coach</b>.</div>'}</div>`;
-  document.getElementById('coachTpl').onchange = e => { COACH.tpl = e.target.value; renderCoach(); };
+      '<div class="coach-empty">Pick a topic, then a suggested question — or build your own and press <b>Ask Coach</b>.</div>'}</div>`;
+  el.querySelectorAll('.coach-bucket').forEach(b => b.addEventListener('click', () => { COACH.bucket = b.dataset.b; renderCoach(); }));
+  document.getElementById('coachTpl').onchange = e => { COACH.tpl = e.target.value; coachFitParams(coachTplGet(COACH.tpl), true); renderCoach(); };
   el.querySelectorAll('.coach-slot').forEach(s => s.addEventListener('change', () => {
     COACH.p[s.dataset.slot] = s.value;
     if (s.dataset.slot === 'range') return renderCoach();
     document.getElementById('coachPreview').textContent = coachPhrase(COACH.tpl, COACH.p);
   }));
   el.querySelectorAll('.coach-preset').forEach(b => b.addEventListener('click', () => {
-    const x = COACH_PRESETS[+b.dataset.i]; COACH.tpl = x.tpl; Object.assign(COACH.p, { group: 'all', state: 'all' }, x.p); coachAsk(x.label);
+    const [label, key, pp] = presets[+b.dataset.i];
+    COACH.tpl = key; coachFitParams(coachTplGet(key), true);
+    Object.assign(COACH.p, { group: 'all', state: 'all', scanner: 'all', customer: '', status: 'any', product: 'any' }, pp);
+    coachAsk(label);
   }));
   document.getElementById('coachGo').onclick = () => coachAsk();
   document.getElementById('coachClear').onclick = () => { COACH.history = []; renderCoach(); };
@@ -7721,16 +8026,18 @@ function renderCoach() {
 }
 
 async function coachAsk(label) {
-  if (COACH.tpl === 'production' && !PROD.loaded) { toast('Loading production data…'); try { await prodLoadAll(); } catch (e) {} }
+  const tpl = coachTplGet(COACH.tpl);
+  if (tpl.key === 'production' && !PROD.loaded) { toast('Loading production data…'); try { await prodLoadAll(); } catch (e) {} }
   const p = Object.assign({}, COACH.p);
   let res;
-  try { res = coachRun(COACH.tpl, p); }
+  try { res = tpl.kind === 'explore' ? cxExplore(tpl, p) : coachRun(tpl.key, p); }
   catch (e) { res = { headline: 'Coach couldn\'t answer that: ' + esc(e.message || String(e)), cols: [], rows: [], how: [], file: 'coach' }; }
-  COACH.history.unshift(Object.assign({ id: ++COACH.seq, q: label || coachPhrase(COACH.tpl, p), showAll: false }, res));
+  COACH.history.unshift(Object.assign({ id: ++COACH.seq, q: label || coachPhrase(tpl.key, p), showAll: false }, res));
   renderCoach();
 }
 
-function coachCell(v, key) {
+function coachCell(v, key, fmts) {
+  if (fmts && fmts[key]) return cxFmt(v, fmts[key]);
   if (v instanceof Date) return coachDay(v);
   if (key === 'rev') return coachUSD(v);
   if (typeof v === 'number') return v.toLocaleString();
@@ -7738,13 +8045,13 @@ function coachCell(v, key) {
 }
 function coachAnswerHTML(a) {
   const LIMIT = 25, rows = a.showAll ? a.rows : a.rows.slice(0, LIMIT);
-  const num = k => ['cases', 'units', 'rev', 'days', 'doctors', 'tasks', 'share'].includes(k);
+  const num = k => (a.fmts && a.fmts[k]) || ['cases', 'units', 'rev', 'days', 'doctors', 'tasks', 'share'].includes(k);
   return `<div class="card coach-a" data-id="${a.id}">
     <div class="coach-qline"><span class="coach-you">You</span>${esc(a.q)}</div>
     <div class="coach-head"><span class="coach-me">Coach</span><div>${a.headline}</div></div>
     ${a.how.length ? `<details class="coach-how"><summary>How Coach counted this</summary><ul>${a.how.map(h => `<li>${h}</li>`).join('')}</ul></details>` : ''}
     ${a.rows.length ? `<div class="coach-table"><table class="sv-docs"><thead><tr>${a.cols.map(([k, l]) => `<th${num(k) ? ' class="r"' : ''}>${esc(l)}</th>`).join('')}</tr></thead>
-      <tbody>${rows.map(r => `<tr>${a.cols.map(([k]) => `<td${num(k) ? ' class="r"' : ''}>${coachCell(r[k], k)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
+      <tbody>${rows.map(r => `<tr>${a.cols.map(([k]) => `<td${num(k) ? ' class="r"' : ''}>${coachCell(r[k], k, a.fmts)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
       <div class="coach-actions">
         ${a.rows.length > LIMIT ? `<button class="btn-text coach-more">${a.showAll ? 'Show the first ' + LIMIT : 'Show all ' + a.rows.length.toLocaleString() + ' rows'}</button>` : ''}
         <button class="btn-text coach-csv">⬇ Download CSV (${a.rows.length.toLocaleString()} rows)</button>
@@ -7752,12 +8059,22 @@ function coachAnswerHTML(a) {
       </div>` : `<div class="coach-actions"><button class="btn-text coach-rm" title="Remove this answer">✕</button></div>`}
   </div>`;
 }
+/* CSV values stay numbers for spreadsheets: rates as percentages, money to the cent */
+function coachCsvValue(v, k, fmts) {
+  if (v instanceof Date) return isoDate(v);
+  const f = fmts && fmts[k];
+  if (typeof v !== 'number' || !f) return k === 'rev' && typeof v === 'number' ? Math.round(v * 100) / 100 : v;
+  if (f === 'pct') return Math.round(v * 1000) / 10;
+  if (f === 'usd' || f === 'usd2') return Math.round(v * 100) / 100;
+  if (f === 'days' || f === 'd1') return Math.round(v * 10) / 10;
+  return Math.round(v);
+}
 function coachBindAnswers() {
   document.querySelectorAll('#coachLog .coach-a').forEach(card => {
     const a = COACH.history.find(x => x.id === +card.dataset.id); if (!a) return;
     const more = card.querySelector('.coach-more'); if (more) more.onclick = () => { a.showAll = !a.showAll; card.outerHTML = coachAnswerHTML(a); coachBindAnswers(); };
     const csv = card.querySelector('.coach-csv'); if (csv) csv.onclick = () => downloadCSV(a.file + '-' + isoDate(new Date()) + '.csv',
-      a.rows.map(r => Object.fromEntries(a.cols.map(([k, l]) => [l, r[k] instanceof Date ? isoDate(r[k]) : (k === 'rev' ? Math.round((r[k] || 0) * 100) / 100 : r[k])]))));
+      a.rows.map(r => Object.fromEntries(a.cols.map(([k, l]) => [l + (a.fmts && a.fmts[k] === 'pct' ? ' (%)' : a.fmts && /days/.test(a.fmts[k] || '') ? ' (days)' : ''), coachCsvValue(r[k], k, a.fmts)]))));
     const rm = card.querySelector('.coach-rm'); if (rm) rm.onclick = () => { COACH.history = COACH.history.filter(x => x.id !== a.id); renderCoach(); };
   });
 }
