@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.10.26-DL15</title>
+<title>Lab Sales Dashboard v2026.10.28-DL16</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -137,8 +137,8 @@ html, body {
                            border-left-color: var(--accent); font-weight: 700; }
 .sidebar .tab-btn:focus-visible, .sidebar .nav-back:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 /* a quiet break before the admin tools: Salesly Bridge, Reports, Prospects, Email Queue */
-.sidebar .tab-btn[data-tab="bridge"] { margin-top: 10px; position: relative; }
-.sidebar .tab-btn[data-tab="bridge"]::before { content: ''; position: absolute; left: 18px; right: 6px; top: -6px;
+.sidebar .tab-btn[data-tab="reports"] { margin-top: 10px; position: relative; }
+.sidebar .tab-btn[data-tab="reports"]::before { content: ''; position: absolute; left: 18px; right: 6px; top: -6px;
                                                border-top: 1px solid var(--border); }
 /* ── SALES VISITS: calendar + office cards ── */
 .sv-cal-big { margin-top: 14px; padding: 14px 16px 12px; }
@@ -171,6 +171,50 @@ html, body {
 .sv-daylist { display: flex; flex-direction: column; gap: 10px; min-width: 0; margin-top: 14px; }
 .sv-dupe-note { color: #a16207; }
 /* ── COACH ── */
+/* ── CROSS SELLING ── */
+.cs-kpis { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
+@media (max-width: 1300px) { .cs-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.cs-kpi { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; border-top: 3px solid var(--k, var(--accent)); }
+.cs-kpi label { display: block; font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; color: var(--mut); }
+.cs-kpi b { display: block; font-size: 22px; font-weight: 800; color: var(--ink); margin: 4px 0 2px; font-variant-numeric: tabular-nums; }
+.cs-kpi small { font-size: 12px; color: var(--dim); }
+.cs-filters { padding: 12px 14px; margin-bottom: 10px; }
+.cs-types { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.cs-type { display: inline-flex; align-items: center; gap: 6px; font-family: inherit; font-size: 12.5px; font-weight: 600; padding: 6px 11px; border-radius: 999px;
+           border: 1px solid var(--border); background: var(--card); color: var(--mut); cursor: pointer; }
+.cs-type i { width: 10px; height: 10px; border-radius: 50%; opacity: .3; }
+.cs-type.on { color: var(--ink); border-color: var(--accent); background: var(--accent-soft); }
+.cs-type.on i { opacity: 1; }
+.cs-type:focus-visible, .cs-region:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.cs-frow { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+.cs-frow .coach-f { min-width: 130px; }
+.cs-frow .cs-search { flex: 1 1 220px; }
+.cs-chipline { margin-top: 8px; font-size: 12.5px; color: var(--dim); display: flex; gap: 6px; align-items: center; }
+.cs-views { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.cs-note { font-size: 12.5px; color: var(--dim); margin: 0 2px 8px; }
+.cs-table .grid-table td { vertical-align: top; }
+.cs-sub { display: block; font-size: 11.5px; color: var(--mut); font-weight: 400; margin-top: 1px; }
+.cs-tag { display: inline-block; font-size: 10.5px; font-weight: 800; padding: 1px 7px; border-radius: 999px; color: var(--c); border: 1px solid currentColor;
+          background: color-mix(in srgb, var(--c) 10%, transparent); white-space: nowrap; }
+.cs-prio { display: inline-block; font-size: 10.5px; font-weight: 800; padding: 1px 7px; border-radius: 6px; }
+.cs-prio-high { background: #dcfce7; color: #166534; } .cs-prio-medium { background: #fef3c7; color: #92400e; } .cs-prio-low { background: var(--card-2); color: var(--mut); }
+.cs-regions { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; margin-bottom: 10px; }
+.cs-region { text-align: left; font-family: inherit; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--card); cursor: pointer; color: var(--ink); }
+.cs-region b { display: block; font-size: 13px; } .cs-region span { display: block; font-size: 18px; font-weight: 800; } .cs-region small { color: var(--mut); font-size: 11.5px; }
+.cs-region:hover, .cs-region.on { border-color: var(--accent); background: var(--accent-soft); }
+tr.cs-open td { background: var(--card-2); white-space: normal; cursor: default; }
+.cs-card { padding: 6px 4px; }
+.cs-card-h { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; margin-bottom: 10px; font-size: 13.5px; }
+.cs-card-b { display: grid; grid-template-columns: 260px 1fr; gap: 16px; }
+@media (max-width: 1000px) { .cs-card-b { grid-template-columns: 1fr; } }
+.cs-sec { font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; color: var(--mut); margin-bottom: 6px; }
+.cs-has { display: flex; justify-content: space-between; gap: 8px; font-size: 12.5px; padding: 3px 0; border-bottom: 1px solid var(--border); }
+.cs-opp { padding: 8px 0; border-bottom: 1px solid var(--border); }
+.cs-opp-h { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; font-size: 13px; }
+.cs-opp-h span:last-child { margin-left: auto; font-weight: 800; }
+.cs-opp-why { font-size: 12.5px; color: var(--dim); margin-top: 3px; }
+.cs-opp-say { font-size: 12.5px; color: var(--ink); font-style: italic; margin-top: 2px; }
+.cs-how { padding: 16px 18px; font-size: 13.5px; line-height: 1.55; } .cs-how h3 { margin: 0 0 8px; font-size: 16px; } .cs-how p { margin: 0 0 10px; }
 /* ── PROSPECT MAP ── */
 .pm-controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; padding: 12px 14px; margin-bottom: 12px; }
 .pm-tiers { display: inline-flex; gap: 6px; flex-wrap: wrap; }
@@ -355,8 +399,8 @@ html, body {
   .topbar-actions { flex-wrap: wrap; margin-left: 0; flex-shrink: 1; min-width: 0; width: 100%; }
   .sidebar .tab-btn { width: auto; white-space: nowrap; border-left: none; border-bottom: 2px solid transparent; border-radius: 0; }
   .sidebar .tab-btn.active { border-bottom-color: var(--accent); }
-  .sidebar .tab-btn[data-tab="bridge"] { margin-top: 0; }
-  .sidebar .tab-btn[data-tab="bridge"]::before { display: none; }
+  .sidebar .tab-btn[data-tab="reports"] { margin-top: 0; }
+  .sidebar .tab-btn[data-tab="reports"]::before { display: none; }
 }
 .nav-back { flex-shrink: 0; align-self: center; margin-right: 4px; width: 28px; height: 28px; border-radius: 7px; border: 1px solid var(--border); background: var(--card); color: var(--mut); font-size: 16px; line-height: 1; cursor: pointer; transition: all .12s; display: flex; align-items: center; justify-content: center; }
 .nav-back:hover:not(:disabled) { color: var(--accent-ink); border-color: var(--accent); background: var(--card-2); }
@@ -1099,23 +1143,24 @@ html, body {
     </div>
     <nav class="tabs" id="tabsBar">
       <button class="tab-btn active" data-tab="overview">📊 Sales Overview</button>
-      <button class="tab-btn" data-tab="coach">💬 Coach</button>
       <button class="tab-btn" data-tab="sales">💼 Sales Hub</button>
       <button class="tab-btn" data-tab="docgrid">👨‍⚕️ Doctor Grid</button>
       <button class="tab-btn" data-tab="docdetail">🔍 Doctor Detail</button>
       <button class="tab-btn" data-tab="prodgrid">📦 Product Grid</button>
       <button class="tab-btn" data-tab="proddetail">📈 Product Detail</button>
-      <button class="tab-btn" data-tab="timeline">🕐 Client Timeline</button>
-      <button class="tab-btn" data-tab="map">🗺️ State Map</button>
-      <button class="tab-btn" data-tab="empgrid">🧑‍🔧 Employee Grid</button>
-      <button class="tab-btn" data-tab="empdetail">🔬 Employee Detail</button>
-      <button class="tab-btn" data-tab="status">📋 Retention</button>
       <button class="tab-btn" data-tab="svgrid">🚗 Sales Visits</button>
       <button class="tab-btn" data-tab="svdetail">📅 Sales Visit Detail</button>
-      <button class="tab-btn" data-tab="bridge">🔗 Salesly Bridge</button>
-      <button class="tab-btn" data-tab="reports">📧 Reports</button>
+      <button class="tab-btn" data-tab="status">📋 Retention</button>
+      <button class="tab-btn" data-tab="crosssell">🔀 Cross Selling</button>
+      <button class="tab-btn" data-tab="timeline">🕐 Client Timeline</button>
+      <button class="tab-btn" data-tab="map">🗺️ State Map</button>
       <button class="tab-btn" data-tab="prospects">🗺️ Prospect Map</button>
+      <button class="tab-btn" data-tab="coach">💬 Coach</button>
+      <button class="tab-btn" data-tab="empgrid">🧑‍🔧 Employee Grid</button>
+      <button class="tab-btn" data-tab="empdetail">🔬 Employee Detail</button>
+      <button class="tab-btn" data-tab="reports">📧 Reports</button>
       <button class="tab-btn" data-tab="queue">✉️ Email Queue</button>
+      <button class="tab-btn" data-tab="bridge">🔗 Salesly Bridge</button>
     </nav>
   </aside>
   <div class="topbar">
@@ -1160,6 +1205,7 @@ html, body {
   </div>
 
   <div class="content">
+    <div class="tab-panel" id="panel-crosssell"></div>
     <div class="tab-panel" id="panel-coach"></div>
     <div class="tab-panel active" id="panel-overview"></div>
     <div class="tab-panel" id="panel-sales"></div>
@@ -3647,7 +3693,7 @@ function switchTab(tab) {
 /* Detail tabs depend on the current selection, so they must re-render on every
    visit — never serve them from the rendered-cache. */
 const ALWAYS_RENDER = { docdetail: 1, proddetail: 1, bridge: 1, reports: 1, prospects: 1, queue: 1,
-                        empgrid: 1, empdetail: 1, svgrid: 1, svdetail: 1, coach: 1 };
+                        empgrid: 1, empdetail: 1, svgrid: 1, svdetail: 1, coach: 1, crosssell: 1 };
 
 function renderTab(tab, force) {
   if (!force && !ALWAYS_RENDER[tab] && APP.rendered[tab]) return;
@@ -3655,6 +3701,7 @@ function renderTab(tab, force) {
   switch (tab) {
     case 'overview':  renderOverview(); break;
     case 'coach':     renderCoach(); break;
+    case 'crosssell': renderCrossSell(); break;
     case 'sales':     renderSalesHub(); break;
     case 'docgrid':   renderDoctorGrid(); break;
     case 'docdetail': renderDoctorDetail(); break;
@@ -8841,6 +8888,402 @@ function coachCatalogCSV() {
     return { Product: n, Group: c.group, Category: c.cat, 'How it was placed': c.how === 'catalog' ? 'Listed' : c.how === 'rule' ? 'Rule — please check' : 'Unclassified — please place',
              'Invoice lines': a.lines, Revenue: Math.round(a.rev) };
   }));
+}
+
+
+/* ══ CROSS SELLING ═════════════════════════════════════════════════════════════
+   Who could send us more — and what to offer them. Every opportunity is worked
+   out from what SIMILAR doctors already send, so each comes with its evidence,
+   an estimated yearly value and a talking point. Four kinds:
+
+   colleague  Another doctor at the SAME practice sends us this product.
+   lapsed     They sent it before (≥ $300) and nothing in the last 120 days.
+   similar    Doctors who send what this doctor sends usually send this too:
+              P(product | the doctor's most telling product), from active doctors.
+   digital    ≥ 70% of their cases (scanner recorded) come in as physical impressions → scanner program.
+
+   Only ACTIVE doctors (a case in the last 90 days, ≥ 3 cases in the window) are
+   assessed; lapsed doctors belong on the Retention tab. Value = likelihood ×
+   what similar doctors typically spend on it in a year × this doctor's size
+   (their revenue vs. a typical adopter's, held between ×0.5 and ×2). Only
+   sellable product categories are suggested — not fees, parts, repairs or steps.
+   It follows the State and Group filters at the top of the page. */
+
+const CS_GROUPS = new Set(['Crowns', 'Bridges', 'Other fixed', 'Implants', 'Dentures', 'Partials & Flippers', 'Appliances']);
+const CS_SKIP_CATS = new Set(['Implant Parts', 'Implant Temporary', 'Temporary', 'Coping / Post & Core', 'Partial Framework']);
+const CS_REGION = (() => { const m = {}; Object.entries({
+  Northeast: 'CT ME MA NH RI VT NJ NY PA', Midwest: 'IL IN MI OH WI IA KS MN MO NE ND SD',
+  South: 'DE FL GA MD NC SC VA DC WV AL KY MS TN AR LA OK TX', West: 'AZ CO ID MT NV NM UT WY AK CA HI OR WA'
+}).forEach(([r, ss]) => ss.split(' ').forEach(s => m[s] = r)); return m; })();
+const CS_TYPE = {
+  colleague: { label: 'A colleague sends it', short: 'Colleague', color: '#7c3aed', rank: 1 },
+  lapsed:    { label: 'Stopped sending it', short: 'Lapsed', color: '#dc2626', rank: 2 },
+  similar:   { label: 'Similar doctors send it', short: 'Similar', color: '#0e9f8e', rank: 3 },
+  digital:   { label: 'Go digital', short: 'Digital', color: '#2563eb', rank: 4 }
+};
+const CS_VIEWS = [['plan', 'Action plan'], ['product', 'By product'], ['doctor', 'By doctor'], ['practice', 'By practice'], ['region', 'By state & region'],
+                  ['wins', 'Recent wins'], ['how', 'How it works']];
+const CS = { months: 12, view: 'plan', types: { colleague: true, lapsed: true, similar: true, digital: true }, group: 'all', cat: '', state: 'all', region: 'all',
+             minVal: 0, prio: 'all', q: '', limit: 100, open: null, sort: { key: null, dir: -1 }, cache: null };
+
+const csUSD = n => n == null ? '—' : '$' + Math.round(n).toLocaleString();
+const csPct = p => p == null ? '—' : Math.round(p * 100) + '%';
+const csDay = d => d ? d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
+const csMed = a => { if (!a.length) return null; const s = a.slice().sort((x, y) => x - y), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+/* Specialists, read from the practice name. A periodontist or oral surgeon places implants
+   but doesn't restore teeth; an orthodontist makes appliances; an endodontist sends
+   neither. Their "similar doctors" suggestions are limited to what the specialty uses
+   (colleague and lapsed opportunities stay — those are what the office actually sent). */
+const CS_SPECIALTY = [[/periodont|\bperio\b|oral (and|&) maxillofacial|maxillofacial|oral surgery|oral surgeons?|\boms\b/i, 'Periodontics / oral surgery', c => c.group === 'Implants' || c.cat === 'Surgical Guide'],
+                      [/orthodont|\bortho\b/i, 'Orthodontics', c => c.group === 'Appliances'],
+                      [/endodont|\bendo\b/i, 'Endodontics', () => false]];
+const csSpecialty = practice => { for (const [re, label, ok] of CS_SPECIALTY) if (re.test(String(practice || ''))) return { label, ok }; return null; };
+const csDr = name => 'Dr. ' + String(name || '').replace(/^\s*dr\.?\s+/i, '');   // names sometimes already start with "Dr."
+const csIsTarget = name => { if (!String(name || '').trim()) return null; const c = coachCat(name); return CS_GROUPS.has(c.group) && !CS_SKIP_CATS.has(c.cat) ? c : null; };
+
+/* ── the engine: one pass over the lines, then the opportunities ─────────────── */
+function csCompute() {
+  const rows = rawByGroupState(), md = getMaxDate();
+  const key = [rows.length, md && +md, CS.months, APP.filters && APP.filters.state, APP.filters && APP.filters.group].join('|');
+  if (CS.cache && CS.cache.key === key) return CS.cache;
+  const DAY = 864e5, end = new Date(md.getFullYear(), md.getMonth(), md.getDate(), 23, 59, 59);
+  const wStart = new Date(md.getFullYear(), md.getMonth() - CS.months, md.getDate() + 1);
+  const pStart = new Date(md.getFullYear(), md.getMonth() - 2 * CS.months, md.getDate() + 1);
+  const activeCut = new Date(+end - 90 * DAY), lapseCut = new Date(+end - 120 * DAY), winCut = new Date(+end - 90 * DAY);
+  const docs = new Map(), firstEver = new Map();   // firstEver: drId|cat → first line date (all time)
+  for (const r of rows) {
+    if (!r || !r.drId || !r.anchorDate) continue;
+    let d = docs.get(r.drId);
+    if (!d) { d = { id: r.drId, name: r.drName, rev: 0, cases: new Set(), last: null, first: null, cats: new Map(), pr: new Map(), city: '', state: '', group: '',
+                    email: '', phone: '', scan: new Map() }; docs.set(r.drId, d); }
+    const t = r.anchorDate, inW = t >= wStart && t <= end, inP = t >= pStart && t < wStart;
+    if (!d.last || t > d.last) d.last = t; if (!d.first || t < d.first) d.first = t;
+    if (inW) {
+      d.rev += r.netCost || 0; if (r.caseKey) d.cases.add(r.caseKey);
+      if (r.practice) d.pr.set(r.practice, (d.pr.get(r.practice) || 0) + 1);
+      if (!d.city && r.city) { d.city = r.city; d.state = r.stateAbbr || ''; }
+      if (r.group && !d.group) d.group = r.group;
+      // scanner names arrive tidied: "Physical Impression", "iTero", … — Unknown / Not Applicable don't count either way
+      const sc = String(r.scanner || '').trim();
+      if (r.caseKey && sc && !/^(unknown|not applicable|n\/a|none)$/i.test(sc)) { const phys = /physical|^1_?impression$/i.test(sc); d.scan.set(r.caseKey, (d.scan.get(r.caseKey) || false) || phys); }
+    }
+    if (!d.email && r.email) d.email = r.email; if (!d.phone && r.phone) d.phone = r.phone;
+    const c = csIsTarget(r.product); if (!c) continue;
+    const fk = r.drId + '\t' + c.cat; if (!firstEver.has(fk) || t < firstEver.get(fk)) firstEver.set(fk, t);   // ids contain "|", so a tab joins them
+    let x = d.cats.get(c.cat); if (!x) { x = { cat: c.cat, group: c.group, rev: 0, revPrior: 0, units: 0, last: null, atPrac: new Map() }; d.cats.set(c.cat, x); }
+    if (!x.last || t > x.last) x.last = t;
+    if (inW) { x.rev += r.netCost || 0; x.units += r.qty || 0; if (r.practice) x.atPrac.set(r.practice, (x.atPrac.get(r.practice) || 0) + (r.netCost || 0)); }
+    else if (inP) x.revPrior += r.netCost || 0;
+  }
+  // who is active, what each sends, where they practise
+  const active = [];
+  for (const d of docs.values()) {
+    d.main = [...d.pr.entries()].sort((a, b) => b[1] - a[1]).map(x => x[0])[0] || '';
+    d.spec = csSpecialty(d.main);
+    d.sends = new Set([...d.cats.values()].filter(x => x.rev > 0).map(x => x.cat));
+    d.active = d.last >= activeCut && d.cases.size >= 3;
+    if (d.active) active.push(d);
+  }
+  // associations among active doctors: n(A), n(A and C), and what adopters spend
+  const nA = new Map(), nAC = new Map(), spend = new Map(), spendAC = new Map(), adopterRev = new Map();
+  for (const d of active) {
+    const s = [...d.sends];
+    s.forEach(a => { nA.set(a, (nA.get(a) || 0) + 1); const v = d.cats.get(a).rev;
+      (spend.get(a) || spend.set(a, []).get(a)).push(v); (adopterRev.get(a) || adopterRev.set(a, []).get(a)).push(d.rev); });
+    for (const a of s) for (const c of s) if (a !== c) {
+      const k = a + '→' + c; nAC.set(k, (nAC.get(k) || 0) + 1); (spendAC.get(k) || spendAC.set(k, []).get(k)).push(d.cats.get(c).rev);
+    }
+  }
+  const N = active.length, cats = [...nA.keys()];
+  const medSpend = new Map(cats.map(c => [c, csMed(spend.get(c) || [])])), medAdopter = new Map(cats.map(c => [c, csMed(adopterRev.get(c) || [])]));
+  const pCA = (a, c) => (nA.get(a) || 0) >= 25 ? (nAC.get(a + '→' + c) || 0) / nA.get(a) : null;
+  // colleagues: active doctors at each practice
+  const atPractice = new Map();
+  active.forEach(d => d.pr.forEach((n, p) => (atPractice.get(p) || atPractice.set(p, []).get(p)).push(d)));
+  // the scanner program's typical yearly value
+  const triosByDoc = new Map();
+  for (const r of rows) { if (!r || !r.drId || !r.anchorDate || r.anchorDate < wStart || r.anchorDate > end) continue;
+    if (coachCat(r.product).cat === 'Scanner & Program') triosByDoc.set(r.drId, (triosByDoc.get(r.drId) || 0) + (r.netCost || 0)); }
+  const triosVals = [...triosByDoc.values()].filter(v => v > 0), triosMed = triosVals.length >= 3 ? csMed(triosVals) : null;
+
+  const groupOfCat = new Map(); docs.forEach(x => x.cats.forEach(y => groupOfCat.set(y.cat, y.group)));
+  const opps = [];
+  const sizeOf = (d, c) => { const m = medAdopter.get(c); return m ? Math.max(0.5, Math.min(2, d.rev / m)) : 1; };
+  for (const d of active) {
+    const last = String(d.name || '').replace(/^\s*dr\.?\s+/i, '').split(' ').slice(-1)[0];
+    for (const c of cats) {
+      const mine = d.cats.get(c);
+      // lapsed: sent ≥ $300 of it (this window or the one before) and nothing in 120 days
+      if (mine && mine.last < lapseCut && (mine.rev + mine.revPrior) >= 300) {
+        const yearly = Math.max(mine.rev, mine.revPrior);
+        opps.push({ d, type: 'lapsed', cat: c, p: 0.5, value: 0.5 * yearly, evidence: { yearly, last: mine.last },
+          why: `Sent ${csUSD(yearly)} of ${c} in a year; the last on ${csDay(mine.last)}.`,
+          say: `Dr. ${last} used to send us ${c} — the last one was ${csDay(mine.last)}. Ask what changed and whether we can win that work back.` });
+        continue;
+      }
+      if (d.sends.has(c)) continue;
+      // colleague: another active doctor at one of this doctor's practices sends it
+      let col = null;
+      d.pr.forEach((n, prac) => (atPractice.get(prac) || []).forEach(o => {
+        if (o === d) return; const oc = o.cats.get(c), here = oc ? (oc.atPrac.get(prac) || 0) : 0;   // what the colleague sends AT THIS practice
+        if (here > 0 && (!col || here > col.rev)) col = { o, rev: here, prac };
+      }));
+      if (col) {
+        const v = 0.6 * Math.min(col.rev, (medSpend.get(c) || col.rev) * 2);
+        opps.push({ d, type: 'colleague', cat: c, p: 0.6, value: v, evidence: { colleague: col.o.name, colleagueRev: col.rev, practice: col.prac },
+          why: `${csDr(col.o.name)} at ${col.prac} sent ${csUSD(col.rev)} of ${c} in ${CS.months} months.`,
+          say: `Dr. ${col.o.name.split(' ').slice(-1)[0]} at your practice already sends us ${c}. Could Dr. ${last}'s ${c} cases come to us the same way?` });
+        continue;
+      }
+      // similar doctors: the doctor's most telling product for this one
+      let best = null;
+      d.sends.forEach(a => { const pp = pCA(a, c); if (pp != null && (!best || pp > best.p)) best = { a, p: pp }; });
+      if (!best || best.p < 0.2) continue;
+      if (d.spec && !d.spec.ok({ cat: c, group: groupOfCat.get(c) || coachCat(c).group })) continue;   // not what this specialty uses
+      const typical = csMed(spendAC.get(best.a + '→' + c) || []) || medSpend.get(c) || 0;
+      const n = nA.get(best.a), both = nAC.get(best.a + '→' + c) || 0;
+      opps.push({ d, type: 'similar', cat: c, p: best.p, value: best.p * typical * sizeOf(d, c), evidence: { anchor: best.a, n, both, typical },
+        why: `${Math.round(best.p * 100)}% of the ${n} active doctors who send ${best.a} also send ${c} (typical ${csUSD(typical)} a year).`,
+        say: `Dr. ${last} sends us ${best.a}. Most doctors like them also send us ${c} — ask who does their ${c} today.` });
+    }
+    // go digital
+    const cs = [...d.scan.values()], phys = cs.filter(Boolean).length;
+    if (cs.length >= 10 && phys / cs.length >= 0.7) {
+      opps.push({ d, type: 'digital', cat: 'Digital scanning', p: phys / cs.length, value: triosMed ? 0.3 * triosMed : 0, evidence: { phys, cases: cs.length, triosMed },
+        why: `${phys} of their ${cs.length} cases (${Math.round(phys / cs.length * 100)}%) came in as physical impressions.`,
+        say: `Dr. ${last} still sends physical impressions on most cases. Show them the scanner program — faster turnaround and fewer remakes.` });
+    }
+  }
+  // priority: top 20% by value = High, next 30% = Medium; colleague and lapsed are never Low
+  const vals = opps.map(o => o.value).sort((a, b) => b - a), q20 = vals[Math.floor(vals.length * 0.2)] || 0, q50 = vals[Math.floor(vals.length * 0.5)] || 0;
+  opps.forEach(o => { o.prio = o.value >= q20 && o.value > 0 ? 'High' : o.value >= q50 && o.value > 0 ? 'Medium' : 'Low';
+                      if (o.prio === 'Low' && (o.type === 'colleague' || o.type === 'lapsed')) o.prio = 'Medium';
+                      o.region = CS_REGION[o.d.state] || 'Other'; });
+  const catGroup = new Map(); docs.forEach(d => d.cats.forEach(x => catGroup.set(x.cat, x.group)));
+  opps.forEach(o => { o.group = o.type === 'digital' ? 'Scanning' : (catGroup.get(o.cat) || ''); });
+  // recent wins: an existing customer's first-ever line of a product, in the last 90 days
+  const wins = [];
+  firstEver.forEach((t, k) => { if (t < winCut) return; const [id, cat] = k.split('\t'), d = docs.get(id); if (!d || !d.first || d.first >= winCut) return;
+    const x = d.cats.get(cat); wins.push({ d, cat, first: t, rev: x ? x.rev : 0 }); });
+  wins.sort((a, b) => b.first - a.first);
+  CS.cache = { key, opps, wins, active, N, nA, cats, medSpend, triosMed, wStart, end };
+  return CS.cache;
+}
+
+/* the opportunities the filters let through */
+function csFiltered(all) {
+  const q = CS.q.trim().toLowerCase();
+  return all.filter(o => CS.types[o.type] && (CS.group === 'all' || o.group === CS.group) && (!CS.cat || o.cat === CS.cat)
+    && (CS.state === 'all' || o.d.state === CS.state) && (CS.region === 'all' || o.region === CS.region) && o.value >= CS.minVal
+    && (CS.prio === 'all' || o.prio === CS.prio)
+    && (!q || o.d.name.toLowerCase().includes(q) || o.d.main.toLowerCase().includes(q) || o.cat.toLowerCase().includes(q) || (o.d.city || '').toLowerCase().includes(q)));
+}
+
+/* ── the tab ─────────────────────────────────────────────────────────────────── */
+function renderCrossSell() {
+  const el = document.getElementById('panel-crosssell'); if (!el) return;
+  if (!getMaxDate()) { el.innerHTML = '<div class="empty-state">Load data first.</div>'; return; }
+  const C = csCompute(), opps = csFiltered(C.opps);
+  const groups = [...new Set(C.opps.map(o => o.group).filter(Boolean))].sort();
+  const states = [...new Set(C.opps.map(o => o.d.state).filter(Boolean))].sort();
+  const sum = a => a.reduce((t, o) => t + o.value, 0);
+  const wins90 = C.wins.filter(w => (CS.state === 'all' || w.d.state === CS.state) && (CS.region === 'all' || CS_REGION[w.d.state] === CS.region));
+  const sel = (id, opts, cur) => `<select class="gf-select" id="${id}">${opts.map(([v, l]) => `<option value="${esc(v)}"${String(v) === String(cur) ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
+  el.innerHTML = `
+    <div class="section-header">
+      <div><div class="section-title">Cross Selling</div>
+        <div class="section-sub">Who could send us more, and what to offer. Every opportunity comes from what similar doctors already send — with its reason, an estimated yearly value and a talking point. Active doctors only (a case in the last 90 days).</div></div>
+      <div class="section-actions"><button class="btn-text" id="csExport">⬇ Download this view</button></div>
+    </div>
+    <div class="cs-kpis">
+      <div class="cs-kpi"><label>Estimated yearly opportunity</label><b>${csUSD(sum(opps))}</b><small>${opps.length.toLocaleString()} opportunities</small></div>
+      <div class="cs-kpi"><label>Doctors with an opportunity</label><b>${new Set(opps.map(o => o.d.id)).size.toLocaleString()}</b><small>of ${C.N.toLocaleString()} active doctors</small></div>
+      <div class="cs-kpi" style="--k:${CS_TYPE.colleague.color}"><label>A colleague sends it</label><b>${opps.filter(o => o.type === 'colleague').length.toLocaleString()}</b><small>${csUSD(sum(opps.filter(o => o.type === 'colleague')))} · within a practice</small></div>
+      <div class="cs-kpi" style="--k:${CS_TYPE.lapsed.color}"><label>Stopped sending it</label><b>${opps.filter(o => o.type === 'lapsed').length.toLocaleString()}</b><small>${csUSD(sum(opps.filter(o => o.type === 'lapsed')))} to win back</small></div>
+      <div class="cs-kpi" style="--k:${CS_TYPE.similar.color}"><label>Similar doctors send it</label><b>${opps.filter(o => o.type === 'similar').length.toLocaleString()}</b><small>${csUSD(sum(opps.filter(o => o.type === 'similar')))}</small></div>
+      <div class="cs-kpi" style="--k:#16a34a"><label>Won in the last 90 days</label><b>${wins90.length.toLocaleString()}</b><small>new products for existing doctors</small></div>
+    </div>
+    <div class="card cs-filters">
+      <div class="cs-types">${Object.entries(CS_TYPE).map(([k, t]) => `<button type="button" class="cs-type${CS.types[k] ? ' on' : ''}" data-t="${k}" aria-pressed="${!!CS.types[k]}"><i style="background:${t.color}"></i>${esc(t.label)}</button>`).join('')}</div>
+      <div class="cs-frow">
+        <label class="coach-f"><span>Window</span>${sel('csMonths', [[6, 'Last 6 months'], [12, 'Last 12 months']], CS.months)}</label>
+        <label class="coach-f"><span>Product group</span>${sel('csGroup', [['all', 'All products']].concat(groups.map(g => [g, g])), CS.group)}</label>
+        <label class="coach-f"><span>Region</span>${sel('csRegion', [['all', 'All regions'], ['Midwest', 'Midwest'], ['Northeast', 'Northeast'], ['South', 'South'], ['West', 'West']], CS.region)}</label>
+        <label class="coach-f"><span>State</span>${sel('csState', [['all', 'All states']].concat(states.map(s => [s, s])), CS.state)}</label>
+        <label class="coach-f"><span>Priority</span>${sel('csPrio', [['all', 'Any'], ['High', 'High'], ['Medium', 'Medium'], ['Low', 'Low']], CS.prio)}</label>
+        <label class="coach-f"><span>At least</span>${sel('csMin', [[0, 'Any value'], [500, '$500 a year'], [1000, '$1,000'], [2500, '$2,500'], [5000, '$5,000']], CS.minVal)}</label>
+        <label class="coach-f cs-search"><span>Search</span><input class="gf-select" id="csQ" placeholder="Doctor, practice, city or product" value="${esc(CS.q)}"></label>
+      </div>
+      ${CS.cat ? `<div class="cs-chipline">Product: <span class="coach-chip">${esc(CS.cat)}<button class="coach-chip-x" id="csCatX" title="Show all products">×</button></span></div>` : ''}
+    </div>
+    <div class="cs-views">${CS_VIEWS.map(([k, l]) => `<button type="button" class="coach-bucket${CS.view === k ? ' active' : ''}" data-v="${k}">${esc(l)}</button>`).join('')}</div>
+    <div id="csBody"></div>`;
+  const re = () => { CS.limit = 100; renderCrossSell(); };
+  el.querySelectorAll('.cs-type').forEach(b => b.onclick = () => { CS.types[b.dataset.t] = !CS.types[b.dataset.t]; re(); });
+  [['csMonths', v => { CS.months = +v; CS.cache = null; }], ['csGroup', v => CS.group = v], ['csRegion', v => { CS.region = v; CS.state = 'all'; }], ['csState', v => CS.state = v],
+   ['csPrio', v => CS.prio = v], ['csMin', v => CS.minVal = +v]].forEach(([id, f]) => document.getElementById(id).onchange = e => { f(e.target.value); re(); });
+  let qt = null; document.getElementById('csQ').oninput = e => { clearTimeout(qt); qt = setTimeout(() => { CS.q = e.target.value; csDrawBody(); }, 200); };
+  const cx = document.getElementById('csCatX'); if (cx) cx.onclick = () => { CS.cat = ''; re(); };
+  el.querySelectorAll('.cs-views .coach-bucket').forEach(b => b.onclick = () => { CS.view = b.dataset.v; CS.limit = 100; CS.sort = { key: null, dir: -1 }; renderCrossSell(); });
+  document.getElementById('csExport').onclick = csExport;
+  csDrawBody();
+}
+
+/* a sortable table, shared by every view */
+function csTable(cols, rows, rowAttr, extra) {
+  const t = CS.sort, col = cols.find(c => c.k === t.key);
+  if (col) { const g = col.v || (r => r[col.k]);
+    rows = rows.slice().sort((a, b) => { const x = g(a), y = g(b); if (x == null || x === '') return 1; if (y == null || y === '') return -1;
+      return (typeof x === 'string' ? String(x).localeCompare(String(y)) : x - y) * t.dir; }); }
+  const vis = rows.slice(0, CS.limit);
+  return { rows, html: `<div class="grid-table-wrap cs-table"><table class="grid-table"><thead><tr>${cols.map(c => `<th class="${c.num ? 'r ' : ''}gt-sort${t.key === c.k ? ' on' : ''}" data-k="${c.k}">${esc(c.l)}${t.key === c.k ? (t.dir < 0 ? ' ▾' : ' ▴') : ''}</th>`).join('')}</tr></thead>
+    <tbody>${vis.map((r, i) => `<tr ${rowAttr ? rowAttr(r, i) : ''}>${cols.map(c => `<td${c.num ? ' class="r"' : ''}${c.wrap ? ' style="white-space:normal;min-width:' + c.wrap + 'px"' : ''}>${c.f ? c.f(r) : esc(r[c.k] == null || r[c.k] === '' ? '—' : String(r[c.k]))}</td>`).join('')}</tr>${extra ? extra(r, i) : ''}`).join('')}</tbody></table></div>
+    ${rows.length > vis.length ? `<div style="text-align:center;margin-top:8px"><button class="btn-text" id="csMore">Show ${Math.min(100, rows.length - vis.length)} more · ${(rows.length - vis.length).toLocaleString()} remaining</button></div>` : ''}` };
+}
+function csBindTable(cols, redraw) {
+  document.querySelectorAll('#csBody .gt-sort').forEach(th => th.onclick = () => { const c = cols.find(x => x.k === th.dataset.k);
+    if (CS.sort.key === th.dataset.k) CS.sort.dir = -CS.sort.dir; else { CS.sort.key = th.dataset.k; CS.sort.dir = c && c.num ? -1 : 1; } redraw(); });
+  const m = document.getElementById('csMore'); if (m) m.onclick = () => { CS.limit += 100; redraw(); };
+}
+const csTypeTag = t => `<span class="cs-tag" style="--c:${CS_TYPE[t].color}">${esc(CS_TYPE[t].short)}</span>`;
+const csPrioTag = p => `<span class="cs-prio cs-prio-${p.toLowerCase()}">${p}</span>`;
+
+let _csRows = [], _csCols = [];   // what the current view shows (for its download)
+function csDrawBody() {
+  const body = document.getElementById('csBody'); if (!body) return;
+  const C = csCompute(), opps = csFiltered(C.opps).sort((a, b) => b.value - a.value), V = CS.view, redraw = () => csDrawBody();
+  let cols, rows, attr = null, extra = null, intro = '';
+
+  if (V === 'plan') {
+    intro = `<div class="cs-note">The opportunities in priority order — the best ones first. Click a row for the doctor’s details.</div>`;
+    cols = [{ k: 'prio', l: 'Priority', v: o => ({ High: 3, Medium: 2, Low: 1 })[o.prio], num: 0, f: o => csPrioTag(o.prio) },
+      { k: 'doctor', l: 'Doctor', v: o => o.d.name, f: o => `<b>${esc(csDr(o.d.name))}</b><small class="cs-sub">${esc(o.d.main)}</small>` },
+      { k: 'where', l: 'Where', v: o => (o.d.city || '') + ' ' + o.d.state, f: o => esc([o.d.city, o.d.state].filter(Boolean).join(', ') || '—') },
+      { k: 'offer', l: 'Offer', v: o => o.cat, f: o => `${csTypeTag(o.type)} <b>${esc(o.cat)}</b>` },
+      { k: 'value', l: 'Est. a year', num: 1, v: o => o.value, f: o => o.value ? csUSD(o.value) : '<span class="text-mut">strategic</span>' },
+      { k: 'why', l: 'Why', wrap: 260, f: o => esc(o.why) }, { k: 'say', l: 'Talking point', wrap: 300, f: o => `<i>${esc(o.say)}</i>` },
+      { k: 'contact', l: 'Contact', f: o => [o.d.phone ? `<a href="tel:${esc(String(o.d.phone).replace(/[^0-9+]/g, ''))}">${esc(o.d.phone)}</a>` : '', o.d.email ? `<a href="mailto:${esc(o.d.email)}">${esc(o.d.email)}</a>` : ''].filter(Boolean).join('<br>') || '—' }];
+    rows = opps; attr = o => `class="gt-row" data-doc="${esc(o.d.id)}"`;
+  } else if (V === 'product') {
+    intro = `<div class="cs-note">For each product: how many active doctors already send it, and who could. Click a product to see its opportunities.</div>`;
+    const by = new Map(); opps.forEach(o => { const x = by.get(o.cat) || { cat: o.cat, group: o.group, n: 0, value: 0, docs: new Set(), types: {} }; x.n++; x.value += o.value; x.docs.add(o.d.id); x.types[o.type] = (x.types[o.type] || 0) + 1; by.set(o.cat, x); });
+    rows = [...by.values()].map(x => Object.assign(x, { adopters: C.nA.get(x.cat) || 0, adoption: (C.nA.get(x.cat) || 0) / (C.N || 1), typical: C.medSpend.get(x.cat) }));
+    cols = [{ k: 'cat', l: 'Product', f: x => `<b>${esc(x.cat)}</b><small class="cs-sub">${esc(x.group)}</small>` },
+      { k: 'adopters', l: 'Already send it', num: 1, f: x => x.cat === 'Digital scanning' ? '—' : `${x.adopters.toLocaleString()} <small class="text-mut">(${csPct(x.adoption)})</small>` },
+      { k: 'typical', l: 'Typical a year', num: 1, f: x => csUSD(x.typical) },
+      { k: 'n', l: 'Could send it', num: 1, f: x => x.n.toLocaleString() },
+      { k: 'mix', l: 'Kinds', f: x => Object.entries(x.types).map(([t, n]) => `${csTypeTag(t)} ${n}`).join(' ') },
+      { k: 'value', l: 'Est. a year', num: 1, f: x => csUSD(x.value) }];
+    if (!CS.sort.key) rows.sort((a, b) => b.value - a.value);
+    attr = x => `class="gt-row" data-cat="${esc(x.cat)}"`;
+  } else if (V === 'doctor') {
+    intro = `<div class="cs-note">Each doctor’s opportunities together. Click a doctor to see every suggestion with its reason and talking point.</div>`;
+    const by = new Map(); opps.forEach(o => { const x = by.get(o.d.id) || { d: o.d, opps: [], value: 0 }; x.opps.push(o); x.value += o.value; by.set(o.d.id, x); });
+    rows = [...by.values()]; if (!CS.sort.key) rows.sort((a, b) => b.value - a.value);
+    cols = [{ k: 'doctor', l: 'Doctor', v: x => x.d.name, f: x => `<b>${esc(csDr(x.d.name))}</b><small class="cs-sub">${esc(x.d.main)}</small>` },
+      { k: 'where', l: 'Where', v: x => x.d.state, f: x => esc([x.d.city, x.d.state].filter(Boolean).join(', ') || '—') },
+      { k: 'status', l: 'Status', f: x => statusBadgeHTML(x.d.id, 'sm') || '' },
+      { k: 'rev', l: `Revenue (${CS.months} mo)`, num: 1, v: x => x.d.rev, f: x => csUSD(x.d.rev) },
+      { k: 'sends', l: 'Sends now', num: 1, v: x => x.d.sends.size, f: x => x.d.sends.size },
+      { k: 'n', l: 'Opportunities', num: 1, v: x => x.opps.length, f: x => x.opps.length },
+      { k: 'top', l: 'Best suggestions', wrap: 280, f: x => x.opps.slice().sort((a, b) => b.value - a.value).slice(0, 3).map(o => `${csTypeTag(o.type)} ${esc(o.cat)}`).join('<br>') },
+      { k: 'value', l: 'Est. a year', num: 1, v: x => x.value, f: x => csUSD(x.value) }];
+    attr = x => `class="gt-row" data-docrow="${esc(x.d.id)}"`;
+    extra = x => CS.open === x.d.id ? `<tr class="cs-open"><td colspan="${cols.length}">${csDoctorCard(x.d, x.opps)}</td></tr>` : '';
+  } else if (V === 'practice') {
+    intro = `<div class="cs-note">Practices with room to grow. “Within the practice” counts products one doctor sends us and a colleague there doesn’t — the easiest conversations.</div>`;
+    const by = new Map(); opps.forEach(o => { const p = o.type === 'colleague' ? o.evidence.practice : o.d.main; if (!p) return;
+      const x = by.get(p) || { practice: p, docs: new Set(), opps: 0, value: 0, colleague: 0, cats: new Map(), state: o.d.state, city: o.d.city }; x.docs.add(o.d.id); x.opps++; x.value += o.value;
+      if (o.type === 'colleague') x.colleague++; x.cats.set(o.cat, (x.cats.get(o.cat) || 0) + o.value); by.set(p, x); });
+    const prDocs = new Map(); C.active.forEach(d => d.pr.forEach((n, p) => prDocs.set(p, (prDocs.get(p) || 0) + 1)));
+    rows = [...by.values()].map(x => Object.assign(x, { activeDocs: prDocs.get(x.practice) || 0 })); if (!CS.sort.key) rows.sort((a, b) => b.value - a.value);
+    cols = [{ k: 'practice', l: 'Practice', f: x => `<b>${esc(x.practice)}</b><small class="cs-sub">${esc([x.city, x.state].filter(Boolean).join(', '))}</small>` },
+      { k: 'activeDocs', l: 'Active doctors', num: 1, f: x => x.activeDocs },
+      { k: 'ndocs', l: 'Doctors with an opportunity', num: 1, v: x => x.docs.size, f: x => x.docs.size },
+      { k: 'colleague', l: 'Within the practice', num: 1, f: x => x.colleague ? `<b style="color:${CS_TYPE.colleague.color}">${x.colleague}</b>` : '0' },
+      { k: 'opps', l: 'Opportunities', num: 1 },
+      { k: 'top', l: 'Biggest products', wrap: 240, f: x => [...x.cats.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([c]) => esc(c)).join(', ') },
+      { k: 'value', l: 'Est. a year', num: 1, f: x => csUSD(x.value) }];
+    attr = x => `class="gt-row" data-prac="${esc(x.practice)}"`;
+  } else if (V === 'region') {
+    intro = `<div class="cs-note">Where the opportunity is. Click a region or a state to focus the whole tab on it.</div>`;
+    const by = new Map(); opps.forEach(o => { const s = o.d.state || '—', x = by.get(s) || { state: s, region: o.region, opps: 0, value: 0, docs: new Set(), colleague: 0 };
+      x.opps++; x.value += o.value; x.docs.add(o.d.id); if (o.type === 'colleague') x.colleague++; by.set(s, x); });
+    const regions = new Map(); [...by.values()].forEach(x => { const r = regions.get(x.region) || { value: 0, opps: 0 }; r.value += x.value; r.opps += x.opps; regions.set(x.region, r); });
+    intro += `<div class="cs-regions">${[...regions.entries()].sort((a, b) => b[1].value - a[1].value).map(([r, x]) => `<button type="button" class="cs-region${CS.region === r ? ' on' : ''}" data-r="${esc(r)}"><b>${esc(r)}</b><span>${csUSD(x.value)}</span><small>${x.opps.toLocaleString()} opportunities</small></button>`).join('')}</div>`;
+    rows = [...by.values()]; if (!CS.sort.key) rows.sort((a, b) => b.value - a.value);
+    cols = [{ k: 'state', l: 'State', f: x => `<b>${esc(x.state)}</b>` }, { k: 'region', l: 'Region' },
+      { k: 'ndocs', l: 'Doctors', num: 1, v: x => x.docs.size, f: x => x.docs.size }, { k: 'opps', l: 'Opportunities', num: 1 },
+      { k: 'colleague', l: 'Within a practice', num: 1 }, { k: 'value', l: 'Est. a year', num: 1, f: x => csUSD(x.value) }];
+    attr = x => `class="gt-row" data-state="${esc(x.state)}"`;
+  } else if (V === 'wins') {
+    intro = `<div class="cs-note">Existing doctors who sent a product for the <b>first time</b> in the last 90 days — cross-selling that has already happened. Use them as proof: “doctors like you added this recently”.</div>`;
+    rows = C.wins.filter(w => (CS.state === 'all' || w.d.state === CS.state) && (CS.region === 'all' || CS_REGION[w.d.state] === CS.region)
+      && (CS.group === 'all' || coachCat(w.cat).group === CS.group) && (!CS.cat || w.cat === CS.cat));
+    cols = [{ k: 'first', l: 'First sent', num: 1, v: w => +w.first, f: w => csDay(w.first) },
+      { k: 'doctor', l: 'Doctor', v: w => w.d.name, f: w => `<b>${esc(csDr(w.d.name))}</b><small class="cs-sub">${esc(w.d.main)}</small>` },
+      { k: 'where', l: 'Where', f: w => esc([w.d.city, w.d.state].filter(Boolean).join(', ') || '—') },
+      { k: 'cat', l: 'New product', f: w => `<b>${esc(w.cat)}</b>` }, { k: 'rev', l: 'Since then', num: 1, f: w => csUSD(w.rev) },
+      { k: 'since', l: 'Customer since', num: 1, v: w => +w.d.first, f: w => csDay(w.d.first) }];
+    attr = w => `class="gt-row" data-doc="${esc(w.d.id)}"`;
+  } else {
+    body.innerHTML = csHowHTML(C); _csRows = []; _csCols = []; return;
+  }
+  const t = csTable(cols, rows, attr, extra);
+  _csRows = t.rows; _csCols = cols;
+  body.innerHTML = intro + (t.rows.length ? t.html : '<div class="empty-state" style="padding:30px">Nothing matches these filters.</div>');
+  csBindTable(cols, redraw);
+  // a row in the plan or wins → that doctor, opened, in By doctor (searched by name so they're at the top)
+  body.querySelectorAll('[data-doc]').forEach(tr => tr.onclick = e => { if (e.target.closest('a')) return;
+    const d = (C.active.find(x => x.id === tr.dataset.doc) || {}); CS.view = 'doctor'; CS.open = tr.dataset.doc; CS.q = d.name || ''; CS.sort = { key: null, dir: -1 }; CS.limit = 100;
+    renderCrossSell(); const r = document.querySelector(`[data-docrow="${CSS.escape(CS.open)}"]`); if (r) r.scrollIntoView({ block: 'center' }); });
+  body.querySelectorAll('[data-docrow]').forEach(tr => tr.onclick = e => { if (e.target.closest('a,button')) return; CS.open = CS.open === tr.dataset.docrow ? null : tr.dataset.docrow; redraw(); });
+  body.querySelectorAll('[data-cat]').forEach(tr => tr.onclick = () => { CS.cat = tr.dataset.cat; CS.view = 'plan'; CS.limit = 100; renderCrossSell(); });
+  body.querySelectorAll('[data-prac]').forEach(tr => tr.onclick = () => { CS.q = tr.dataset.prac; CS.view = 'plan'; CS.limit = 100; renderCrossSell(); });
+  body.querySelectorAll('[data-state]').forEach(tr => tr.onclick = () => { CS.state = tr.dataset.state; CS.view = 'plan'; CS.limit = 100; renderCrossSell(); });
+  body.querySelectorAll('.cs-region').forEach(b => b.onclick = () => { CS.region = CS.region === b.dataset.r ? 'all' : b.dataset.r; CS.state = 'all'; renderCrossSell(); });
+  body.querySelectorAll('.cs-open-dr').forEach(b => b.onclick = () => { APP.selectedDoctorId = b.dataset.id; switchTab('docdetail'); });
+}
+
+function csDoctorCard(d, opps) {
+  const sends = [...d.cats.values()].filter(x => x.rev > 0).sort((a, b) => b.rev - a.rev);
+  return `<div class="cs-card">
+    <div class="cs-card-h"><div><b>${esc(csDr(d.name))}</b> · ${esc(d.main)} · ${esc([d.city, d.state].filter(Boolean).join(', '))}
+      ${d.spec ? `<div class="cs-sub">Specialist (${esc(d.spec.label)}, from the practice name) — “similar doctors” suggestions are limited to what that specialty uses.</div>` : ''}
+      <div class="cs-sub">${csUSD(d.rev)} in ${CS.months} months · ${d.cases.size.toLocaleString()} cases · last case ${csDay(d.last)}
+      ${d.phone ? ` · <a href="tel:${esc(String(d.phone).replace(/[^0-9+]/g, ''))}">${esc(d.phone)}</a>` : ''}${d.email ? ` · <a href="mailto:${esc(d.email)}">${esc(d.email)}</a>` : ''}</div></div>
+      <button class="btn-text cs-open-dr" data-id="${esc(d.id)}">Doctor Detail ↗</button></div>
+    <div class="cs-card-b">
+      <div><div class="cs-sec">Sends us now</div>${sends.map(x => `<div class="cs-has"><span>${esc(x.cat)}</span><b>${csUSD(x.rev)}</b></div>`).join('') || '<div class="cs-sub">—</div>'}</div>
+      <div><div class="cs-sec">Suggestions</div>${opps.slice().sort((a, b) => b.value - a.value).map(o => `<div class="cs-opp">
+        <div class="cs-opp-h">${csPrioTag(o.prio)} ${csTypeTag(o.type)} <b>${esc(o.cat)}</b><span>${o.value ? csUSD(o.value) + ' a year' : 'strategic'}</span></div>
+        <div class="cs-opp-why">${esc(o.why)}</div><div class="cs-opp-say">“${esc(o.say)}”</div></div>`).join('')}</div>
+    </div></div>`;
+}
+
+function csHowHTML(C) {
+  return `<div class="card cs-how">
+    <h3>How the opportunities are found</h3>
+    <p>Only <b>active doctors</b> are assessed: at least one case in the last 90 days and 3 or more in the last ${CS.months} months (${C.N.toLocaleString()} doctors right now). Suggestions are <b>sellable products</b> — crowns, bridges, veneers and inlays, implant work, dentures, partials and flippers, and appliances — never fees, parts, repairs or try-in steps. The tab follows the State and Group filters at the top of the page.</p>
+    <p><span class="cs-tag" style="--c:${CS_TYPE.colleague.color}">Colleague</span> <b>A colleague sends it.</b> Another active doctor at the same practice sends us this product and this doctor doesn’t. Estimated at 60% of what the colleague sends (capped at twice the typical amount). The strongest signal: the practice already trusts us for it.</p>
+    <p><span class="cs-tag" style="--c:${CS_TYPE.lapsed.color}">Lapsed</span> <b>Stopped sending it.</b> They sent at least $300 of it (in the window or the one before) and nothing in the last 120 days. Estimated at half of their best year.</p>
+    <p><span class="cs-tag" style="--c:${CS_TYPE.similar.color}">Similar</span> <b>Similar doctors send it.</b> For each product the doctor already sends, we look at every active doctor who sends that product and count how many also send the suggestion — for example, “62% of the 480 doctors who send zirconia crowns also send nightguards”. The doctor’s most telling product is used, it needs at least 25 doctors behind it, and suggestions under 20% are dropped. Estimated as that percentage × what those doctors typically spend on it in a year × this doctor’s size (their revenue against a typical buyer’s, kept between half and double).</p>
+    <p><span class="cs-tag" style="--c:${CS_TYPE.digital.color}">Digital</span> <b>Go digital.</b> At least 10 cases, and 70% or more came in as physical impressions. ${C.triosMed ? `Valued at 30% of the typical scanner-program spend (${csUSD(C.triosMed)} a year).` : 'Shown as strategic — there isn’t enough scanner-program billing yet to put a value on it.'}</p>
+    <p><b>Specialists.</b> When the practice name shows a specialty, “similar doctors” suggestions are limited to what it uses: periodontists and oral surgeons — implant work and surgical guides; orthodontists — appliances; endodontists — none. Colleague and lapsed opportunities still show, because they’re based on what the office actually sent.</p>
+    <p><b>Priority:</b> the top 20% by value are High, the next 30% Medium, the rest Low — and colleague and lapsed opportunities are never Low. Values are estimates to rank the work, not forecasts.</p>
+    <p><b>Recent wins</b> are existing doctors (customers for more than 90 days) whose first-ever line of a product came in the last 90 days.</p></div>`;
+}
+
+function csExport() {
+  const C = csCompute(), V = CS.view, stamp = isoDate(new Date());
+  if (V === 'plan' || V === 'how') {
+    const opps = csFiltered(C.opps).sort((a, b) => b.value - a.value);
+    return downloadCSV('cross-sell-action-plan-' + stamp + '.csv', opps.map(o => ({ Priority: o.prio, Kind: CS_TYPE[o.type].label, Doctor: csDr(o.d.name), Practice: o.d.main,
+      City: o.d.city, State: o.d.state, Region: o.region, Offer: o.cat, 'Product group': o.group, 'Est. yearly value': Math.round(o.value), Likelihood: Math.round(o.p * 100) + '%',
+      Why: o.why, 'Talking point': o.say, Phone: o.d.phone, Email: o.d.email, [`Doctor revenue (${CS.months} mo)`]: Math.round(o.d.rev), 'Last case': isoDate(o.d.last) })));
+  }
+  const plain = v => String(v == null ? '' : v).replace(/<br>/g, '; ').replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").trim();
+  downloadCSV('cross-sell-' + V + '-' + stamp + '.csv', _csRows.map(r => Object.fromEntries(_csCols.map(c => [c.l, plain(c.f ? c.f(r) : r[c.k])]))));
 }
 
 
