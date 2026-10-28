@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.10.26-DL14</title>
+<title>Lab Sales Dashboard v2026.10.26-DL15</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -171,6 +171,50 @@ html, body {
 .sv-daylist { display: flex; flex-direction: column; gap: 10px; min-width: 0; margin-top: 14px; }
 .sv-dupe-note { color: #a16207; }
 /* ── COACH ── */
+/* ── PROSPECT MAP ── */
+.pm-controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; padding: 12px 14px; margin-bottom: 12px; }
+.pm-tiers { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+.pm-tier { display: inline-flex; align-items: center; gap: 6px; font-family: inherit; font-size: 12.5px; font-weight: 600; padding: 6px 11px; border-radius: 999px;
+           border: 1px solid var(--border); background: var(--card); color: var(--mut); cursor: pointer; }
+.pm-tier i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; opacity: .3; }
+.pm-tier.on { color: var(--ink); border-color: var(--accent); background: var(--accent-soft); }
+.pm-tier.on i { opacity: 1; }
+.pm-tier:focus-visible, .pm-area:focus-visible, .pm-row:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pm-msg { flex: 1 1 260px; font-size: 12.5px; color: var(--dim); align-self: center; }
+.pm-body { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 12px; }
+@media (max-width: 1100px) { .pm-body { grid-template-columns: 1fr; } .pm-side { height: auto !important; max-height: 480px; } }
+.pm-map { height: calc(100vh - 300px); min-height: 480px; padding: 0; overflow: hidden; position: relative; }
+.pm-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--mut); font-size: 14px; z-index: 500; pointer-events: none; }
+.pm-side { padding: 12px; height: calc(100vh - 300px); min-height: 480px; overflow: auto; }
+.pm-sec { font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; color: var(--mut); margin: 2px 0 8px; }
+.pm-areas { display: flex; flex-direction: column; gap: 4px; margin-bottom: 16px; }
+.pm-area { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; font-family: inherit; padding: 7px 8px; border-radius: 8px;
+           border: 1px solid var(--border); background: var(--card); cursor: pointer; color: var(--ink); }
+.pm-area:hover, .pm-area.on { border-color: var(--accent); background: var(--accent-soft); }
+.pm-area-r { width: 20px; height: 20px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 11px; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; flex: none; }
+.pm-area-n { flex: 1; font-size: 13px; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pm-area-c { font-size: 13px; font-weight: 800; text-align: right; font-variant-numeric: tabular-nums; }
+.pm-area-c small { display: block; font-size: 10.5px; font-weight: 600; color: var(--mut); }
+.pm-list { display: flex; flex-direction: column; }
+.pm-city { font-size: 11px; font-weight: 800; color: var(--accent-ink); margin: 10px 0 4px; text-transform: uppercase; letter-spacing: .04em; }
+.pm-row { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; font-family: inherit; padding: 6px; border: none;
+          border-bottom: 1px solid var(--border); background: transparent; cursor: pointer; color: var(--ink); }
+.pm-row:hover { background: var(--accent-soft); }
+.pm-row.same { padding-left: 20px; }
+.pm-row-m { flex: 1; min-width: 0; }
+.pm-row-m b { display: block; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pm-row-m small { display: block; font-size: 11.5px; color: var(--mut); }
+.pm-row-t { font-size: 11px; font-weight: 800; color: var(--mut); }
+.pm-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; display: inline-block; box-shadow: 0 0 0 1.5px #fff, 0 0 0 2.5px rgba(0,0,0,.1); }
+.pm-note { font-size: 12px; color: var(--mut); padding: 6px 2px; }
+.pm-pop .leaflet-popup-content { margin: 10px 12px; }
+.pm-pop-h { font-weight: 800; font-size: 12.5px; margin-bottom: 4px; }
+.pm-pop-o { padding: 3px 0; }
+.pm-pop-o.compact { border-top: 1px solid #e2e8f0; padding: 6px 0; }
+.pm-pop-n { font-weight: 700; font-size: 13px; display: flex; align-items: center; gap: 6px; }
+.pm-pop-t { font-size: 10.5px; font-weight: 800; color: #64748b; border: 1px solid #e2e8f0; border-radius: 6px; padding: 0 5px; }
+.pm-pop-a { font-size: 12px; color: #475569; margin-top: 2px; }
+.pm-pop-x { font-size: 12px; margin-top: 3px; }
 .view-toggle { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--card); flex: none; }
 .view-toggle button { font-family: inherit; font-size: 12px; font-weight: 600; padding: 5px 11px; border: none; background: transparent; color: var(--dim); cursor: pointer; }
 .view-toggle button + button { border-left: 1px solid var(--border); }
@@ -1070,7 +1114,7 @@ html, body {
       <button class="tab-btn" data-tab="svdetail">📅 Sales Visit Detail</button>
       <button class="tab-btn" data-tab="bridge">🔗 Salesly Bridge</button>
       <button class="tab-btn" data-tab="reports">📧 Reports</button>
-      <button class="tab-btn" data-tab="prospects">🎯 Prospects (A/B)</button>
+      <button class="tab-btn" data-tab="prospects">🗺️ Prospect Map</button>
       <button class="tab-btn" data-tab="queue">✉️ Email Queue</button>
     </nav>
   </aside>
@@ -13644,8 +13688,270 @@ async function qApproveAllReady() {
   } catch (e) { toast('Failed: ' + e.message); }
 }
 
+/* ══ PROSPECT MAP ═════════════════════════════════════════════════════════════
+   The Prospects tab, as a List (the server search, unchanged) or a Map — the
+   same map as Salesly (Leaflet, clustered balloons, Geoapify tiles).
+   • Pick a state: the map zooms straight to where its prospects cluster most,
+     and "Busiest areas" ranks the state's hot spots, one click each.
+   • "In view" lists what's on screen sorted city → street → number → suite,
+     so every suite at 123 North Road sits together, in order.
+   • A balloon of offices in ONE building opens that building's list instead of
+     stacking pins; any other balloon zooms in.
+   Reads two lookups from salesly_prospect_map.sql; changes nothing. The map
+   libraries load only when the map is first opened. */
+
+const PMAP_LIBS = {
+  css: ['https://unpkg.com/leaflet@1.9.4/dist/leaflet.css', 'https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css',
+        'https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css'],
+  js: ['https://unpkg.com/leaflet@1.9.4/dist/leaflet.js', 'https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js']
+};
+const PMAP_TILES_KEY = 'a41e459f0554424fb9a54301378d5dae';   // the same Geoapify key Salesly uses
+const PMAP_TIER = { A: { label: 'A — prospect', color: '#0e9f8e' }, B: { label: 'B — prospect', color: '#f59e0b' }, S: { label: 'Customer', color: '#94a3b8' } };
+const PMAP = { view: (() => { try { return localStorage.getItem('dash.prospectView') || 'list'; } catch (e) { return 'list'; } })(),
+               state: '', tiers: { A: true, B: true }, showS: false, counts: null, cache: new Map(), map: null, cluster: null,
+               points: [], markers: new Map(), areas: [], areaIdx: -1, msg: '' };
+
+let _pmLibs = null;
+function pmLoadLibs() {
+  if (window.L && window.L.markerClusterGroup) return Promise.resolve();
+  if (_pmLibs) return _pmLibs;
+  const add = (tag, attrs) => new Promise((ok, bad) => { const e = document.createElement(tag); Object.assign(e, attrs);
+    e.onload = ok; e.onerror = () => bad(new Error('Could not load the map (' + (attrs.src || attrs.href).split('/').slice(-1)[0] + ')')); document.head.appendChild(e); });
+  _pmLibs = Promise.all(PMAP_LIBS.css.map(h => add('link', { rel: 'stylesheet', href: h })))
+    .then(() => add('script', { src: PMAP_LIBS.js[0] })).then(() => add('script', { src: PMAP_LIBS.js[1] }))
+    .catch(e => { _pmLibs = null; throw e; });
+  return _pmLibs;
+}
+
+/* ── addresses, sorted the way a rep walks them ─────────────────────────────── */
+const PM_ABBR = { north: 'n', south: 's', east: 'e', west: 'w', road: 'rd', street: 'st', avenue: 'ave', av: 'ave', boulevard: 'blvd', drive: 'dr',
+                  lane: 'ln', court: 'ct', parkway: 'pkwy', highway: 'hwy', place: 'pl', circle: 'cir', terrace: 'ter', square: 'sq', trail: 'trl' };
+function pmAddrParts(a) {
+  let s = String(a || '').toLowerCase().replace(/[.,]/g, ' ').replace(/\s+/g, ' ').trim(), suite = '';
+  const sm = s.match(/\s(?:#|ste|suite|unit|apt|bldg|building|fl|floor|rm|room|spc|space)\s*#?\s*([a-z0-9-]+)\s*$/) || s.match(/\s#\s*([a-z0-9-]+)/);
+  if (sm) { suite = sm[1]; s = (s.slice(0, sm.index) + ' ' + s.slice(sm.index + sm[0].length)).trim(); }
+  const m = s.match(/^(\d+)([a-z]?)\s+(.*)$/);
+  const street = (m ? m[3] : s).split(' ').map(w => PM_ABBR[w] || w).join(' ');
+  return { num: m ? +m[1] : Infinity, street, suite };
+}
+const pmNat = (a, b) => String(a || '').localeCompare(String(b || ''), undefined, { numeric: true, sensitivity: 'base' });
+function pmAddrCmp(x, y) {
+  const a = x._ap || (x._ap = pmAddrParts(x.addr)), b = y._ap || (y._ap = pmAddrParts(y.addr));
+  return pmNat(x.city, y.city) || pmNat(a.street, b.street) || (a.num - b.num) || pmNat(a.suite, b.suite) || pmNat(x.name, y.name);
+}
+
+/* ── busiest areas: ~5-mile cells, scored with their neighbours; the best few
+      that don't overlap, each labelled by its most common city ───────────── */
+function pmFindAreas(pts) {
+  const H = 0.08, W = 0.10, cells = new Map(), key = (i, j) => i + '|' + j;   // ~5-mile cells; an area is a cell and its neighbours (~15 miles)
+  pts.forEach(p => { const i = Math.floor(p.lat / H), j = Math.floor(p.lng / W), k = key(i, j); (cells.get(k) || cells.set(k, []).get(k)).push(p); });
+  const scored = [...cells.keys()].map(k => { const [i, j] = k.split('|').map(Number); let around = [];
+    for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) around = around.concat(cells.get(key(i + di, j + dj)) || []);
+    return { i, j, pts: around }; }).sort((a, b) => b.pts.length - a.pts.length);
+  const picked = [];
+  for (const c of scored) {
+    if (picked.length >= 10 || c.pts.length < 2) break;
+    if (picked.some(p => Math.abs(p.i - c.i) <= 2 && Math.abs(p.j - c.j) <= 2)) continue;
+    const cities = new Map(); c.pts.forEach(p => { const n = String(p.city || '').trim(); if (n) cities.set(n, (cities.get(n) || 0) + 1); });
+    const top = [...cities.entries()].sort((a, b) => b[1] - a[1]);
+    picked.push(Object.assign(c, { label: top.length ? top[0][0] + (top.length > 1 ? ' area' : '') : 'Unnamed area',
+      tiers: { A: c.pts.filter(p => p.tier === 'A').length, B: c.pts.filter(p => p.tier === 'B').length, S: c.pts.filter(p => p.tier === 'S').length } }));
+  }
+  return picked;
+}
+
+/* ── the tab: List | Map ────────────────────────────────────────────────────── */
 function renderProspects() {
-  const el = document.getElementById('panel-prospects');
+  const el = document.getElementById('panel-prospects'); if (!el) return;
+  if (!el.dataset.shell) {
+    el.dataset.shell = '1';
+    el.innerHTML = `
+      <div class="section-header">
+        <div><div class="section-title">Prospect Map</div>
+          <div class="section-sub">Find A and B prospects as a searchable list, or on a map to plan where to visit next.</div></div>
+        <div class="section-actions"><div class="view-toggle" id="prViewToggle" role="group" aria-label="Show as">
+          <button type="button" data-v="list">☰ List</button><button type="button" data-v="map">🗺 Map</button></div></div>
+      </div>
+      <div id="prListHost"></div><div id="prMapHost"></div>`;
+    el.querySelectorAll('#prViewToggle button').forEach(b => b.addEventListener('click', () => {
+      PMAP.view = b.dataset.v; try { localStorage.setItem('dash.prospectView', PMAP.view); } catch (e) {}
+      renderProspects();
+    }));
+  }
+  el.querySelectorAll('#prViewToggle button').forEach(b => { const on = b.dataset.v === PMAP.view; b.classList.toggle('active', on); b.setAttribute('aria-pressed', on); });
+  document.getElementById('prListHost').style.display = PMAP.view === 'list' ? '' : 'none';
+  document.getElementById('prMapHost').style.display = PMAP.view === 'map' ? '' : 'none';
+  if (PMAP.view === 'list') renderProspectsList(); else renderProspectMap();
+}
+
+async function renderProspectMap() {
+  const host = document.getElementById('prMapHost'); if (!host) return;
+  if (!host.dataset.built) {
+    host.dataset.built = '1';
+    host.innerHTML = `
+      <div class="card pm-controls">
+        <label class="coach-f"><span>State</span><select class="gf-select" id="pmState"><option value="">Loading states…</option></select></label>
+        <div class="pm-tiers" role="group" aria-label="Show">
+          <button type="button" class="pm-tier" data-t="A"><i style="background:${PMAP_TIER.A.color}"></i>A prospects</button>
+          <button type="button" class="pm-tier" data-t="B"><i style="background:${PMAP_TIER.B.color}"></i>B prospects</button>
+          <button type="button" class="pm-tier" data-t="S"><i style="background:${PMAP_TIER.S.color}"></i>Customers</button>
+        </div>
+        <button class="btn-text" id="pmBusiest" disabled>◎ Busiest area</button>
+        <button class="btn-text" id="pmWhole" disabled>⤢ Whole state</button>
+        <div class="pm-msg" id="pmMsg"></div>
+      </div>
+      <div class="pm-body">
+        <div class="pm-map card" id="pmMap"><div class="pm-empty" id="pmEmpty">Pick a state to see its prospects.</div></div>
+        <aside class="pm-side card">
+          <div class="pm-sec">Busiest areas</div><div id="pmAreas" class="pm-areas"><div class="pm-note">Pick a state first.</div></div>
+          <div class="pm-sec" id="pmInViewHead">In view</div><div id="pmList" class="pm-list"></div>
+        </aside>
+      </div>`;
+    host.querySelector('#pmState').addEventListener('change', e => pmShowState(e.target.value));
+    host.querySelectorAll('.pm-tier').forEach(b => b.addEventListener('click', () => {
+      const t = b.dataset.t; if (t === 'S') PMAP.showS = !PMAP.showS; else PMAP.tiers[t] = !PMAP.tiers[t];
+      pmPaintTiers(); if (PMAP.state) pmShowState(PMAP.state, true);
+    }));
+    host.querySelector('#pmBusiest').onclick = () => pmZoomArea(0);
+    host.querySelector('#pmWhole').onclick = () => pmZoomWhole();
+  }
+  pmPaintTiers();
+  const msg = t => { PMAP.msg = t; const m = document.getElementById('pmMsg'); if (m) m.innerHTML = t; };
+  const db = typeof pgClient === 'function' ? pgClient() : null;
+  if (!db || !(await pgSession())) { msg('Sign in on the <b>Salesly Bridge</b> tab first — the map reads your prospect book from Supabase.'); return; }
+  try { await pmLoadLibs(); } catch (e) { msg(esc(e.message) + ' — check the internet connection and try again.'); return; }
+  if (!PMAP.map) pmMakeMap();
+  else setTimeout(() => PMAP.map.invalidateSize(), 50);
+  if (!PMAP.counts) {
+    const { data, error } = await db.rpc('prospect_state_counts');
+    if (error) { msg(/function|does not exist|PGRST202/i.test(error.message || '') ? 'Run <b>salesly_prospect_map.sql</b> in Supabase once to turn the map on.' : 'Could not load states: ' + esc(error.message)); return; }
+    const c = new Map();
+    (data || []).forEach(r => { const s = String(r.state || '').toUpperCase(); if (!s) return; const x = c.get(s) || { A: 0, B: 0, S: 0 }; x[r.tier] = (x[r.tier] || 0) + Number(r.n || 0); c.set(s, x); });
+    PMAP.counts = c;
+  }
+  const sel = document.getElementById('pmState');
+  const states = [...PMAP.counts.entries()].sort((a, b) => (b[1].A + b[1].B) - (a[1].A + a[1].B));
+  sel.innerHTML = '<option value="">— pick a state —</option>' + states.map(([s, x]) =>
+    `<option value="${esc(s)}"${s === PMAP.state ? ' selected' : ''}>${esc(s)} — ${(x.A + x.B).toLocaleString()} prospects${x.S ? ' · ' + x.S.toLocaleString() + ' customers' : ''}</option>`).join('');
+  if (!PMAP.state) msg(`${states.length} states with mapped prospects. Busiest: ${states.slice(0, 3).map(([s, x]) => esc(s) + ' (' + (x.A + x.B).toLocaleString() + ')').join(', ')}.`);
+}
+
+function pmPaintTiers() {
+  document.querySelectorAll('#prMapHost .pm-tier').forEach(b => { const t = b.dataset.t, on = t === 'S' ? PMAP.showS : PMAP.tiers[t];
+    b.classList.toggle('on', !!on); b.setAttribute('aria-pressed', !!on); });
+}
+
+function pmMakeMap() {
+  const box = document.getElementById('pmMap');
+  PMAP.map = L.map(box, { preferCanvas: true, zoomControl: true, worldCopyJump: true }).setView([39.5, -95], 4);
+  const retina = (window.devicePixelRatio || 1) > 1 ? '@2x' : '';
+  L.tileLayer('https://maps.geoapify.com/v1/tile/osm-carto/{z}/{x}/{y}' + retina + '.png?apiKey=' + encodeURIComponent(PMAP_TILES_KEY), {
+    maxZoom: 19, attribution: 'Powered by <a href="https://www.geoapify.com/" target="_blank" rel="noopener">Geoapify</a> · © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>'
+  }).addTo(PMAP.map);
+  PMAP.cluster = L.markerClusterGroup({ chunkedLoading: true, maxClusterRadius: 50, showCoverageOnHover: false, spiderfyOnMaxZoom: false, zoomToBoundsOnClick: false });
+  PMAP.cluster.on('clusterclick', e => {
+    const ms = e.layer.getAllChildMarkers(), first = ms[0].getLatLng();
+    if (ms.every(m => PMAP.map.distance(first, m.getLatLng()) < 40)) {   // one building: list it
+      const pts = ms.map(m => m._pm).sort(pmAddrCmp);
+      L.popup({ maxWidth: 340, maxHeight: 320, className: 'pm-pop' }).setLatLng(e.layer.getLatLng())
+        .setContent(`<div class="pm-pop-h">${pts.length} offices at ${esc(pmBuildingName(pts))}</div>` +
+                    pts.map(p => pmPopupHTML(p, true)).join('')).openOn(PMAP.map);
+    } else if (PMAP.map.getZoom() >= PMAP.map.getMaxZoom() - 1) e.layer.spiderfy();
+    else PMAP.map.fitBounds(e.layer.getBounds(), { padding: [40, 40], maxZoom: 17 });
+  });
+  PMAP.map.addLayer(PMAP.cluster);
+  PMAP.map.on('moveend', pmPaintInView);
+}
+
+/* the building's address as most of its offices write it, without the suite */
+function pmBuildingName(pts) {
+  const c = new Map();
+  pts.forEach(p => { const a = String(p.addr || '').replace(/\s*(?:,|#|\b(?:ste|suite|unit|apt|bldg|fl|floor|rm|room)\b).*$/i, '').trim(); if (a) c.set(a, (c.get(a) || 0) + 1); });
+  const best = [...c.entries()].sort((a, b) => b[1] - a[1] || b[0].length - a[0].length)[0];
+  return best ? best[0] : 'this address';
+}
+function pmPopupHTML(p, compact) {
+  const t = PMAP_TIER[p.tier] || PMAP_TIER.B, addr = [p.addr, [p.city, [p.state, p.zip].filter(Boolean).join(' ')].filter(Boolean).join(', ')].filter(Boolean).join(', ');
+  return `<div class="pm-pop-o${compact ? ' compact' : ''}">
+    <div class="pm-pop-n"><span class="pm-dot" style="background:${t.color}"></span>${esc(p.name || 'Unnamed office')} <span class="pm-pop-t">${esc(p.tier)}</span></div>
+    <div class="pm-pop-a">${esc(addr)}</div>
+    <div class="pm-pop-x">${[p.phone ? `<a href="tel:${esc(String(p.phone).replace(/[^0-9+]/g, ''))}">${esc(p.phone)}</a>` : '', p.scanner ? esc(p.scanner) : '', p.status ? esc(p.status) : '',
+      `<a href="https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(addr)}" target="_blank" rel="noopener">Directions ↗</a>`].filter(Boolean).join(' · ')}</div></div>`;
+}
+
+async function pmShowState(st, keepView) {
+  PMAP.state = st; const msg = t => { const m = document.getElementById('pmMsg'); if (m) m.innerHTML = t; };
+  const empty = document.getElementById('pmEmpty');
+  if (!st) { PMAP.cluster && PMAP.cluster.clearLayers(); PMAP.points = []; if (empty) empty.style.display = ''; pmPaintAreas(); pmPaintInView(); return; }
+  const tiers = ['A', 'B', 'S'].filter(t => t === 'S' ? PMAP.showS : PMAP.tiers[t]);
+  if (!tiers.length) { msg('Turn on at least one of A, B or Customers.'); PMAP.cluster.clearLayers(); PMAP.points = []; pmPaintAreas(); pmPaintInView(); return; }
+  msg('Loading ' + esc(st) + '…');
+  const key = st + '|' + tiers.join('');
+  let rows = PMAP.cache.get(key);
+  if (!rows) {
+    const { data, error } = await pgClient().rpc('prospect_map_points', { p_state: st, p_tiers: tiers });
+    if (error) { msg('Could not load ' + esc(st) + ': ' + esc(error.message)); return; }
+    rows = (data || []).filter(r => isFinite(r.lat) && isFinite(r.lng) && Math.abs(r.lat) > 1 && Math.abs(r.lng) > 1);
+    PMAP.cache.set(key, rows);
+  }
+  if (PMAP.state !== st) return;   // a newer pick arrived while this one loaded
+  if (empty) empty.style.display = 'none';
+  PMAP.points = rows; PMAP.markers = new Map();
+  PMAP.cluster.clearLayers();
+  PMAP.cluster.addLayers(rows.map(p => {
+    const m = L.circleMarker([p.lat, p.lng], { radius: p.tier === 'S' ? 5 : 7, color: '#fff', weight: 1.5, fillColor: (PMAP_TIER[p.tier] || PMAP_TIER.B).color, fillOpacity: p.tier === 'S' ? 0.7 : 0.95 });
+    m._pm = p; m.bindPopup(() => pmPopupHTML(p), { maxWidth: 320 }); PMAP.markers.set(p.id, m); return m;
+  }));
+  PMAP.areas = pmFindAreas(rows.filter(p => p.tier !== 'S'));
+  pmPaintAreas();
+  document.getElementById('pmBusiest').disabled = !PMAP.areas.length; document.getElementById('pmWhole').disabled = !rows.length;
+  const nA = rows.filter(p => p.tier === 'A').length, nB = rows.filter(p => p.tier === 'B').length, nS = rows.filter(p => p.tier === 'S').length;
+  msg(`<b>${esc(st)}</b>: ${nA.toLocaleString()} A · ${nB.toLocaleString()} B${PMAP.showS ? ' · ' + nS.toLocaleString() + ' customers' : ''}`
+      + (rows.length >= 25000 ? ' — showing the first 25,000' : '') + (PMAP.areas.length && !keepView ? ' — zoomed to the busiest area' : ''));
+  if (!keepView) { if (PMAP.areas.length) pmZoomArea(0); else pmZoomWhole(); } else pmPaintInView();
+}
+
+function pmZoomArea(i) {
+  const a = PMAP.areas[i]; if (!a || !PMAP.map) return;
+  PMAP.areaIdx = i; pmPaintAreas();
+  PMAP.map.fitBounds(L.latLngBounds(a.pts.map(p => [p.lat, p.lng])), { padding: [30, 30], maxZoom: 14 });
+}
+function pmZoomWhole() {
+  if (!PMAP.points.length || !PMAP.map) return;
+  PMAP.areaIdx = -1; pmPaintAreas();
+  PMAP.map.fitBounds(L.latLngBounds(PMAP.points.map(p => [p.lat, p.lng])), { padding: [20, 20] });
+}
+function pmPaintAreas() {
+  const box = document.getElementById('pmAreas'); if (!box) return;
+  if (!PMAP.state) { box.innerHTML = '<div class="pm-note">Pick a state first.</div>'; return; }
+  if (!PMAP.areas.length) { box.innerHTML = '<div class="pm-note">No clusters — prospects here are spread out.</div>'; return; }
+  box.innerHTML = PMAP.areas.map((a, i) => `<button type="button" class="pm-area${i === PMAP.areaIdx ? ' on' : ''}" data-i="${i}">
+      <span class="pm-area-r">${i + 1}</span><span class="pm-area-n">${esc(a.label)}</span>
+      <span class="pm-area-c">${(a.tiers.A + a.tiers.B).toLocaleString()}<small>${a.tiers.A} A · ${a.tiers.B} B</small></span></button>`).join('');
+  box.querySelectorAll('.pm-area').forEach(b => b.addEventListener('click', () => pmZoomArea(+b.dataset.i)));
+}
+function pmPaintInView() {
+  const box = document.getElementById('pmList'), head = document.getElementById('pmInViewHead'); if (!box || !PMAP.map) return;
+  const b = PMAP.map.getBounds(), vis = PMAP.points.filter(p => b.contains([p.lat, p.lng])).sort(pmAddrCmp);
+  head.textContent = PMAP.points.length ? `In view — ${vis.length.toLocaleString()}` : 'In view';
+  if (!vis.length) { box.innerHTML = PMAP.points.length ? '<div class="pm-note">Nothing on screen — zoom out or pick an area.</div>' : ''; return; }
+  const LIM = 250; let lastCity = null, lastStreet = null;
+  box.innerHTML = vis.slice(0, LIM).map(p => {
+    const city = String(p.city || '').trim(), ap = p._ap || pmAddrParts(p.addr), street = (ap.num !== Infinity ? ap.num + ' ' : '') + ap.street;
+    const ch = city !== lastCity ? `<div class="pm-city">${esc(city || 'No city')}</div>` : ''; const same = city === lastCity && street === lastStreet;
+    lastCity = city; lastStreet = street;
+    return ch + `<button type="button" class="pm-row${same ? ' same' : ''}" data-id="${esc(p.id)}"><span class="pm-dot" style="background:${(PMAP_TIER[p.tier] || PMAP_TIER.B).color}"></span>
+      <span class="pm-row-m"><b>${esc(p.name || 'Unnamed office')}</b><small>${esc(p.addr || '')}</small></span><span class="pm-row-t">${esc(p.tier)}</span></button>`;
+  }).join('') + (vis.length > LIM ? `<div class="pm-note">…and ${(vis.length - LIM).toLocaleString()} more — zoom in to narrow the list.</div>` : '');
+  box.querySelectorAll('.pm-row').forEach(r => r.addEventListener('click', () => {
+    const m = PMAP.markers.get(r.dataset.id); if (!m) return;
+    PMAP.cluster.zoomToShowLayer(m, () => m.openPopup());
+  }));
+}
+
+/* the List view — the server-side prospect search, unchanged */
+function renderProspectsList() {
+  const el = document.getElementById('prListHost');
   if (!el) return;
   if (!el.dataset.built) {
     el.innerHTML = `
