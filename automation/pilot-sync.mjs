@@ -18,7 +18,10 @@
 //  Optional:
 //    INVOICE_REPORT       saved report name in Pilot     (default "JG")
 //    PRODUCTION_REPORT    saved report name in Pilot     (default "Per-Employee New")
-//    DAYS_BACK            how many days, ending END_DATE (default 3)
+//    DAYS_BACK            invoice days to pull, ending END_DATE (default 3)
+//    PROD_DAYS_BACK       production days to re-check, ending END_DATE (default 14) —
+//                         a task scanned in today is often finished days later, and
+//                         re-reading it records the completion
 //    END_DATE             last day to pull, YYYY-MM-DD   (default yesterday, Chicago time)
 //    DRY_RUN=1            fetch and check only — load nothing
 //    STATUS_FILE          where to write the counts-only run summary
@@ -32,6 +35,7 @@ const PILOT = (env.PILOT_API_BASE || 'https://api.pilotlms.com/api/v1').replace(
 const INVOICE_REPORT = env.INVOICE_REPORT || 'JG';
 const PRODUCTION_REPORT = env.PRODUCTION_REPORT || 'Per-Employee New';
 const DAYS_BACK = Math.max(1, Math.min(31, parseInt(env.DAYS_BACK || '3', 10) || 3));
+const PROD_DAYS_BACK = Math.max(1, Math.min(31, parseInt(env.PROD_DAYS_BACK || '14', 10) || 14));
 const DRY_RUN = /^(1|true|yes)$/i.test(env.DRY_RUN || '');
 const CHUNK = 2000;   // rows per staging request — the dashboard's size
 
@@ -61,9 +65,9 @@ function addDays(ymd, n) {
   const t = new Date(Date.UTC(y, m - 1, d + n));
   return t.toISOString().slice(0, 10);
 }
-function daysToPull() {
+function daysToPull(n) {
   const end = /^\d{4}-\d{2}-\d{2}$/.test(env.END_DATE || '') ? env.END_DATE : addDays(chicagoToday(), -1);
-  return Array.from({ length: DAYS_BACK }, (_, i) => addDays(end, i - DAYS_BACK + 1));
+  return Array.from({ length: n }, (_, i) => addDays(end, i - n + 1));
 }
 // "2026-10-21", "2026-10-21T00:00:00" or "10/21/2026" → "2026-10-21"
 function dayOf(v) {
@@ -156,8 +160,8 @@ const status = { ran_at: new Date().toISOString(), ok: false, dry_run: DRY_RUN, 
 async function main() {
   const need = ['PILOT_API_KEY', 'AUTOMATION_EMAIL', 'AUTOMATION_PASSWORD', 'SUPABASE_URL', 'SUPABASE_KEY'].filter(k => !env[k]);
   if (need.length) fail('missing secrets: ' + need.join(', '));
-  const days = daysToPull(); status.days = days;
-  log(`Pilot pull for ${days[0]} → ${days[days.length - 1]} (${days.length} day${days.length === 1 ? '' : 's'})${DRY_RUN ? ' — DRY RUN, nothing will be loaded' : ''}`);
+  const days = daysToPull(DAYS_BACK), prodDays = daysToPull(PROD_DAYS_BACK); status.days = days; status.production_days = [prodDays[0], prodDays[prodDays.length - 1]];
+  log(`Pilot pull — invoices ${days[0]} → ${days[days.length - 1]} (${days.length} days), production ${prodDays[0]} → ${prodDays[prodDays.length - 1]} (${prodDays.length} days)${DRY_RUN ? ' — DRY RUN, nothing will be loaded' : ''}`);
 
   const invId = await findReport(INVOICE_REPORT), prodId = await findReport(PRODUCTION_REPORT);
   log(`Found both reports in Pilot.`);
@@ -170,11 +174,14 @@ async function main() {
     // day's request, whichever date the report filters on
     const si = shape(await runReport(invId, INVOICE_REPORT, day), INVOICE_COLS);
     si.missing.forEach(m => invMissing.add(m)); inv[day] = si.rows;
+    log(`  invoices   ${day}: ${inv[day].length} lines`);
+  }
+  for (const day of prodDays) {
     const rp = await runReport(prodId, PRODUCTION_REPORT, day);
     if (rp.length && Object.keys(rp[0]).some(k => /patient/i.test(k))) patientDropped = true;
     const sp = shape(rp, PRODUCTION_COLS);   // "patient" isn't a wanted column, so it never leaves this step
     sp.missing.forEach(m => prodMissing.add(m)); prod[day] = sp.rows;
-    log(`  ${day}: ${inv[day].length} invoice lines · ${prod[day].length} production rows`);
+    log(`  production ${day}: ${prod[day].length} rows (${sp.rows.filter(r => /^(yes|true|1)$/i.test(String(r.is_completed))).length} complete)`);
   }
   if (patientDropped) log('Patient column removed from production rows before loading.');
   // missing optional columns are fine; missing key ones are not
@@ -185,7 +192,7 @@ async function main() {
   if (invMissing.size) log(`Note: invoice report has no ${[...invMissing].join(', ')} (left blank).`);
 
   if (DRY_RUN) { status.ok = true; status.invoices.fetched = days.reduce((t, d) => t + inv[d].length, 0);
-                 status.production.fetched = days.reduce((t, d) => t + prod[d].length, 0); log('Dry run complete — nothing loaded.'); return; }
+                 status.production.fetched = prodDays.reduce((t, d) => t + prod[d].length, 0); log('Dry run complete — nothing loaded.'); return; }
 
   await signIn();
   log('Signed in to Supabase.');
@@ -218,19 +225,20 @@ async function main() {
     log(`Invoices: nothing to send — ${completeDays.length} day(s) already complete in the database.`);
   }
 
-  // ── production: always send; the loader updates tasks it already has
-  const prows = days.flatMap(d => prod[d]);
-  status.production = { fetched: prows.length, loaded: null };
-  if (prows.length) {
+  // ── production: always send, one day at a time (small, quick loads); the
+  //    loader updates tasks it already has, so re-reading 14 days records the
+  //    tasks that were finished after the earlier pulls
+  let pSent = 0, pTouched = 0;
+  for (const day of prodDays) {
+    const prows = prod[day]; if (!prows.length) continue;
     await rpc('ptask_stage_reset');
     for (let i = 0; i < prows.length; i += CHUNK) await rpc('ptask_stage_rows', { p_rows: prows.slice(i, i + CHUNK) });
-    const res = await rpc('ptask_load', { p_source: `pilot-auto ${days[0]}..${days[days.length - 1]}` });
+    const res = await rpc('ptask_load', { p_source: `pilot-auto ${day}` });
     const n = res && (res.rows ?? res.loaded ?? res.rows_loaded ?? res.touched);
-    status.production.loaded = n ?? null;
-    log(`Production: ${prows.length} rows sent; ${n ?? 'all'} task rows added or updated.`);
-  } else {
-    log('Production: no rows for these days.');
+    pSent += prows.length; pTouched += Number(n || 0);
   }
+  status.production = { fetched: prodDays.reduce((t, d) => t + prod[d].length, 0), loaded: pTouched };
+  log(pSent ? `Production: ${pSent} rows sent over ${prodDays.length} days; ${pTouched} task rows added or updated.` : 'Production: no rows for these days.');
   status.ok = true;
   log('Done.');
 }
