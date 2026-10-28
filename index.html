@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.10.28-DL16</title>
+<title>Lab Sales Dashboard v2026.10.28-DL17</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -224,7 +224,30 @@ tr.cs-open td { background: var(--card-2); white-space: normal; cursor: default;
 .pm-tier.on { color: var(--ink); border-color: var(--accent); background: var(--accent-soft); }
 .pm-tier.on i { opacity: 1; }
 .pm-tier:focus-visible, .pm-area:focus-visible, .pm-row:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.pm-msg { flex: 1 1 260px; font-size: 12.5px; color: var(--dim); align-self: center; }
+.pm-msg { width: 100%; font-size: 12.5px; color: var(--dim); }
+.pm-row1 { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; width: 100%; }
+.pm-row1 .pm-q { flex: 1 1 260px; }
+.pm-filters, .pm-more { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; width: 100%; }
+.pm-more { padding: 8px 10px; border-radius: 10px; background: var(--card-2); gap: 6px; }
+.pm-fgroup { display: inline-flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.pm-flab { font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; color: var(--mut); margin-right: 2px; }
+.pm-seg { display: inline-flex; align-items: center; gap: 5px; font-family: inherit; font-size: 12px; font-weight: 600; padding: 5px 10px; border-radius: 999px;
+          border: 1px solid var(--border); background: var(--card); color: var(--dim); cursor: pointer; }
+.pm-seg i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+.pm-seg b { font-weight: 800; color: var(--mut); font-variant-numeric: tabular-nums; }
+.pm-seg.on { background: var(--accent-soft); border-color: var(--accent); color: var(--ink); }
+.pm-seg:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pm-div { width: 1px; height: 18px; background: var(--border); margin: 0 4px; }
+.pm-dl { font-size: 12px; color: var(--dim); display: inline-flex; gap: 4px; align-items: center; }
+.pm-dl input { height: 30px; }
+.pm-fill { padding: 12px 14px; margin-bottom: 12px; border-left: 3px solid #f59e0b; }
+.pm-fill-h { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; font-size: 13px; }
+.pm-bar { height: 6px; background: var(--card-2); border-radius: 999px; margin-top: 8px; overflow: hidden; }
+.pm-bar i { display: block; height: 100%; background: var(--accent); transition: width .3s; }
+.pm-cityq { width: 100%; margin-bottom: 8px; }
+.pm-nocity { border-style: dashed; }
+.pm-lab { display: inline-block; font-size: 10px; font-weight: 800; padding: 0 6px; border-radius: 999px; color: var(--c); border: 1px solid currentColor; margin-left: 4px; }
+
 .pm-body { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 12px; }
 @media (max-width: 1100px) { .pm-body { grid-template-columns: 1fr; } .pm-side { height: auto !important; max-height: 480px; } }
 .pm-map { height: calc(100vh - 300px); min-height: 480px; padding: 0; overflow: hidden; position: relative; }
@@ -14133,26 +14156,355 @@ async function qApproveAllReady() {
 
 /* ══ PROSPECT MAP ═════════════════════════════════════════════════════════════
    The Prospects tab, as a List (the server search, unchanged) or a Map — the
-   same map as Salesly (Leaflet, clustered balloons, Geoapify tiles).
-   • Pick a state: the map zooms straight to where its prospects cluster most,
-     and "Busiest areas" ranks the state's hot spots, one click each.
-   • "In view" lists what's on screen sorted city → street → number → suite,
-     so every suite at 123 North Road sits together, in order.
-   • A balloon of offices in ONE building opens that building's list instead of
-     stacking pins; any other balloon zooms in.
-   Reads two lookups from salesly_prospect_map.sql; changes nothing. The map
-   libraries load only when the map is first opened. */
+   same map and the SAME FILTERS as Salesly. The filters are Salesly's own code,
+   copied unchanged (see SLF below), so an office passes here exactly when it
+   passes in Salesly. Pick a state; the side panel lists its cities (busiest
+   first), and "In view" lists what's on screen in street order. "IL" and
+   "Illinois" are one state. Offices with no city can be filled from here
+   (Fill missing cities): only empty fields are filled, hand-placed pins never
+   move, and every change is logged (salesly_states_and_cities.sql). */
+
+/* ── Salesly's filters, verbatim — sealed in their own scope ───────────────── */
+const SLF = (() => {
+  let sbUser = null, ME = null, REPS = [];
+  let state = { gVisit: '', gStatus: '', gHeat: [], gLab: [], filter: [], repFilter: [], dFrom: '', dTo: '', q: '' };
+  const DB = [];
+  function labDialPass() { return true; }    // Salesly limits Lab filters to the rep's state; the map already shows one state
+  function labFilterSet() { return null; }   // (the dials only narrow what a pin SHOWS; filtering asks for every status)
+  /* ---- copied unchanged from Salesly (salesly_index.html) ---- */
+  function meName(){
+    const n = ME ? String(ME.name||"").replace(/\s+/g," ").trim() : "";
+    if(n) return n;
+    try{
+      const u = (typeof sbUser!=="undefined" && sbUser) ? sbUser : null;
+      if(u){
+        const meta = u.user_metadata || {};
+        const guess = meta.name || meta.full_name || "";
+        if(guess) return String(guess).trim();
+        // match the email local-part against the known rep list ("jason.f" -> Jason Flesher)
+        const local = String(u.email||"").split("@")[0];
+        if(local){
+          const hit = (REPS||[]).find(r=>repMatch(local, r.name) || repMatch(local, r.email||""));
+          if(hit) return hit.name;
+          return local;
+        }
+      }
+    }catch(e){}
+    return "";
+  }
+  function repMatch(a,b){
+    const tok=x=>String(x||"").toLowerCase().split(/[^a-z]+/).filter(Boolean);
+    const A=tok(a), B=tok(b);
+    if(!A.length||!B.length) return false;
+    const n=Math.min(A.length,B.length);
+    for(let i=0;i<n;i++){
+      if(!(A[i].startsWith(B[i])||B[i].startsWith(A[i]))) return false;
+    }
+    return true;
+  }
+  function myUid(){ try{ return (typeof sbUser!=="undefined"&&sbUser)?String(sbUser.id):""; }catch(e){ return ""; } }
+  function nameKey(n){ return String(n||"").toLowerCase().replace(/[^a-z0-9]/g,""); }
+  function visitRepKey(v){ return v ? (String(v.uid||"").trim() || nameKey(v.rep) || "unknown") : "unknown"; }
+  function visitIsBy(v, rObj){
+    if(!v||!rObj) return false;
+    if(v.uid && rObj.id) return String(v.uid)===String(rObj.id);
+    const vn=nameKey(v.rep); if(!vn) return false;
+    if(vn===nameKey(rObj.name)) return true;                  // exact name
+    if(!repMatch(v.rep, rObj.name)) return false;             // not even a loose match
+    // Loose match: only trust it if NO other rep also loosely matches.
+    try{
+      const others=(REPS||[]).filter(x=>x&&x.id!==rObj.id&&repMatch(v.rep,x.name));
+      if(others.length) return false;                          // ambiguous -> don't guess
+    }catch(e){}
+    return true;
+  }
+  function visitIsMine(v){
+    const uid=myUid();
+    if(v&&v.uid&&uid) return String(v.uid)===String(uid);
+    return visitIsBy(v, ME||{name:meName()});
+  }
+  const ST_ABBR_FULL={al:"alabama",ak:"alaska",az:"arizona",ar:"arkansas",ca:"california",co:"colorado",ct:"connecticut",de:"delaware",fl:"florida",ga:"georgia",hi:"hawaii",id:"idaho",il:"illinois",in:"indiana",ia:"iowa",ks:"kansas",ky:"kentucky",la:"louisiana",me:"maine",md:"maryland",ma:"massachusetts",mi:"michigan",mn:"minnesota",ms:"mississippi",mo:"missouri",mt:"montana",ne:"nebraska",nv:"nevada",nh:"new hampshire",nj:"new jersey",nm:"new mexico",ny:"new york",nc:"north carolina",nd:"north dakota",oh:"ohio",ok:"oklahoma",or:"oregon",pa:"pennsylvania",ri:"rhode island",sc:"south carolina",sd:"south dakota",tn:"tennessee",tx:"texas",ut:"utah",vt:"vermont",va:"virginia",wa:"washington",wv:"west virginia",wi:"wisconsin",wy:"wyoming",dc:"district of columbia"};
+  function normStateName(s){
+    s=String(s||"").toLowerCase().replace(/[^a-z ]/g," ").replace(/\s+/g," ").trim();
+    if(!s)return "";
+    return ST_ABBR_FULL[s]||s;
+  }
+  const ALL_STATE_NAMES=Object.values(ST_ABBR_FULL);
+  function dbToApp(r){
+    return {
+      id:String(r.id),
+      name:r.name||"", addr:r.addr||"", city:r.city||"", zip:r.zip||"",
+      lat:(r.lat==null?"":+r.lat), lng:(r.lng==null?"":+r.lng),
+      county:r.county||"", state:r.state||"",
+      phone:r.phone||"", email:r.email||"", scanner:r.scanner||"",
+      lab:r.lab||"", drs:r.drs||"", hours:r.hours||"",
+      visitDay:r.visit_day||"", notes:r.notes||"",
+      starterKit:r.starter_kit?"Yes":"", welcomeEmail:r.welcome_email?"Yes":"",
+      pricelist:r.pricelist||"",
+      visits:r.visits||"",                       // parseVisits() unpacks this in rebuild()
+      visited:!!(r.visits&&String(r.visits).trim()),
+      addedBy:r.added_by||"",
+      tier:r.tier||"B",
+      lastInvoiceDate:r.last_invoice_date||"",
+      totalSales:r.total_sales==null?0:+r.total_sales,
+      status:r.status||"",                        // lifecycle: Active/New/Winback/Falloff/Inactive
+      active: (r.deleted_at ? false : (r.active===false?false:true)),
+      status_changed_at:r.status_changed_at||"",  // stamped by DB only on real transitions
+      // Claim → Closed sale. Written ONLY by the claim_office/release_office RPCs and
+      // the DB trigger that stamps closed_at when the dashboard flips a claimed
+      // office to a buying status. appToDb deliberately never sends these.
+      // deleted_at is the server-side soft delete (see security hardening SQL).
+      // Treat it exactly like active=false so a deleted office stays hidden.
+      deletedAt:r.deleted_at||"",
+      claimedBy:r.claimed_by||"", claimedByName:r.claimed_by_name||"",
+      claimedAt:r.claimed_at||"", closedAt:r.closed_at||"", closedStatus:r.closed_status||"", closedVia:r.closed_via||"",
+      // hand-placed pin: locked against the dashboard's geocoder (see salesly_pin_lock.sql)
+      pinLocked:!!r.pin_locked, pinMovedBy:r.pin_moved_by||"", pinMovedAt:r.pin_moved_at||"",
+      origLat:(r.orig_lat!=null?r.orig_lat:null), origLng:(r.orig_lng!=null?r.orig_lng:null),
+      seed:false
+    };
+  }
+  function labStatus(o){ const _ls=labStatuses(o); if(_ls.length) return _ls[0]; return _labStatusLegacy(o); }
+  function _labStatusLegacy(o){
+    const nts=o&&o.notes; if(!nts)return "";
+    const m=String(nts).match(/(?:^|\n)\s*📊\s*LAB:\s*([A-Za-z ]+?)\s*(?:·|\n|$)/);
+    if(!m)return "";
+    const w=m[1].trim().toLowerCase();
+    if(w.indexOf("new")===0)return "new";
+    if(w.indexOf("winback")===0)return "winback";
+    if(w.indexOf("falloff")===0)return "falloff";
+    if(w.indexOf("inactive")===0)return "inactive";
+    if(w.indexOf("active")===0)return "active";
+    return "";
+  }
+  function labStatuses(o){
+    const nts=o&&o.notes; if(!nts)return [];
+    const out=[];
+    // Match a "LAB:" line no matter what precedes it (📊 emoji, a mojibake version
+    // of it, or nothing) and no matter what follows the status word (·, a re-encoded
+    // separator, or end of line). Only the FIRST alphabetic word after LAB: is read,
+    // so "ACTIVE · last case…" and a garbled separator both parse identically.
+    String(nts).split("\n").forEach(l=>{
+      const m=l.match(/LAB:\s*([A-Za-z]+)/i);
+      if(!m)return;
+      const w=m[1].toLowerCase();
+      if(w.indexOf("new")===0)out.push("new");
+      else if(w.indexOf("winback")===0)out.push("winback");
+      else if(w.indexOf("falloff")===0)out.push("falloff");
+      else if(w.indexOf("inactive")===0)out.push("inactive");
+      else if(w.indexOf("active")===0)out.push("active");
+      else if(w.indexOf("current")===0)out.push("active");   // dashboard may label it "Current"
+    });
+    return out;
+  }
+  function labDoctorStatuses(o){
+    const nts=o&&o.notes; if(!nts)return [];
+    const out=[];
+    String(nts).split("\n").forEach(l=>{
+      // Status may be MULTI-WORD ("NEW DOCTOR") — capture everything up to the
+      // first · separator, not just one word. The old single-word pattern
+      // couldn't match "NEW DOCTOR" at all, so New doctors at multi-doctor
+      // practices vanished from the pin blend and from the Lab filter (their
+      // colleagues' lines still parsed, blocking the status-column fallback).
+      const m=l.match(/LAB:\s*([A-Za-z][A-Za-z ]*?)\s*(?:[·\u00B7]\s*(Dr\.?\s*[^·\u00B7\n]+?))?\s*(?:[·\u00B7]|$)/i);
+      if(!m)return;
+      const w=m[1].trim().toLowerCase(); let st="";
+      if(w.indexOf("new")===0)st="new";
+      else if(w.indexOf("winback")===0)st="winback";
+      else if(w.indexOf("falloff")===0)st="falloff";
+      else if(w.indexOf("inactive")===0)st="inactive";
+      else if(w.indexOf("active")===0||w.indexOf("current")===0)st="active";
+      if(!st)return;
+      out.push({st:st, dr:(m[2]||"").trim()});
+    });
+    return out;
+  }
+  function labDoctorFigures(o){
+    const nts=o&&o.notes; if(!nts) return [];
+    const money=v=>{ const n=parseFloat(String(v||'').replace(/[^0-9.]/g,'')); return isFinite(n)?n:null; };
+    const out=[];
+    String(nts).split("\n").forEach(l=>{
+      if(!/LAB:\s*[A-Za-z]/i.test(l)) return;
+      // a re-encoded separator arrives as "Â·" — drop the stray Â so it reads as ·
+      l=String(l).replace(/\u00C2(?=[\u00B7·])/g,'');
+      const sw=(l.match(/LAB:\s*([A-Za-z][A-Za-z ]*?)\s*(?:[·\u00B7]|$)/i)||[])[1]||'';
+      const w=sw.trim().toLowerCase(); let st='';
+      if(w.indexOf('new')===0) st='new'; else if(w.indexOf('winback')===0) st='winback';
+      else if(w.indexOf('falloff')===0) st='falloff'; else if(w.indexOf('inactive')===0) st='inactive';
+      else if(w.indexOf('active')===0||w.indexOf('current')===0) st='active';
+      const dr   =((l.match(/Dr\.?\s*([^·\u00B7\n]+?)\s*(?:[·\u00B7]|$)/i)||[])[1]||'').trim();
+      const last =((l.match(/last case\s*([0-9]{1,2}\/[0-9]{1,2}\/[0-9]{2,4})/i)||[])[1]||'');
+      const cases=(l.match(/([0-9][0-9,]*)\s*cases?\b/i)||[])[1];
+      const r90  =(l.match(/\$\s*([0-9][0-9,]*(?:\.[0-9]+)?)\s*last\s*90/i)||[])[1];
+      const life =(l.match(/\$\s*([0-9][0-9,]*(?:\.[0-9]+)?)\s*lifetime/i)||[])[1];
+      // added by dashboard DR1 — absent on lines written before it, and that's fine
+      const rmk  =(l.match(/([0-9]+(?:\.[0-9]+)?)\s*%\s*remakes?/i)||[])[1];
+      const tat  =(l.match(/([0-9]+(?:\.[0-9]+)?)\s*d\s*avg\s*turnaround/i)||[])[1];
+      out.push({ st, dr, last,
+        cases: cases!=null ? parseInt(String(cases).replace(/,/g,''),10) : null,
+        rev90: money(r90), lifetime: money(life),
+        remakePct: rmk!=null ? parseFloat(rmk) : null,
+        avgTat:    tat!=null ? parseFloat(tat) : null });
+    });
+    return out;
+  }
+  const ST_RANK={"new":5,winback:4,active:3,falloff:2,inactive:1};
+  function statusSet(o, ignoreFilter){
+    const seen={},list=[];
+    labDoctorStatuses(o).forEach(x=>{ if(!seen[x.st]){seen[x.st]=1;list.push(x.st);} });
+    if(!list.length){ const e=effStatus(o); if(e) list.push(e); }
+    let out=list.sort((a,b)=>(ST_RANK[b]||0)-(ST_RANK[a]||0));
+    if(!ignoreFilter){
+      const f=labFilterSet();
+      if(f){ const only=out.filter(st=>f.indexOf(st)>=0); if(only.length) out=only; }
+    }
+    return out;
+  }
+  function stripLab(nts){ if(!nts)return ""; return String(nts).split("\n").filter(l=>!/LAB:\s*[A-Za-z]/i.test(l)).join("\n").replace(/^\n+|\n+$/g,""); }
+  function labLines(nts){ if(!nts)return ""; return String(nts).split("\n").filter(l=>/LAB:\s*[A-Za-z]/i.test(l)).join("\n"); }
+  function isImport(o){ return !!labStatus(o)||String((o&&o.id)||"").charAt(0)==="b"; }
+  function isVisited(o){
+    if(o.visits&&o.visits.length)return true;
+    if(o.visited)return true;
+    if(labStatus(o))return true;
+    if(String(o.id||"").charAt(0)==="s"){
+      return !!(o.visitDay||o.notes||(o.scanner&&o.scanner!=="None"));
+    }
+    return false;
+  }
+  function todayStr(){const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
+  function normDate(s){ // accept YYYY-MM-DD, MM/DD/YYYY, or Date-ish; return YYYY-MM-DD or ""
+    if(!s)return ""; s=String(s).trim();
+    // validate real calendar ranges, not just the shape, so a bad hand-edit like
+    // "2026-13-45" is rejected (->"") rather than stored and breaking sort/display.
+    const okYMD=(y,mo,da)=>{y=+y;mo=+mo;da=+da;return y>=1900&&y<=2100&&mo>=1&&mo<=12&&da>=1&&da<=31;};
+    let m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+    if(m){ if(!okYMD(m[1],m[2],m[3]))return ""; return m[1]+"-"+m[2].padStart(2,"0")+"-"+m[3].padStart(2,"0"); }
+    m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if(m){ if(!okYMD(m[3],m[1],m[2]))return ""; return m[3]+"-"+m[1].padStart(2,"0")+"-"+m[2].padStart(2,"0"); }
+    const d=new Date(s); if(!isNaN(d))return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+    return "";
+  }
+  function daysAgo(s){const d=normDate(s);if(!d)return Infinity;const p=d.split("-");const dt=new Date(+p[0],+p[1]-1,+p[2]);return Math.floor((Date.now()-dt.getTime())/86400000);}
+  function lastVisit(o){return (o.visits&&o.visits.length)?o.visits[0].date:"";}
+  function parseVisits(v){
+    let arr=[];
+    if(v==null) arr=[];
+    else if(Array.isArray(v)) arr=v.slice();
+    else if(typeof v==="string") arr=v.split(/[|,]/).map(s=>s.trim()).filter(Boolean);
+    const out=arr.map(item=>{
+      if(item&&typeof item==="object"){ const d=normDate(item.date); if(!d)return null;
+        return {date:d, color:(item.color||""), note:(item.note||""), rep:(item.rep||""), uid:(item.uid||"")}; }
+      // string form: "date" | "date~color~note" | "date~color~note~rep" | "date~color~note~rep~uid"
+      // The 5th field (uid) is the rep's Supabase login id. Names are for display;
+      // the uid is what attribution and closed-sale credit actually key on.
+      const parts=String(item).split("~");
+      const d=normDate(parts[0]); if(!d)return null;
+      return {date:d, color:(parts[1]||"").trim(), note:(parts[2]||"").trim(), rep:(parts[3]||"").trim(), uid:(parts[4]||"").trim()};
+    }).filter(Boolean);
+    // newest first by date
+    out.sort((a,b)=>a.date<b.date?1:a.date>b.date?-1:0);
+    return out;
+  }
+  function effStatus(o){
+    let st=(o.status||"").toLowerCase().trim();
+    if(st==='current') st='active';
+    if(st) return st;
+    try{ return labStatus(o)||''; }catch(e){ return ''; }
+  }
+  function statusLabel(o){ const st=effStatus(o); return st?st.charAt(0).toUpperCase()+st.slice(1):''; }
+  function lastColor(o){ if(!o.visits)return ""; for(const v of o.visits){ if(v.color)return v.color; } return ""; }
+  function isClosed(o){ return !!(o&&o.closedAt); }
+  function isClaimed(o){ return !!(o&&o.claimedBy); }
+  function claimedByMe(o){
+    if(!o) return false;
+    if(o.claimedBy&&sbUser&&String(o.claimedBy)===String(sbUser.id)) return true;
+    // auto-credited from a visit whose rep isn't linked to a login: match by name
+    return !!(o.closedVia==='visit'&&o.claimedByName&&typeof repMatch==='function'&&repMatch(o.claimedByName,meName()));
+  }
+  function isBuyingStatus(o){ const s=effStatus(o); return s==="active"||s==="new"||s==="winback"; }
+  function heatOf(o){ return isClosed(o)?"closed":lastColor(o); }
+  function isMine(o){
+    if(claimedByMe(o)) return true;
+    const me=meName(); if(!me)return false;
+    if((o.addedBy||"").toLowerCase()===me.toLowerCase())return true;
+    return !!(o.visits&&o.visits.some(visitIsMine));
+  }
+  function groupsPass(o){
+    if(state.gVisit==="visited"&&!isVisited(o))return false;
+    if(state.gVisit==="unvisited"&&isVisited(o))return false;
+    if(state.gVisit==="mine"&&!isMine(o))return false;
+    if(state.gStatus==="active"&&o.active===false)return false;
+    if(state.gStatus==="inactive"&&o.active!==false)return false;
+    if(state.gHeat&&state.gHeat.length){ if(state.gHeat.indexOf(heatOf(o))<0)return false; }
+    if(state.gLab&&state.gLab.length){
+      if(!labDialPass(o))return false;   // state first — Lab filters never widen to the whole book
+      // Same source of truth as the pin colors: per-doctor 📊 LAB note lines,
+      // falling back to the offices.status column (statusSet with ignoreFilter=true
+      // so the filter itself can't narrow what it's testing against). Previously
+      // this read ONLY the note lines, so an office whose status arrived via the
+      // status column had a colored pin the Lab filter couldn't find — the filter
+      // "worked" on the map pin but dropped the office from list/map/route.
+      const sts=statusSet(o,true); if(!sts.some(s=>state.gLab.indexOf(s)>=0))return false;
+    }
+    return true;
+  }
+  function secondaryPass(o){
+    const fs=Array.isArray(state.filter)?state.filter:[];
+    for(const f of fs){
+      if(f==="scanner"&&!(o.scanner&&o.scanner!=="None"&&o.scanner!==""))return false;
+      if(f==="notes"&&!stripLab(o.notes))return false;
+      if(f==="custom"&&(o.seed||isImport(o)))return false;
+      if(f==="d7"&&!(lastVisit(o)&&daysAgo(lastVisit(o))<=7))return false;
+      if(f==="d30"&&!(lastVisit(o)&&daysAgo(lastVisit(o))<=30))return false;
+      if(f==="drange"){ const lv=lastVisit(o); if(!lv)return false;
+        if(state.dFrom&&lv<state.dFrom)return false; if(state.dTo&&lv>state.dTo)return false; }
+    }
+    return true;
+  }
+  function repPass(o){
+    const rf=Array.isArray(state.repFilter)?state.repFilter:[];
+    if(!rf.length)return true;
+    const objs=rf.map(n=>(REPS||[]).find(x=>x&&nameKey(x.name)===nameKey(n))||{name:n});
+    return !!(o.visits&&o.visits.some(v=>objs.some(r=>visitIsBy(v,r))));
+  }
+  function visitRep(o,v){
+    const vr=String(v.rep||"").replace(/\s+/g," ").trim();
+    if(vr) return vr;
+    const ab=String(o.addedBy||"").trim();
+    return ab;
+  }
+  /* ---- end of the Salesly copy ---- */
+  return {
+    setUser(u, me, reps) { sbUser = u || null; ME = me || null; REPS = reps || []; },
+    fromRow(r) { const o = dbToApp(r); o.visits = parseVisits(o.visits); return o; },
+    pass(o, f) { state = f; return groupsPass(o) && secondaryPass(o) && repPass(o); },
+    heatOf: o => heatOf(o), statuses: o => statusSet(o, true), isVisited: o => isVisited(o), lastVisit: o => lastVisit(o),
+    stripLab: n => stripLab(n), isClosed: o => isClosed(o), isClaimed: o => isClaimed(o)
+  };
+})();
 
 const PMAP_LIBS = {
   css: ['https://unpkg.com/leaflet@1.9.4/dist/leaflet.css', 'https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css',
         'https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css'],
   js: ['https://unpkg.com/leaflet@1.9.4/dist/leaflet.js', 'https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js']
 };
-const PMAP_TILES_KEY = 'a41e459f0554424fb9a54301378d5dae';   // the same Geoapify key Salesly uses
-const PMAP_TIER = { A: { label: 'A — prospect', color: '#0e9f8e' }, B: { label: 'B — prospect', color: '#f59e0b' }, S: { label: 'Customer', color: '#94a3b8' } };
+const PMAP_TILES_KEY = 'a41e459f0554424fb9a54301378d5dae';   // the same Geoapify key Salesly uses (map tiles + geocoding)
+const PM_LAB = [['active', 'Active', '#5fbe7d'], ['new', 'New', '#12a5a0'], ['winback', 'Winback', '#8e5bd1'], ['falloff', 'Falloff', '#e08a2e'], ['inactive', 'Inactive', '#cf3f3f']];
+const PM_HEAT = [['green', 'Good', '#2e9e5b'], ['yellow', 'Okay', '#bf9b16'], ['red', 'Poor', '#cf3f3f'], ['closed', 'Closed', '#b8860b']];
+const PM_TIERS = [['A', 'A prospects'], ['B', 'B prospects'], ['S', 'Customers']];
+const PM_ST = (() => { const m = {}; ('AL Alabama|AK Alaska|AZ Arizona|AR Arkansas|CA California|CO Colorado|CT Connecticut|DE Delaware|DC District of Columbia|FL Florida|GA Georgia|' +
+  'HI Hawaii|ID Idaho|IL Illinois|IN Indiana|IA Iowa|KS Kansas|KY Kentucky|LA Louisiana|ME Maine|MD Maryland|MA Massachusetts|MI Michigan|MN Minnesota|MS Mississippi|' +
+  'MO Missouri|MT Montana|NE Nebraska|NV Nevada|NH New Hampshire|NJ New Jersey|NM New Mexico|NY New York|NC North Carolina|ND North Dakota|OH Ohio|OK Oklahoma|' +
+  'OR Oregon|PA Pennsylvania|PR Puerto Rico|RI Rhode Island|SC South Carolina|SD South Dakota|TN Tennessee|TX Texas|UT Utah|VT Vermont|VA Virginia|WA Washington|' +
+  'WV West Virginia|WI Wisconsin|WY Wyoming').split('|').forEach(x => { const ab = x.slice(0, 2), n = x.slice(3); m[ab] = n; m[n.toLowerCase()] = ab; }); return m; })();
+/* "Illinois", " il " → "IL"; anything unrecognised is returned as typed */
+const pmAbbr = s => { const t = String(s || '').trim(); if (!t) return ''; if (/^[A-Za-z]{2}$/.test(t) && PM_ST[t.toUpperCase()]) return t.toUpperCase();
+  return PM_ST[t.toLowerCase().replace(/[^a-z]+/g, ' ').trim()] || t; };
+
 const PMAP = { view: (() => { try { return localStorage.getItem('dash.prospectView') || 'list'; } catch (e) { return 'list'; } })(),
-               state: '', tiers: { A: true, B: true }, showS: false, counts: null, cache: new Map(), map: null, cluster: null,
-               points: [], markers: new Map(), areas: [], areaIdx: -1, msg: '' };
+               state: '', tiers: { A: true, B: true, S: false }, f: { gVisit: '', gStatus: '', gHeat: [], gLab: [], filter: [], repFilter: [], dFrom: '', dTo: '', q: '' },
+               more: false, counts: null, cache: new Map(), offices: [], shown: [], markers: new Map(), map: null, cluster: null, reps: [], user: null, city: '', geo: null };
 
 let _pmLibs = null;
 function pmLoadLibs() {
@@ -14166,7 +14518,7 @@ function pmLoadLibs() {
   return _pmLibs;
 }
 
-/* ── addresses, sorted the way a rep walks them ─────────────────────────────── */
+/* ── addresses, in the order a rep walks them ──────────────────────────────── */
 const PM_ABBR = { north: 'n', south: 's', east: 'e', west: 'w', road: 'rd', street: 'st', avenue: 'ave', av: 'ave', boulevard: 'blvd', drive: 'dr',
                   lane: 'ln', court: 'ct', parkway: 'pkwy', highway: 'hwy', place: 'pl', circle: 'cir', terrace: 'ter', square: 'sq', trail: 'trl' };
 function pmAddrParts(a) {
@@ -14174,36 +14526,31 @@ function pmAddrParts(a) {
   const sm = s.match(/\s(?:#|ste|suite|unit|apt|bldg|building|fl|floor|rm|room|spc|space)\s*#?\s*([a-z0-9-]+)\s*$/) || s.match(/\s#\s*([a-z0-9-]+)/);
   if (sm) { suite = sm[1]; s = (s.slice(0, sm.index) + ' ' + s.slice(sm.index + sm[0].length)).trim(); }
   const m = s.match(/^(\d+)([a-z]?)\s+(.*)$/);
-  const street = (m ? m[3] : s).split(' ').map(w => PM_ABBR[w] || w).join(' ');
-  return { num: m ? +m[1] : Infinity, street, suite };
+  return { num: m ? +m[1] : Infinity, street: (m ? m[3] : s).split(' ').map(w => PM_ABBR[w] || w).join(' '), suite };
 }
 const pmNat = (a, b) => String(a || '').localeCompare(String(b || ''), undefined, { numeric: true, sensitivity: 'base' });
 function pmAddrCmp(x, y) {
   const a = x._ap || (x._ap = pmAddrParts(x.addr)), b = y._ap || (y._ap = pmAddrParts(y.addr));
-  return pmNat(x.city, y.city) || pmNat(a.street, b.street) || (a.num - b.num) || pmNat(a.suite, b.suite) || pmNat(x.name, y.name);
+  return pmNat(pmCityKey(x), pmCityKey(y)) || pmNat(a.street, b.street) || (a.num - b.num) || pmNat(a.suite, b.suite) || pmNat(x.name, y.name);
+}
+/* one city however it was typed ("naperville", "Naperville ") */
+const pmCityKey = o => String(o.city || '').trim().toLowerCase().replace(/\s+/g, ' ');
+function pmBuildingName(pts) {
+  const c = new Map();
+  pts.forEach(p => { const a = String(p.addr || '').replace(/\s*(?:,|#|\b(?:ste|suite|unit|apt|bldg|fl|floor|rm|room)\b).*$/i, '').trim(); if (a) c.set(a, (c.get(a) || 0) + 1); });
+  const best = [...c.entries()].sort((a, b) => b[1] - a[1] || b[0].length - a[0].length)[0];
+  return best ? best[0] : 'this address';
 }
 
-/* ── busiest areas: ~5-mile cells, scored with their neighbours; the best few
-      that don't overlap, each labelled by its most common city ───────────── */
-function pmFindAreas(pts) {
-  const H = 0.08, W = 0.10, cells = new Map(), key = (i, j) => i + '|' + j;   // ~5-mile cells; an area is a cell and its neighbours (~15 miles)
-  pts.forEach(p => { const i = Math.floor(p.lat / H), j = Math.floor(p.lng / W), k = key(i, j); (cells.get(k) || cells.set(k, []).get(k)).push(p); });
-  const scored = [...cells.keys()].map(k => { const [i, j] = k.split('|').map(Number); let around = [];
-    for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) around = around.concat(cells.get(key(i + di, j + dj)) || []);
-    return { i, j, pts: around }; }).sort((a, b) => b.pts.length - a.pts.length);
-  const picked = [];
-  for (const c of scored) {
-    if (picked.length >= 10 || c.pts.length < 2) break;
-    if (picked.some(p => Math.abs(p.i - c.i) <= 2 && Math.abs(p.j - c.j) <= 2)) continue;
-    const cities = new Map(); c.pts.forEach(p => { const n = String(p.city || '').trim(); if (n) cities.set(n, (cities.get(n) || 0) + 1); });
-    const top = [...cities.entries()].sort((a, b) => b[1] - a[1]);
-    picked.push(Object.assign(c, { label: top.length ? top[0][0] + (top.length > 1 ? ' area' : '') : 'Unnamed area',
-      tiers: { A: c.pts.filter(p => p.tier === 'A').length, B: c.pts.filter(p => p.tier === 'B').length, S: c.pts.filter(p => p.tier === 'S').length } }));
-  }
-  return picked;
+/* a pin's colour, as in Salesly: its strongest lab status; otherwise teal if visited, grey if not */
+function pmColor(o) {
+  const st = SLF.statuses(o)[0]; const lab = PM_LAB.find(x => x[0] === st);
+  return lab ? lab[2] : (SLF.isVisited(o) ? '#24bfcd' : '#94a3b8');
 }
+const pmTierOf = o => { const t = String(o.tier || '').trim().toUpperCase(); return t === 'S' || t === 'A' ? t : 'B'; };
+const pmHasPos = o => isFinite(+o.lat) && isFinite(+o.lng) && Math.abs(+o.lat) > 1 && Math.abs(+o.lng) > 1;
 
-/* ── the tab: List | Map ────────────────────────────────────────────────────── */
+/* ── the tab: List | Map ───────────────────────────────────────────────────── */
 function renderProspects() {
   const el = document.getElementById('panel-prospects'); if (!el) return;
   if (!el.dataset.shell) {
@@ -14211,7 +14558,7 @@ function renderProspects() {
     el.innerHTML = `
       <div class="section-header">
         <div><div class="section-title">Prospect Map</div>
-          <div class="section-sub">Find A and B prospects as a searchable list, or on a map to plan where to visit next.</div></div>
+          <div class="section-sub">The same offices and filters as Salesly — as a searchable list, or on a map to plan where to visit next.</div></div>
         <div class="section-actions"><div class="view-toggle" id="prViewToggle" role="group" aria-label="Show as">
           <button type="button" data-v="list">☰ List</button><button type="button" data-v="map">🗺 Map</button></div></div>
       </div>
@@ -14233,55 +14580,91 @@ async function renderProspectMap() {
     host.dataset.built = '1';
     host.innerHTML = `
       <div class="card pm-controls">
-        <label class="coach-f"><span>State</span><select class="gf-select" id="pmState"><option value="">Loading states…</option></select></label>
-        <div class="pm-tiers" role="group" aria-label="Show">
-          <button type="button" class="pm-tier" data-t="A"><i style="background:${PMAP_TIER.A.color}"></i>A prospects</button>
-          <button type="button" class="pm-tier" data-t="B"><i style="background:${PMAP_TIER.B.color}"></i>B prospects</button>
-          <button type="button" class="pm-tier" data-t="S"><i style="background:${PMAP_TIER.S.color}"></i>Customers</button>
+        <div class="pm-row1">
+          <label class="coach-f"><span>State</span><select class="gf-select" id="pmState"><option value="">Loading states…</option></select></label>
+          <label class="coach-f pm-q"><span>Search — name, city, address, doctor, lab or zip</span><input class="gf-select" id="pmQ" placeholder="Search offices"></label>
+          <div class="pm-tiers" role="group" aria-label="Show">${PM_TIERS.map(([t, l]) => `<button type="button" class="pm-tier" data-t="${t}">${l}</button>`).join('')}</div>
         </div>
-        <button class="btn-text" id="pmBusiest" disabled>◎ Busiest area</button>
-        <button class="btn-text" id="pmWhole" disabled>⤢ Whole state</button>
+        <div class="pm-filters" id="pmFilters"></div>
+        <div class="pm-more" id="pmMore"></div>
         <div class="pm-msg" id="pmMsg"></div>
       </div>
+      <div class="pm-fill card" id="pmFill" style="display:none"></div>
       <div class="pm-body">
-        <div class="pm-map card" id="pmMap"><div class="pm-empty" id="pmEmpty">Pick a state to see its prospects.</div></div>
+        <div class="pm-map card" id="pmMap"><div class="pm-empty" id="pmEmpty">Pick a state to see its offices.</div></div>
         <aside class="pm-side card">
-          <div class="pm-sec">Busiest areas</div><div id="pmAreas" class="pm-areas"><div class="pm-note">Pick a state first.</div></div>
+          <div class="pm-sec" id="pmCitiesHead">Cities</div><input class="gf-select pm-cityq" id="pmCityQ" placeholder="Find a city" style="display:none">
+          <div id="pmCities" class="pm-areas"><div class="pm-note">Pick a state first.</div></div>
           <div class="pm-sec" id="pmInViewHead">In view</div><div id="pmList" class="pm-list"></div>
         </aside>
       </div>`;
     host.querySelector('#pmState').addEventListener('change', e => pmShowState(e.target.value));
-    host.querySelectorAll('.pm-tier').forEach(b => b.addEventListener('click', () => {
-      const t = b.dataset.t; if (t === 'S') PMAP.showS = !PMAP.showS; else PMAP.tiers[t] = !PMAP.tiers[t];
-      pmPaintTiers(); if (PMAP.state) pmShowState(PMAP.state, true);
-    }));
-    host.querySelector('#pmBusiest').onclick = () => pmZoomArea(0);
-    host.querySelector('#pmWhole').onclick = () => pmZoomWhole();
+    let qt = null; host.querySelector('#pmQ').addEventListener('input', e => { clearTimeout(qt); qt = setTimeout(() => { PMAP.f.q = e.target.value.trim(); pmApply(false); }, 200); });
+    host.querySelectorAll('.pm-tier').forEach(b => b.addEventListener('click', () => { PMAP.tiers[b.dataset.t] = !PMAP.tiers[b.dataset.t]; pmPaintFilters(); pmApply(false); }));
+    host.querySelector('#pmCityQ').addEventListener('input', () => pmPaintCities());
   }
-  pmPaintTiers();
-  const msg = t => { PMAP.msg = t; const m = document.getElementById('pmMsg'); if (m) m.innerHTML = t; };
+  const msg = t => { const m = document.getElementById('pmMsg'); if (m) m.innerHTML = t; };
   const db = typeof pgClient === 'function' ? pgClient() : null;
-  if (!db || !(await pgSession())) { msg('Sign in on the <b>Salesly Bridge</b> tab first — the map reads your prospect book from Supabase.'); return; }
+  const session = db ? await pgSession() : null;
+  if (!db || !session) { msg('Sign in on the <b>Salesly Bridge</b> tab first — the map reads the offices from Supabase.'); return; }
   try { await pmLoadLibs(); } catch (e) { msg(esc(e.message) + ' — check the internet connection and try again.'); return; }
-  if (!PMAP.map) pmMakeMap();
-  else setTimeout(() => PMAP.map.invalidateSize(), 50);
+  if (!PMAP.map) pmMakeMap(); else setTimeout(() => PMAP.map.invalidateSize(), 50);
+  if (!PMAP.user) {   // who's signed in and the reps — for Salesly's "Mine" and "By rep" filters
+    const uid = (session.user && session.user.id) || session.id || null;
+    const { data: reps } = await db.from('reps').select('*');
+    PMAP.reps = reps || []; const me = PMAP.reps.find(r => String(r.id) === String(uid));
+    PMAP.user = { id: uid }; SLF.setUser({ id: uid }, me ? { name: me.name } : null, PMAP.reps);
+  }
+  pmPaintFilters();
   if (!PMAP.counts) {
     const { data, error } = await db.rpc('prospect_state_counts');
-    if (error) { msg(/function|does not exist|PGRST202/i.test(error.message || '') ? 'Run <b>salesly_prospect_map.sql</b> in Supabase once to turn the map on.' : 'Could not load states: ' + esc(error.message)); return; }
+    if (error) { msg(/function|does not exist|PGRST202/i.test(error.message || '') ? 'Run <b>salesly_states_and_cities.sql</b> in Supabase once to turn the map on.' : 'Could not load states: ' + esc(error.message)); return; }
     const c = new Map();
-    (data || []).forEach(r => { const s = String(r.state || '').toUpperCase(); if (!s) return; const x = c.get(s) || { A: 0, B: 0, S: 0 }; x[r.tier] = (x[r.tier] || 0) + Number(r.n || 0); c.set(s, x); });
+    (data || []).forEach(r => { const s = pmAbbr(r.state); if (!s) return; const x = c.get(s) || { A: 0, B: 0, S: 0 }; x[r.tier] = (x[r.tier] || 0) + Number(r.n || 0); c.set(s, x); });
     PMAP.counts = c;
   }
   const sel = document.getElementById('pmState');
   const states = [...PMAP.counts.entries()].sort((a, b) => (b[1].A + b[1].B) - (a[1].A + a[1].B));
   sel.innerHTML = '<option value="">— pick a state —</option>' + states.map(([s, x]) =>
-    `<option value="${esc(s)}"${s === PMAP.state ? ' selected' : ''}>${esc(s)} — ${(x.A + x.B).toLocaleString()} prospects${x.S ? ' · ' + x.S.toLocaleString() + ' customers' : ''}</option>`).join('');
-  if (!PMAP.state) msg(`${states.length} states with mapped prospects. Busiest: ${states.slice(0, 3).map(([s, x]) => esc(s) + ' (' + (x.A + x.B).toLocaleString() + ')').join(', ')}.`);
+    `<option value="${esc(s)}"${s === PMAP.state ? ' selected' : ''}>${esc(s)}${PM_ST[s] ? ' — ' + esc(PM_ST[s]) : ''} · ${(x.A + x.B).toLocaleString()} prospects${x.S ? ' · ' + x.S.toLocaleString() + ' customers' : ''}</option>`).join('');
+  if (!PMAP.state) msg(`${states.length} states. Busiest: ${states.slice(0, 3).map(([s, x]) => esc(s) + ' (' + (x.A + x.B).toLocaleString() + ')').join(', ')}.`);
 }
 
-function pmPaintTiers() {
-  document.querySelectorAll('#prMapHost .pm-tier').forEach(b => { const t = b.dataset.t, on = t === 'S' ? PMAP.showS : PMAP.tiers[t];
-    b.classList.toggle('on', !!on); b.setAttribute('aria-pressed', !!on); });
+/* the filter bar — Salesly's chips, in Salesly's order */
+function pmPaintFilters() {
+  const f = PMAP.f, box = document.getElementById('pmFilters'); if (!box) return;
+  document.querySelectorAll('#prMapHost .pm-tier').forEach(b => { const on = !!PMAP.tiers[b.dataset.t]; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); });
+  const pool = PMAP.offices.filter(o => PMAP.tiers[pmTierOf(o)]);
+  const heatN = k => pool.filter(o => SLF.heatOf(o) === k).length, labN = k => pool.filter(o => SLF.statuses(o).includes(k)).length;
+  const seg = (k, v, l) => `<button type="button" class="pm-seg${f[k] === v ? ' on' : ''}" data-k="${k}" data-v="${v}">${l}</button>`;
+  const any = f.gVisit || f.gStatus || f.gHeat.length || f.gLab.length || f.filter.length || f.repFilter.length || f.q;
+  box.innerHTML = `
+    <div class="pm-fgroup"><span class="pm-flab">Visits</span>${seg('gVisit', 'visited', 'Visited')}${seg('gVisit', 'unvisited', 'Not visited')}${seg('gVisit', 'mine', 'Mine')}</div>
+    <div class="pm-fgroup"><span class="pm-flab">Status</span>${seg('gStatus', 'active', 'Active')}${seg('gStatus', 'inactive', 'Inactive')}</div>
+    <div class="pm-fgroup"><span class="pm-flab">Last visit</span>${PM_HEAT.map(([k, l, c]) => `<button type="button" class="pm-seg pm-heat${f.gHeat.includes(k) ? ' on' : ''}" data-h="${k}" title="${l}">${k === 'closed' ? '★' : `<i style="background:${c}"></i>`} ${l} <b>${heatN(k).toLocaleString()}</b></button>`).join('')}</div>
+    <div class="pm-fgroup"><span class="pm-flab">Lab</span>${PM_LAB.map(([k, l, c]) => `<button type="button" class="pm-seg${f.gLab.includes(k) ? ' on' : ''}" data-l="${k}"><i style="background:${c}"></i> ${l} <b>${labN(k).toLocaleString()}</b></button>`).join('')}</div>
+    <button type="button" class="pm-seg${PMAP.more ? ' on' : ''}" id="pmMoreBtn">More ${PMAP.more ? '▴' : '▾'}</button>
+    ${any ? '<button type="button" class="btn-text" id="pmClear">Clear all</button>' : ''}`;
+  box.querySelectorAll('[data-k]').forEach(b => b.onclick = () => { f[b.dataset.k] = f[b.dataset.k] === b.dataset.v ? '' : b.dataset.v; pmPaintFilters(); pmApply(false); });
+  box.querySelectorAll('[data-h]').forEach(b => b.onclick = () => { const i = f.gHeat.indexOf(b.dataset.h); i >= 0 ? f.gHeat.splice(i, 1) : f.gHeat.push(b.dataset.h); pmPaintFilters(); pmApply(false); });
+  box.querySelectorAll('[data-l]').forEach(b => b.onclick = () => { const i = f.gLab.indexOf(b.dataset.l); i >= 0 ? f.gLab.splice(i, 1) : f.gLab.push(b.dataset.l); pmPaintFilters(); pmApply(false); });
+  document.getElementById('pmMoreBtn').onclick = () => { PMAP.more = !PMAP.more; pmPaintFilters(); };
+  const clr = document.getElementById('pmClear'); if (clr) clr.onclick = () => { Object.assign(f, { gVisit: '', gStatus: '', gHeat: [], gLab: [], filter: [], repFilter: [], dFrom: '', dTo: '', q: '' });
+    const q = document.getElementById('pmQ'); if (q) q.value = ''; pmPaintFilters(); pmApply(false); };
+  // "More": Salesly's secondary filters and By rep
+  const more = document.getElementById('pmMore'); more.style.display = PMAP.more ? '' : 'none'; if (!PMAP.more) return;
+  const sub = (v, l) => `<button type="button" class="pm-seg${f.filter.includes(v) ? ' on' : ''}" data-f="${v}">${l}</button>`;
+  more.innerHTML = `${sub('scanner', 'Has scanner')}${sub('notes', 'Has notes')}${sub('custom', 'My added')}<span class="pm-div"></span>
+    ${sub('d7', 'Last 7 days')}${sub('d30', 'Last 30 days')}${sub('drange', 'Date range')}
+    ${f.filter.includes('drange') ? `<label class="pm-dl">From <input type="date" class="gf-select" id="pmFrom" value="${esc(f.dFrom)}"></label><label class="pm-dl">To <input type="date" class="gf-select" id="pmTo" value="${esc(f.dTo)}"></label>` : ''}
+    ${PMAP.reps.length ? `<span class="pm-div"></span><span class="pm-flab">Rep</span><button type="button" class="pm-seg${f.repFilter.length ? '' : ' on'}" data-rep="">All</button>${PMAP.reps.filter(r => r && r.name).map(r => `<button type="button" class="pm-seg${f.repFilter.some(n => String(n).toLowerCase() === String(r.name).toLowerCase()) ? ' on' : ''}" data-rep="${esc(r.name)}">${esc(r.name)}</button>`).join('')}` : ''}`;
+  more.querySelectorAll('[data-f]').forEach(b => b.onclick = () => { const v = b.dataset.f, i = f.filter.indexOf(v);
+    if (i >= 0) f.filter.splice(i, 1); else { if (/^(d7|d30|drange)$/.test(v)) f.filter = f.filter.filter(x => !/^(d7|d30|drange)$/.test(x)); f.filter.push(v); }
+    pmPaintFilters(); pmApply(false); });
+  more.querySelectorAll('[data-rep]').forEach(b => b.onclick = () => { const n = b.dataset.rep; if (!n) f.repFilter = []; else { const i = f.repFilter.indexOf(n); i >= 0 ? f.repFilter.splice(i, 1) : f.repFilter.push(n); }
+    pmPaintFilters(); pmApply(false); });
+  const fr = document.getElementById('pmFrom'), to = document.getElementById('pmTo');
+  if (fr) fr.onchange = e => { f.dFrom = e.target.value; pmApply(false); }; if (to) to.onchange = e => { f.dTo = e.target.value; pmApply(false); };
 }
 
 function pmMakeMap() {
@@ -14297,8 +14680,7 @@ function pmMakeMap() {
     if (ms.every(m => PMAP.map.distance(first, m.getLatLng()) < 40)) {   // one building: list it
       const pts = ms.map(m => m._pm).sort(pmAddrCmp);
       L.popup({ maxWidth: 340, maxHeight: 320, className: 'pm-pop' }).setLatLng(e.layer.getLatLng())
-        .setContent(`<div class="pm-pop-h">${pts.length} offices at ${esc(pmBuildingName(pts))}</div>` +
-                    pts.map(p => pmPopupHTML(p, true)).join('')).openOn(PMAP.map);
+        .setContent(`<div class="pm-pop-h">${pts.length} offices at ${esc(pmBuildingName(pts))}</div>` + pts.map(p => pmPopupHTML(p, true)).join('')).openOn(PMAP.map);
     } else if (PMAP.map.getZoom() >= PMAP.map.getMaxZoom() - 1) e.layer.spiderfy();
     else PMAP.map.fitBounds(e.layer.getBounds(), { padding: [40, 40], maxZoom: 17 });
   });
@@ -14306,90 +14688,181 @@ function pmMakeMap() {
   PMAP.map.on('moveend', pmPaintInView);
 }
 
-/* the building's address as most of its offices write it, without the suite */
-function pmBuildingName(pts) {
-  const c = new Map();
-  pts.forEach(p => { const a = String(p.addr || '').replace(/\s*(?:,|#|\b(?:ste|suite|unit|apt|bldg|fl|floor|rm|room)\b).*$/i, '').trim(); if (a) c.set(a, (c.get(a) || 0) + 1); });
-  const best = [...c.entries()].sort((a, b) => b[1] - a[1] || b[0].length - a[0].length)[0];
-  return best ? best[0] : 'this address';
-}
-function pmPopupHTML(p, compact) {
-  const t = PMAP_TIER[p.tier] || PMAP_TIER.B, addr = [p.addr, [p.city, [p.state, p.zip].filter(Boolean).join(' ')].filter(Boolean).join(', ')].filter(Boolean).join(', ');
+function pmPopupHTML(o, compact) {
+  const addr = [o.addr, [o.city, [pmAbbr(o.state), o.zip].filter(Boolean).join(' ')].filter(Boolean).join(', ')].filter(Boolean).join(', ');
+  const labs = SLF.statuses(o).map(s => { const x = PM_LAB.find(l => l[0] === s); return x ? `<span class="pm-lab" style="--c:${x[2]}">${x[1]}</span>` : ''; }).join('');
+  const lv = SLF.lastVisit(o), heat = PM_HEAT.find(h => h[0] === SLF.heatOf(o));
   return `<div class="pm-pop-o${compact ? ' compact' : ''}">
-    <div class="pm-pop-n"><span class="pm-dot" style="background:${t.color}"></span>${esc(p.name || 'Unnamed office')} <span class="pm-pop-t">${esc(p.tier)}</span></div>
-    <div class="pm-pop-a">${esc(addr)}</div>
-    <div class="pm-pop-x">${[p.phone ? `<a href="tel:${esc(String(p.phone).replace(/[^0-9+]/g, ''))}">${esc(p.phone)}</a>` : '', p.scanner ? esc(p.scanner) : '', p.status ? esc(p.status) : '',
-      `<a href="https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(addr)}" target="_blank" rel="noopener">Directions ↗</a>`].filter(Boolean).join(' · ')}</div></div>`;
+    <div class="pm-pop-n"><span class="pm-dot" style="background:${pmColor(o)}"></span>${esc(o.name || 'Unnamed office')} <span class="pm-pop-t">${esc(pmTierOf(o))}</span>${labs}</div>
+    <div class="pm-pop-a">${esc(addr || 'No address')}</div>
+    <div class="pm-pop-x">${[lv ? `Last visit ${esc(lv)}${heat ? ' · ' + heat[1] : ''}` : 'Not visited', SLF.isClaimed(o) ? `☆ ${esc(o.claimedByName || 'Claimed')}` : '',
+      o.phone ? `<a href="tel:${esc(String(o.phone).replace(/[^0-9+]/g, ''))}">${esc(o.phone)}</a>` : '', o.scanner && o.scanner !== 'None' ? esc(o.scanner) : '',
+      addr ? `<a href="https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(addr)}" target="_blank" rel="noopener">Directions ↗</a>` : ''].filter(Boolean).join(' · ')}</div></div>`;
 }
 
-async function pmShowState(st, keepView) {
-  PMAP.state = st; const msg = t => { const m = document.getElementById('pmMsg'); if (m) m.innerHTML = t; };
-  const empty = document.getElementById('pmEmpty');
-  if (!st) { PMAP.cluster && PMAP.cluster.clearLayers(); PMAP.points = []; if (empty) empty.style.display = ''; pmPaintAreas(); pmPaintInView(); return; }
-  const tiers = ['A', 'B', 'S'].filter(t => t === 'S' ? PMAP.showS : PMAP.tiers[t]);
-  if (!tiers.length) { msg('Turn on at least one of A, B or Customers.'); PMAP.cluster.clearLayers(); PMAP.points = []; pmPaintAreas(); pmPaintInView(); return; }
-  msg('Loading ' + esc(st) + '…');
-  const key = st + '|' + tiers.join('');
-  let rows = PMAP.cache.get(key);
-  if (!rows) {
-    const { data, error } = await pgClient().rpc('prospect_map_points', { p_state: st, p_tiers: tiers });
-    if (error) { msg('Could not load ' + esc(st) + ': ' + esc(error.message)); return; }
-    rows = (data || []).filter(r => isFinite(r.lat) && isFinite(r.lng) && Math.abs(r.lat) > 1 && Math.abs(r.lng) > 1);
-    PMAP.cache.set(key, rows);
+/* load one state's offices — "IL" and "Illinois" both — the way the Sales Visits tab loads them */
+async function pmLoadState(st) {
+  if (PMAP.cache.has(st)) return PMAP.cache.get(st);
+  const db = pgClient(), full = PM_ST[st] || st, PAGE = 1000, rows = [];
+  const orExpr = `state.ilike.${st},state.ilike."${full}"`;
+  for (let from = 0; from < 60000; from += PAGE) {
+    let q = db.from('offices').select('*').or(orExpr).is('deleted_at', null);
+    let { data, error } = await q.is('merged_into', null).order('id').range(from, from + PAGE - 1);
+    if (error && /merged_into/i.test(error.message || '')) ({ data, error } = await db.from('offices').select('*').or(orExpr).is('deleted_at', null).order('id').range(from, from + PAGE - 1));
+    if (error) throw new Error(error.message);
+    rows.push(...(data || [])); if (!data || data.length < PAGE) break;
   }
+  const offices = rows.map(r => { const o = SLF.fromRow(r); o.tier = r.tier || o.tier; o.state = pmAbbr(o.state); return o; });
+  PMAP.cache.set(st, offices);
+  return offices;
+}
+
+async function pmShowState(st) {
+  PMAP.state = st; PMAP.city = ''; const msg = t => { const m = document.getElementById('pmMsg'); if (m) m.innerHTML = t; };
+  const empty = document.getElementById('pmEmpty');
+  if (!st) { PMAP.offices = []; PMAP.cluster && PMAP.cluster.clearLayers(); if (empty) empty.style.display = ''; pmPaintFilters(); pmPaintCities(); pmPaintInView(); pmPaintFill(); return; }
+  msg('Loading ' + esc(st) + '…');
+  let offices;
+  try { offices = await pmLoadState(st); } catch (e) { msg('Could not load ' + esc(st) + ': ' + esc(e.message)); return; }
   if (PMAP.state !== st) return;   // a newer pick arrived while this one loaded
   if (empty) empty.style.display = 'none';
-  PMAP.points = rows; PMAP.markers = new Map();
-  PMAP.cluster.clearLayers();
-  PMAP.cluster.addLayers(rows.map(p => {
-    const m = L.circleMarker([p.lat, p.lng], { radius: p.tier === 'S' ? 5 : 7, color: '#fff', weight: 1.5, fillColor: (PMAP_TIER[p.tier] || PMAP_TIER.B).color, fillOpacity: p.tier === 'S' ? 0.7 : 0.95 });
-    m._pm = p; m.bindPopup(() => pmPopupHTML(p), { maxWidth: 320 }); PMAP.markers.set(p.id, m); return m;
-  }));
-  PMAP.areas = pmFindAreas(rows.filter(p => p.tier !== 'S'));
-  pmPaintAreas();
-  document.getElementById('pmBusiest').disabled = !PMAP.areas.length; document.getElementById('pmWhole').disabled = !rows.length;
-  const nA = rows.filter(p => p.tier === 'A').length, nB = rows.filter(p => p.tier === 'B').length, nS = rows.filter(p => p.tier === 'S').length;
-  msg(`<b>${esc(st)}</b>: ${nA.toLocaleString()} A · ${nB.toLocaleString()} B${PMAP.showS ? ' · ' + nS.toLocaleString() + ' customers' : ''}`
-      + (rows.length >= 25000 ? ' — showing the first 25,000' : '') + (PMAP.areas.length && !keepView ? ' — zoomed to the busiest area' : ''));
-  if (!keepView) { if (PMAP.areas.length) pmZoomArea(0); else pmZoomWhole(); } else pmPaintInView();
+  PMAP.offices = offices;
+  pmPaintFilters(); pmApply(true); pmPaintFill();
 }
 
-function pmZoomArea(i) {
-  const a = PMAP.areas[i]; if (!a || !PMAP.map) return;
-  PMAP.areaIdx = i; pmPaintAreas();
-  PMAP.map.fitBounds(L.latLngBounds(a.pts.map(p => [p.lat, p.lng])), { padding: [30, 30], maxZoom: 14 });
+/* apply Salesly's filters + the tier chips, then repaint the map, cities and list */
+function pmApply(fit) {
+  const f = PMAP.f, q = String(f.q || '').toLowerCase(), S = v => (v == null ? '' : String(v)).toLowerCase();
+  PMAP.shown = PMAP.offices.filter(o => PMAP.tiers[pmTierOf(o)] && SLF.pass(o, f)
+    && (!q || S(o.name).includes(q) || S(o.city).includes(q) || S(o.addr).includes(q) || S(o.drs).includes(q) || S(o.lab).includes(q) || S(o.zip).includes(q)));
+  if (!PMAP.cluster) return;
+  PMAP.markers = new Map(); PMAP.cluster.clearLayers();
+  PMAP.cluster.addLayers(PMAP.shown.filter(pmHasPos).map(o => {
+    const m = L.circleMarker([+o.lat, +o.lng], { radius: pmTierOf(o) === 'S' ? 6 : 7, color: '#fff', weight: 1.5, fillColor: pmColor(o), fillOpacity: 0.95 });
+    m._pm = o; m.bindPopup(() => pmPopupHTML(o), { maxWidth: 320 }); PMAP.markers.set(o.id, m); return m;
+  }));
+  const nPos = PMAP.shown.filter(pmHasPos).length, nT = t => PMAP.shown.filter(o => pmTierOf(o) === t).length;
+  const m = document.getElementById('pmMsg');
+  if (m) m.innerHTML = `<b>${esc(PMAP.state)}</b>: ${PMAP.shown.length.toLocaleString()} offices match — ${nT('A').toLocaleString()} A · ${nT('B').toLocaleString()} B${PMAP.tiers.S ? ' · ' + nT('S').toLocaleString() + ' customers' : ''}`
+    + (PMAP.shown.length > nPos ? ` · <span class="text-mut">${(PMAP.shown.length - nPos).toLocaleString()} have no map position yet</span>` : '');
+  pmPaintCities();
+  if (fit) { const b = PMAP.shown.filter(pmHasPos); if (b.length) PMAP.map.fitBounds(L.latLngBounds(b.map(o => [+o.lat, +o.lng])), { padding: [20, 20] }); }
+  pmPaintInView();
 }
-function pmZoomWhole() {
-  if (!PMAP.points.length || !PMAP.map) return;
-  PMAP.areaIdx = -1; pmPaintAreas();
-  PMAP.map.fitBounds(L.latLngBounds(PMAP.points.map(p => [p.lat, p.lng])), { padding: [20, 20] });
+
+/* the cities of the state, busiest first — click one to zoom to it */
+function pmPaintCities() {
+  const box = document.getElementById('pmCities'), head = document.getElementById('pmCitiesHead'), cq = document.getElementById('pmCityQ'); if (!box) return;
+  if (!PMAP.state) { box.innerHTML = '<div class="pm-note">Pick a state first.</div>'; if (cq) cq.style.display = 'none'; return; }
+  const by = new Map();
+  PMAP.shown.forEach(o => { const k = pmCityKey(o); const x = by.get(k) || { key: k, names: new Map(), all: [], A: 0, B: 0, S: 0 };
+    x.all.push(o); x[pmTierOf(o)]++; const nm = String(o.city || '').trim(); if (nm) x.names.set(nm, (x.names.get(nm) || 0) + 1); by.set(k, x); });
+  let rows = [...by.values()].map(x => Object.assign(x, { label: x.key ? [...x.names.entries()].sort((a, b) => b[1] - a[1])[0][0] : 'No city' }));
+  const noCity = rows.find(x => !x.key); rows = rows.filter(x => x.key).sort((a, b) => b.all.length - a.all.length);
+  head.textContent = `Cities — ${rows.length.toLocaleString()}`; if (cq) cq.style.display = rows.length > 8 ? '' : 'none';
+  const cf = cq ? cq.value.trim().toLowerCase() : '';
+  const vis = cf ? rows.filter(x => x.label.toLowerCase().includes(cf)) : rows;
+  box.innerHTML = vis.slice(0, 60).map(x => `<button type="button" class="pm-area${PMAP.city === x.key ? ' on' : ''}" data-city="${esc(x.key)}">
+      <span class="pm-area-n">${esc(x.label)}</span><span class="pm-area-c">${x.all.length.toLocaleString()}<small>${x.A} A · ${x.B} B${x.S ? ' · ' + x.S + ' cust.' : ''}</small></span></button>`).join('')
+    + (vis.length > 60 ? `<div class="pm-note">…and ${vis.length - 60} more cities — type to find one.</div>` : '')
+    + (noCity ? `<button type="button" class="pm-area pm-nocity" id="pmNoCity"><span class="pm-area-n">No city on file</span><span class="pm-area-c">${noCity.all.length.toLocaleString()}<small>fill them ↓</small></span></button>` : '');
+  box.querySelectorAll('[data-city]').forEach(b => b.onclick = () => {
+    PMAP.city = PMAP.city === b.dataset.city ? '' : b.dataset.city; pmPaintCities();
+    const pts = (by.get(PMAP.city) || { all: PMAP.shown }).all.filter(pmHasPos);
+    if (pts.length) PMAP.map.fitBounds(L.latLngBounds(pts.map(o => [+o.lat, +o.lng])), { padding: [30, 30], maxZoom: 15 });
+  });
+  const nc = document.getElementById('pmNoCity'); if (nc) nc.onclick = () => { const f = document.getElementById('pmFill'); if (f) f.scrollIntoView({ block: 'center' }); };
 }
-function pmPaintAreas() {
-  const box = document.getElementById('pmAreas'); if (!box) return;
-  if (!PMAP.state) { box.innerHTML = '<div class="pm-note">Pick a state first.</div>'; return; }
-  if (!PMAP.areas.length) { box.innerHTML = '<div class="pm-note">No clusters — prospects here are spread out.</div>'; return; }
-  box.innerHTML = PMAP.areas.map((a, i) => `<button type="button" class="pm-area${i === PMAP.areaIdx ? ' on' : ''}" data-i="${i}">
-      <span class="pm-area-r">${i + 1}</span><span class="pm-area-n">${esc(a.label)}</span>
-      <span class="pm-area-c">${(a.tiers.A + a.tiers.B).toLocaleString()}<small>${a.tiers.A} A · ${a.tiers.B} B</small></span></button>`).join('');
-  box.querySelectorAll('.pm-area').forEach(b => b.addEventListener('click', () => pmZoomArea(+b.dataset.i)));
-}
+
 function pmPaintInView() {
   const box = document.getElementById('pmList'), head = document.getElementById('pmInViewHead'); if (!box || !PMAP.map) return;
-  const b = PMAP.map.getBounds(), vis = PMAP.points.filter(p => b.contains([p.lat, p.lng])).sort(pmAddrCmp);
-  head.textContent = PMAP.points.length ? `In view — ${vis.length.toLocaleString()}` : 'In view';
-  if (!vis.length) { box.innerHTML = PMAP.points.length ? '<div class="pm-note">Nothing on screen — zoom out or pick an area.</div>' : ''; return; }
+  const b = PMAP.map.getBounds(), vis = PMAP.shown.filter(o => pmHasPos(o) && b.contains([+o.lat, +o.lng])).sort(pmAddrCmp);
+  head.textContent = PMAP.shown.length ? `In view — ${vis.length.toLocaleString()}` : 'In view';
+  if (!vis.length) { box.innerHTML = PMAP.shown.length ? '<div class="pm-note">Nothing on screen — zoom out or pick a city.</div>' : ''; return; }
   const LIM = 250; let lastCity = null, lastStreet = null;
-  box.innerHTML = vis.slice(0, LIM).map(p => {
-    const city = String(p.city || '').trim(), ap = p._ap || pmAddrParts(p.addr), street = (ap.num !== Infinity ? ap.num + ' ' : '') + ap.street;
-    const ch = city !== lastCity ? `<div class="pm-city">${esc(city || 'No city')}</div>` : ''; const same = city === lastCity && street === lastStreet;
-    lastCity = city; lastStreet = street;
-    return ch + `<button type="button" class="pm-row${same ? ' same' : ''}" data-id="${esc(p.id)}"><span class="pm-dot" style="background:${(PMAP_TIER[p.tier] || PMAP_TIER.B).color}"></span>
-      <span class="pm-row-m"><b>${esc(p.name || 'Unnamed office')}</b><small>${esc(p.addr || '')}</small></span><span class="pm-row-t">${esc(p.tier)}</span></button>`;
-  }).join('') + (vis.length > LIM ? `<div class="pm-note">…and ${(vis.length - LIM).toLocaleString()} more — zoom in to narrow the list.</div>` : '');
-  box.querySelectorAll('.pm-row').forEach(r => r.addEventListener('click', () => {
-    const m = PMAP.markers.get(r.dataset.id); if (!m) return;
-    PMAP.cluster.zoomToShowLayer(m, () => m.openPopup());
-  }));
+  box.innerHTML = vis.slice(0, LIM).map(o => {
+    const city = String(o.city || '').trim(), ap = o._ap || pmAddrParts(o.addr), street = (ap.num !== Infinity ? ap.num + ' ' : '') + ap.street;
+    const ch = pmCityKey(o) !== lastCity ? `<div class="pm-city">${esc(city || 'No city')}</div>` : ''; const same = pmCityKey(o) === lastCity && street === lastStreet && ap.num !== Infinity;
+    lastCity = pmCityKey(o); lastStreet = street;
+    return ch + `<button type="button" class="pm-row${same ? ' same' : ''}" data-id="${esc(o.id)}"><span class="pm-dot" style="background:${pmColor(o)}"></span>
+      <span class="pm-row-m"><b>${esc(o.name || 'Unnamed office')}</b><small>${esc(o.addr || '')}</small></span><span class="pm-row-t">${esc(pmTierOf(o))}</span></button>`;
+  }).join('') + (vis.length > LIM ? `<div class="pm-note">…and ${(vis.length - LIM).toLocaleString()} more — zoom in or pick a city.</div>` : '');
+  box.querySelectorAll('.pm-row').forEach(r => r.addEventListener('click', () => { const m = PMAP.markers.get(r.dataset.id); if (m) PMAP.cluster.zoomToShowLayer(m, () => m.openPopup()); }));
+}
+
+/* ── Fill missing cities ───────────────────────────────────────────────────────
+   Offices with a position: the city is looked up FROM the position. Offices
+   without one: from the address. Geocodio when its key is saved on the Salesly
+   Bridge tab (the most precise), otherwise Geoapify (the map's own key), then
+   OpenStreetMap. A result is used only when it agrees with the office's state;
+   a ZIP-only match fills the city but never sets a position. The database
+   fills EMPTY fields only and never moves a hand-placed pin. */
+function pmPaintFill() {
+  const box = document.getElementById('pmFill'); if (!box) return;
+  if (!PMAP.state) { box.style.display = 'none'; return; }
+  const missing = PMAP.offices.filter(o => !String(o.city || '').trim() && (String(o.addr || '').trim() || pmHasPos(o)));
+  const g = PMAP.geo;
+  if (!missing.length && !g) { box.style.display = 'none'; return; }
+  box.style.display = '';
+  if (g && g.running) {
+    box.innerHTML = `<div class="pm-fill-h"><b>Filling missing cities in ${esc(g.state)}…</b> ${g.done.toLocaleString()} of ${g.total.toLocaleString()} · ${g.filled} filled · ${g.skipped} skipped
+      <button type="button" class="btn-text" id="pmGeoStop">Stop</button></div><div class="pm-bar"><i style="width:${g.total ? Math.round(g.done / g.total * 100) : 0}%"></i></div>`;
+    document.getElementById('pmGeoStop').onclick = () => { g.stop = true; };
+    return;
+  }
+  box.innerHTML = `<div class="pm-fill-h"><span><b>${missing.length.toLocaleString()}</b> office${missing.length === 1 ? '' : 's'} in ${esc(PMAP.state)} ${missing.length === 1 ? 'has' : 'have'} no city on file${g && !g.running ? ` · last run: ${g.filled} filled, ${g.skipped} skipped` : ''}.</span>
+    ${missing.length ? `<button type="button" class="sb-btn-primary" id="pmGeoGo">Fill missing cities</button>` : ''}
+    ${g && g.skips && g.skips.length ? `<button type="button" class="btn-text" id="pmGeoCsv">⬇ Skipped (${g.skips.length})</button>` : ''}</div>
+    <div class="pm-note">Looks each one up (Geocodio if its key is saved on the Salesly Bridge tab, otherwise Geoapify) and fills <b>only empty fields</b> — never a city, state or zip that’s already there, and never a hand-placed pin. Every change is logged and can be undone.</div>`;
+  const go = document.getElementById('pmGeoGo'); if (go) go.onclick = () => pmFillCities(missing);
+  const csv = document.getElementById('pmGeoCsv'); if (csv) csv.onclick = () => downloadCSV('missing-cities-skipped-' + isoDate(new Date()) + '.csv', g.skips);
+}
+
+async function pmGeoLookup(o) {
+  const cfg = (typeof sbCfg === 'function') ? (sbCfg() || {}) : {}, gc = cfg.gc || '', hasPos = pmHasPos(o), st = pmAbbr(o.state);
+  const json = async u => { const r = await fetch(u, { headers: { Accept: 'application/json' } }); if (r.status === 429) throw new Error('rate'); return r.ok ? r.json() : null; };
+  const out = (city, state, zip, lat, lng, level, source) => ({ city: String(city || '').trim(), state: pmAbbr(state), zip: String(zip || '').trim(), lat, lng, level, source });
+  if (hasPos) {   // the position is already right — just ask which city it is in
+    if (gc) { const d = await json(`https://api.geocod.io/v1.7/reverse?q=${+o.lat},${+o.lng}&limit=1&api_key=${encodeURIComponent(gc)}`); const r = d && d.results && d.results[0];
+      if (r && r.address_components) return out(r.address_components.city, r.address_components.state, r.address_components.zip, null, null, 'position', 'geocodio'); }
+    const d = await json(`https://api.geoapify.com/v1/geocode/reverse?lat=${+o.lat}&lon=${+o.lng}&format=json&apiKey=${PMAP_TILES_KEY}`); const r = d && d.results && d.results[0];
+    if (r) return out(r.city || r.town || r.village || r.hamlet || r.suburb, r.state_code || r.state, r.postcode, null, null, 'position', 'geoapify');
+    return null;
+  }
+  const text = [o.addr, o.zip, st].filter(Boolean).join(', ');
+  if (gc) { const d = await json(`https://api.geocod.io/v1.7/geocode?q=${encodeURIComponent(text)}&limit=1&api_key=${encodeURIComponent(gc)}`); const r = d && d.results && d.results[0];
+    if (r && r.address_components) { const precise = (r.accuracy || 0) >= 0.8 && !/^(place|county|state)$/i.test(r.accuracy_type || '');
+      return out(r.address_components.city, r.address_components.state, r.address_components.zip, precise ? r.location.lat : null, precise ? r.location.lng : null, precise ? 'address' : 'area', 'geocodio'); } }
+  const d = await json(`https://api.geoapify.com/v1/geocode/search?text=${encodeURIComponent(text)}&filter=countrycode:us&limit=1&format=json&apiKey=${PMAP_TILES_KEY}`); const r = d && d.results && d.results[0];
+  if (r) { const precise = ((r.rank && r.rank.confidence) || 0) >= 0.8 && /^(building|street|amenity)$/i.test(r.result_type || '');
+    return out(r.city || r.town || r.village || r.hamlet || r.suburb, r.state_code || r.state, r.postcode, precise ? r.lat : null, precise ? r.lon : null, precise ? 'address' : 'area', 'geoapify'); }
+  return null;
+}
+
+async function pmFillCities(list) {
+  const g = PMAP.geo = { running: true, stop: false, state: PMAP.state, total: list.length, done: 0, filled: 0, skipped: 0, skips: [] };
+  const db = pgClient(), skip = (o, why) => { g.skipped++; g.skips.push({ id: o.id, name: o.name, address: o.addr, zip: o.zip, state: o.state, reason: why }); };
+  pmPaintFill();
+  for (const o of list) {
+    if (g.stop) break;
+    let r = null;
+    try { r = await pmGeoLookup(o); }
+    catch (e) { if (/rate/.test(e.message)) { await new Promise(ok => setTimeout(ok, 3000)); try { r = await pmGeoLookup(o); } catch (e2) { r = null; } } }
+    if (!r || !r.city) skip(o, 'no match found');
+    else if (pmAbbr(o.state) && r.state && pmAbbr(o.state) !== r.state) skip(o, `match is in ${r.state}, office says ${pmAbbr(o.state)}`);
+    else {
+      const { data, error } = await db.rpc('office_fill_location', { p_id: String(o.id), p_city: r.city, p_state: r.state || null, p_zip: r.zip || null,
+        p_lat: r.lat == null ? null : +r.lat, p_lng: r.lng == null ? null : +r.lng, p_source: r.source + ' (' + r.level + ')' });
+      if (error) { skip(o, /function|does not exist|PGRST202/i.test(error.message || '') ? 'run salesly_states_and_cities.sql first' : error.message); if (/function|does not exist|PGRST202/i.test(error.message || '')) g.stop = true; }
+      else if (data && data.filled && data.filled.length) { g.filled++; o.city = r.city; if (!o.zip && r.zip) o.zip = r.zip; if (!pmHasPos(o) && r.lat != null && !o.pinLocked) { o.lat = +r.lat; o.lng = +r.lng; } }
+      else skip(o, 'nothing empty to fill');
+    }
+    g.done++;
+    if (g.done % 5 === 0 || g.done === g.total) pmPaintFill();
+    await new Promise(ok => setTimeout(ok, 220));   // stay well inside the geocoders' per-second limits
+  }
+  g.running = false; PMAP.cache.delete(PMAP.state);
+  pmApply(false); pmPaintFill();
 }
 
 /* the List view — the server-side prospect search, unchanged */
