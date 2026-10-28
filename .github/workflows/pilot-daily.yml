@@ -1,9 +1,9 @@
 # ════════════════════════════════════════════════════════════════════════════
 #  Pilot LMS → Supabase, every morning
 #
-#  Pulls the invoice and production reports from Pilot for yesterday plus the
-#  two days before, and loads them into Supabase through the dashboard's own
-#  loaders. Also runnable by hand: Actions tab → "Pilot daily pull" → Run workflow.
+#  Pulls the invoice report from Pilot for yesterday plus the two days before,
+#  and re-checks production for the last 14 days, loading both into Supabase
+#  through the dashboard's own loaders. Also runnable by hand: Actions tab → "Pilot daily pull" → Run workflow.
 #
 #  THIS REPO IS PUBLIC: anyone can read these logs. The script prints dates and
 #  counts only. Secrets are encrypted, never shown, and blanked out of logs.
@@ -13,9 +13,17 @@ name: Pilot daily pull
 
 on:
   schedule:
-    # GitHub schedules in UTC: 11:30 UTC = 6:30 am Chicago in summer (CDT), 5:30 am in winter (CST).
-    # Runs can start a few minutes late when GitHub is busy.
-    - cron: '30 11 * * *'
+    # Three times a day, because GitHub can start a scheduled run hours late — or
+    # skip it — when it's busy (on 10/27 the 6:30 run started at 11:44). Every run
+    # is safe to repeat: the later ones add only what the earlier ones missed,
+    # including invoices entered late in the morning. Odd minutes avoid GitHub's
+    # busiest times (the top of each hour). Times are UTC:
+    #   11:17 UTC =  6:17 am Chicago in summer (CDT),  5:17 am in winter (CST)
+    #   13:47 UTC =  8:47 am CDT,  7:47 am CST
+    #   17:17 UTC = 12:17 pm CDT, 11:17 am CST
+    - cron: '17 11 * * *'
+    - cron: '47 13 * * *'
+    - cron: '17 17 * * *'
   workflow_dispatch:
     inputs:
       days_back:
@@ -57,6 +65,7 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           DAYS_BACK: ${{ inputs.days_back || '3' }}
+          PROD_DAYS_BACK: '14'
           END_DATE: ${{ inputs.end_date || '' }}
           DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
           STATUS_FILE: ${{ runner.temp }}/last-run.json
