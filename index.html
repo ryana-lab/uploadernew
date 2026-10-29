@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.10.28-DL17</title>
+<title>Lab Sales Dashboard v2026.10.28-DL19</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -171,6 +171,68 @@ html, body {
 .sv-daylist { display: flex; flex-direction: column; gap: 10px; min-width: 0; margin-top: 14px; }
 .sv-dupe-note { color: #a16207; }
 /* ── COACH ── */
+/* ── CROSS SELLING (rebuilt) ── */
+.cs-top { display: grid; grid-template-columns: auto 1fr; gap: 6px 28px; align-items: end; padding: 16px 20px; margin-bottom: 12px; }
+.cs-big span { display: block; font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; color: var(--mut); }
+.cs-big b { display: block; font-size: 30px; font-weight: 800; color: var(--ink); line-height: 1.15; font-variant-numeric: tabular-nums; }
+.cs-big small { font-size: 12.5px; color: var(--dim); }
+.cs-filt { display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; }
+.cs-filt .coach-f { min-width: 150px; }
+.cs-src { grid-column: 1 / -1; font-size: 11.5px; color: var(--mut); border-top: 1px solid var(--border); padding-top: 8px; margin-top: 6px; }
+.cs-hl { padding: 14px 20px; margin-bottom: 14px; border-left: 4px solid var(--accent); }
+.cs-hl-h { font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; color: var(--accent-ink); margin-bottom: 6px; }
+.cs-hl ul { margin: 0; padding-left: 18px; font-size: 13.5px; line-height: 1.6; color: var(--ink); }
+.cs-sec2 { padding: 0; margin-bottom: 14px; overflow: hidden; }
+.cs-sh { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; padding: 16px 20px 12px; border-bottom: 1px solid var(--border); }
+.cs-sh h3 { margin: 0 0 3px; font-size: 16px; color: var(--ink); }
+.cs-sh p { margin: 0; font-size: 12.5px; color: var(--dim); max-width: 760px; }
+.cs-count { font-size: 11.5px; font-weight: 800; color: var(--mut); white-space: nowrap; padding-top: 3px; }
+.cs-row2 { border-bottom: 1px solid var(--border); }
+.cs-row2:last-child { border-bottom: none; }
+.cs-rowmain { display: grid; grid-template-columns: 30px minmax(220px, 1fr) auto auto auto 18px; gap: 18px; align-items: center; width: 100%; text-align: left;
+              font-family: inherit; padding: 12px 20px; border: none; background: transparent; cursor: pointer; color: var(--ink); }
+#csProducts .cs-rowmain { grid-template-columns: 30px minmax(220px, 1fr) 130px 130px 18px; }
+#csDoctors .cs-rowmain { grid-template-columns: 30px minmax(220px, 1.2fr) minmax(180px, 1fr) 100px 130px 18px; }
+#csPractices .cs-rowmain { grid-template-columns: 30px minmax(220px, 1fr) 120px 100px 130px 18px; }
+.cs-rowmain:hover, .cs-row2.open .cs-rowmain { background: var(--accent-soft); }
+.cs-rowmain:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.cs-rank { width: 26px; height: 26px; border-radius: 50%; background: var(--card-2); color: var(--dim); font-size: 12px; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; }
+.cs-row2:nth-child(-n+3) .cs-rank { background: var(--accent); color: #fff; }
+.cs-name { min-width: 0; } .cs-name b { display: block; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cs-name small { display: block; font-size: 12px; color: var(--mut); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cs-metric { text-align: right; } .cs-metric b { display: block; font-size: 14px; font-variant-numeric: tabular-nums; } .cs-metric small { font-size: 11px; color: var(--mut); }
+.cs-val b { font-size: 15.5px; color: var(--accent-ink); }
+.cs-sugg { font-size: 12.5px; line-height: 1.7; min-width: 0; }
+.cs-chev { color: var(--mut); font-size: 12px; }
+.cs-empty { padding: 20px; color: var(--mut); font-size: 13px; text-align: center; }
+.cs-moreline { display: flex; gap: 14px; justify-content: center; padding: 10px; border-top: 1px solid var(--border); }
+.cs-det { padding: 6px 20px 18px 68px; background: var(--card-2); border-top: 1px solid var(--border); font-size: 13px; }
+.cs-why p { margin: 10px 0 6px; line-height: 1.55; color: var(--ink); }
+.cs-kinds { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 4px; }
+.cs-kind { background: var(--card); border: 1px solid var(--border); border-left: 3px solid var(--c); border-radius: 8px; padding: 6px 12px; min-width: 150px; }
+.cs-kind b { font-size: 15px; margin-right: 6px; } .cs-kind span { font-size: 12px; color: var(--dim); } .cs-kind small { display: block; font-size: 12px; font-weight: 700; color: var(--ink); }
+.cs-subh { font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; color: var(--mut); margin: 16px 0 6px; }
+.cs-mini { width: 100%; border-collapse: collapse; background: var(--card); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.cs-mini th { text-align: left; font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; color: var(--mut); padding: 7px 10px; border-bottom: 1px solid var(--border); }
+.cs-mini td { padding: 7px 10px; border-bottom: 1px solid var(--border); } .cs-mini tr:last-child td { border-bottom: none; }
+.cs-mini .r { text-align: right; font-variant-numeric: tabular-nums; }
+.cs-fn { font-size: 11.5px; color: var(--mut); margin-top: 6px; line-height: 1.5; }
+.cs-call { display: flex; justify-content: space-between; gap: 14px; align-items: flex-start; background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; margin-bottom: 6px; }
+.cs-callwhy { font-size: 12px; color: var(--dim); margin-top: 3px; } .cs-callv { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.cs-detact { margin-top: 10px; }
+.cs-docgrid { display: grid; grid-template-columns: minmax(260px, 340px) 1fr; gap: 24px; }
+@media (max-width: 1000px) { .cs-docgrid { grid-template-columns: 1fr; } .cs-det { padding-left: 20px; } }
+.cs-bar { display: grid; grid-template-columns: 130px 1fr 52px; gap: 8px; align-items: center; font-size: 12px; padding: 3px 0; }
+.cs-bar span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .cs-bar i { height: 8px; border-radius: 4px; background: var(--accent); opacity: .75; }
+.cs-bar b { text-align: right; font-variant-numeric: tabular-nums; }
+.cs-contact { font-size: 12px; color: var(--dim); margin-top: 10px; }
+.cs-matrix { width: 100%; border-collapse: collapse; background: var(--card); font-size: 12.5px; }
+.cs-matrix th { font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; color: var(--mut); padding: 8px 10px; border-bottom: 1px solid var(--border); text-align: center; white-space: nowrap; }
+.cs-matrix th:first-child { text-align: left; } .cs-matrix td { padding: 8px 10px; border-bottom: 1px solid var(--border); text-align: center; white-space: nowrap; }
+.cs-matrix td:first-child { text-align: left; } .cs-matrix .r { text-align: right; }
+.cs-has2 { color: #166534; font-weight: 700; background: #f0fdf4; }
+.cs-gap { color: var(--c); font-weight: 800; background: color-mix(in srgb, var(--c) 8%, transparent); } .cs-gap small { display: block; font-size: 10px; font-weight: 700; opacity: .8; }
+.cs-none { color: var(--mut); }
 /* ── CROSS SELLING ── */
 .cs-kpis { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
 @media (max-width: 1300px) { .cs-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
@@ -215,6 +277,42 @@ tr.cs-open td { background: var(--card-2); white-space: normal; cursor: default;
 .cs-opp-why { font-size: 12.5px; color: var(--dim); margin-top: 3px; }
 .cs-opp-say { font-size: 12.5px; color: var(--ink); font-style: italic; margin-top: 2px; }
 .cs-how { padding: 16px 18px; font-size: 13.5px; line-height: 1.55; } .cs-how h3 { margin: 0 0 8px; font-size: 16px; } .cs-how p { margin: 0 0 10px; }
+/* ── PROSPECT MAP: the List view ── */
+.pm-lvbar { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; color: var(--dim); margin: 2px 2px 10px; }
+.pm-lv-empty { padding: 26px; text-align: center; color: var(--mut); font-size: 14px; }
+.pm-lvcity { padding: 0; margin-bottom: 10px; overflow: hidden; }
+.pm-lvhead { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; font-family: inherit; font-size: 14px; color: var(--ink);
+             padding: 12px 16px; border: none; background: transparent; cursor: pointer; }
+.pm-lvhead:hover { background: var(--card-2); }
+.pm-lvhead small { margin-left: auto; color: var(--mut); font-size: 12px; }
+.pm-lvchev { width: 12px; color: var(--mut); }
+.pm-lvcnt { font-size: 11.5px; font-weight: 800; padding: 1px 8px; border-radius: 999px; background: var(--card-2); color: var(--dim); }
+.pm-lvcity.open .pm-lvhead { border-bottom: 1px solid var(--border); }
+.pm-lvrow { border-bottom: 1px solid var(--border); }
+.pm-lvrow:last-child { border-bottom: none; }
+.pm-lvrow.same .pm-lvmain { padding-left: 34px; }
+.pm-lvmain { display: grid; grid-template-columns: 12px minmax(180px, 1.6fr) minmax(120px, 1fr) 140px 78px; align-items: center; gap: 12px; width: 100%; text-align: left;
+             font-family: inherit; padding: 10px 16px; border: none; background: transparent; cursor: pointer; color: var(--ink); }
+.pm-lvmain:hover, .pm-lvrow.open .pm-lvmain { background: var(--accent-soft); }
+.pm-lvmain:focus-visible, .pm-lvhead:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.pm-lvtxt { min-width: 0; } .pm-lvtxt b { display: block; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pm-lvtxt small { display: block; font-size: 12px; color: var(--mut); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pm-lvlab { display: flex; flex-wrap: wrap; gap: 4px; }
+.pm-lvchip { font-size: 10.5px; font-weight: 800; padding: 1px 7px; border-radius: 999px; color: var(--c); border: 1px solid currentColor; background: color-mix(in srgb, var(--c) 10%, transparent); }
+.pm-lvlast { font-size: 12.5px; color: var(--dim); display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.pm-lvlast i, .pm-lvline i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex: none; }
+.pm-closed { color: #b45309; font-size: 12px; }
+.pm-lvtier { font-size: 11px; font-weight: 800; text-align: center; padding: 2px 6px; border-radius: 6px; background: var(--card-2); color: var(--dim); }
+.pm-lvtier.pm-tS { background: var(--accent-soft); color: var(--accent-ink); }
+.pm-lvdet { padding: 4px 16px 14px 40px; background: var(--card-2); border-top: 1px solid var(--border); }
+.pm-lvgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px 18px; padding: 10px 0 4px; font-size: 13px; }
+.pm-lvgrid label { display: block; font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; color: var(--mut); margin-bottom: 2px; }
+.pm-lvsec { font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; color: var(--mut); margin: 10px 0 4px; }
+.pm-lvline { font-size: 12.5px; color: var(--ink); display: flex; gap: 6px; align-items: center; padding: 2px 0; }
+.pm-lvnote { white-space: pre-wrap; display: block; }
+.pm-lvact { display: flex; gap: 12px; align-items: center; margin-top: 10px; }
+.pm-lvmore { margin: 8px 16px 12px; }
+@media (max-width: 1100px) { .pm-lvmain { grid-template-columns: 12px 1fr 90px; } .pm-lvlab, .pm-lvlast { display: none; } }
 /* ── PROSPECT MAP ── */
 .pm-controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; padding: 12px 14px; margin-bottom: 12px; }
 .pm-tiers { display: inline-flex; gap: 6px; flex-wrap: wrap; }
@@ -8932,7 +9030,7 @@ function coachCatalogCSV() {
    sellable product categories are suggested — not fees, parts, repairs or steps.
    It follows the State and Group filters at the top of the page. */
 
-const CS_GROUPS = new Set(['Crowns', 'Bridges', 'Other fixed', 'Implants', 'Dentures', 'Partials & Flippers', 'Appliances']);
+const CS_GROUPS = new Set(['Crowns', 'Other fixed', 'Implants', 'Dentures', 'Partials & Flippers', 'Appliances']);   // bridges left out: no longer sold as their own products
 const CS_SKIP_CATS = new Set(['Implant Parts', 'Implant Temporary', 'Temporary', 'Coping / Post & Core', 'Partial Framework']);
 const CS_REGION = (() => { const m = {}; Object.entries({
   Northeast: 'CT ME MA NH RI VT NJ NY PA', Midwest: 'IL IN MI OH WI IA KS MN MO NE ND SD',
@@ -8944,8 +9042,6 @@ const CS_TYPE = {
   similar:   { label: 'Similar doctors send it', short: 'Similar', color: '#0e9f8e', rank: 3 },
   digital:   { label: 'Go digital', short: 'Digital', color: '#2563eb', rank: 4 }
 };
-const CS_VIEWS = [['plan', 'Action plan'], ['product', 'By product'], ['doctor', 'By doctor'], ['practice', 'By practice'], ['region', 'By state & region'],
-                  ['wins', 'Recent wins'], ['how', 'How it works']];
 const CS = { months: 12, view: 'plan', types: { colleague: true, lapsed: true, similar: true, digital: true }, group: 'all', cat: '', state: 'all', region: 'all',
              minVal: 0, prio: 'all', q: '', limit: 100, open: null, sort: { key: null, dir: -1 }, cache: null };
 
@@ -8962,7 +9058,10 @@ const CS_SPECIALTY = [[/periodont|\bperio\b|oral (and|&) maxillofacial|maxillofa
                       [/endodont|\bendo\b/i, 'Endodontics', () => false]];
 const csSpecialty = practice => { for (const [re, label, ok] of CS_SPECIALTY) if (re.test(String(practice || ''))) return { label, ok }; return null; };
 const csDr = name => 'Dr. ' + String(name || '').replace(/^\s*dr\.?\s+/i, '');   // names sometimes already start with "Dr."
-const csIsTarget = name => { if (!String(name || '').trim()) return null; const c = coachCat(name); return CS_GROUPS.has(c.group) && !CS_SKIP_CATS.has(c.cat) ? c : null; };
+// sellable product lines only. Bridge lines (the Bridges group, screw-retained implant bridges) are never
+// suggested. A bridge-named product filed under another line (e.g. a hybrid "bridge" under Implant Hybrid /
+// Full Arch) still counts as that line's work — otherwise a doctor still sending hybrids would look "lapsed".
+const csIsTarget = name => { if (!String(name || '').trim()) return null; const c = coachCat(name); return CS_GROUPS.has(c.group) && !CS_SKIP_CATS.has(c.cat) && !/bridge/i.test(c.cat) ? c : null; };
 
 /* ── the engine: one pass over the lines, then the opportunities ─────────────── */
 function csCompute() {
@@ -8973,7 +9072,7 @@ function csCompute() {
   const wStart = new Date(md.getFullYear(), md.getMonth() - CS.months, md.getDate() + 1);
   const pStart = new Date(md.getFullYear(), md.getMonth() - 2 * CS.months, md.getDate() + 1);
   const activeCut = new Date(+end - 90 * DAY), lapseCut = new Date(+end - 120 * DAY), winCut = new Date(+end - 90 * DAY);
-  const docs = new Map(), firstEver = new Map();   // firstEver: drId|cat → first line date (all time)
+  const docs = new Map(), firstEver = new Map(), pracRev = new Map(); let nLines = 0;   // firstEver: drId|cat → first line date (all time)
   for (const r of rows) {
     if (!r || !r.drId || !r.anchorDate) continue;
     let d = docs.get(r.drId);
@@ -8982,6 +9081,7 @@ function csCompute() {
     const t = r.anchorDate, inW = t >= wStart && t <= end, inP = t >= pStart && t < wStart;
     if (!d.last || t > d.last) d.last = t; if (!d.first || t < d.first) d.first = t;
     if (inW) {
+      nLines++; if (r.practice) pracRev.set(r.practice, (pracRev.get(r.practice) || 0) + (r.netCost || 0));
       d.rev += r.netCost || 0; if (r.caseKey) d.cases.add(r.caseKey);
       if (r.practice) d.pr.set(r.practice, (d.pr.get(r.practice) || 0) + 1);
       if (!d.city && r.city) { d.city = r.city; d.state = r.stateAbbr || ''; }
@@ -9089,183 +9189,223 @@ function csCompute() {
   firstEver.forEach((t, k) => { if (t < winCut) return; const [id, cat] = k.split('\t'), d = docs.get(id); if (!d || !d.first || d.first >= winCut) return;
     const x = d.cats.get(cat); wins.push({ d, cat, first: t, rev: x ? x.rev : 0 }); });
   wins.sort((a, b) => b.first - a.first);
-  CS.cache = { key, opps, wins, active, N, nA, cats, medSpend, triosMed, wStart, end };
+  const catStats = new Map();
+  cats.forEach(c => {
+    const sp = (spend.get(c) || []).slice().sort((a, b) => a - b), q = f => sp.length ? sp[Math.min(sp.length - 1, Math.floor(f * (sp.length - 1)))] : null;
+    const base = (nA.get(c) || 0) / (N || 1);
+    const anchors = cats.filter(a => a !== c && (nA.get(a) || 0) >= 25).map(a => { const both = nAC.get(a + '→' + c) || 0, pp = both / nA.get(a);
+        return { a, n: nA.get(a), both, p: pp, lift: base ? pp / base : null }; })
+      .filter(x => x.both >= 5 && x.lift > 1).sort((x, y) => y.p - x.p).slice(0, 4);
+    catStats.set(c, { adopters: nA.get(c) || 0, adoption: base, med: q(0.5), p25: q(0.25), p75: q(0.75), anchors });
+  });
+  CS.cache = { key, opps, wins, active, N, nA, cats, medSpend, triosMed, wStart, end, catStats, pracRev, atPractice, nLines };
   return CS.cache;
 }
 
-/* the opportunities the filters let through */
-function csFiltered(all) {
-  const q = CS.q.trim().toLowerCase();
-  return all.filter(o => CS.types[o.type] && (CS.group === 'all' || o.group === CS.group) && (!CS.cat || o.cat === CS.cat)
-    && (CS.state === 'all' || o.d.state === CS.state) && (CS.region === 'all' || o.region === CS.region) && o.value >= CS.minVal
-    && (CS.prio === 'all' || o.prio === CS.prio)
-    && (!q || o.d.name.toLowerCase().includes(q) || o.d.main.toLowerCase().includes(q) || o.cat.toLowerCase().includes(q) || (o.d.city || '').toLowerCase().includes(q)));
-}
+/* ── the page: highlights, then three ranked lists (products · doctors ·
+   practices). Each shows its top 10 — "Show 25 more" for the next — and every
+   row opens the evidence behind it. All three add up to the same total. */
+const CSV2 = { lim: { product: 10, doctor: 10, practice: 10 }, open: { product: '', doctor: '', practice: '' }, how: false };
+const CS_MATRIX_GROUPS = ['Crowns', 'Other fixed', 'Implants', 'Dentures', 'Partials & Flippers', 'Appliances'];
+const csTypeTag = t => `<span class="cs-tag" style="--c:${CS_TYPE[t].color}">${esc(CS_TYPE[t].short)}</span>`;
+const csPrioTag = p => `<span class="cs-prio cs-prio-${p.toLowerCase()}">${p}</span>`;
+const csK = n => n == null ? '—' : n >= 1000 ? '$' + (n / 1000).toFixed(n >= 10000 ? 0 : 1) + 'k' : '$' + Math.round(n);
+const csWhere = d => [d.city, d.state].filter(Boolean).join(', ');
+function csOpps(C) { return C.opps.filter(o => (CS.state === 'all' || o.d.state === CS.state) && (CS.group === 'all' || o.group === CS.group)); }
+const csPracOf = o => (o.type === 'colleague' ? o.evidence.practice : o.d.main) || '(no practice)';
 
-/* ── the tab ─────────────────────────────────────────────────────────────────── */
 function renderCrossSell() {
   const el = document.getElementById('panel-crosssell'); if (!el) return;
   if (!getMaxDate()) { el.innerHTML = '<div class="empty-state">Load data first.</div>'; return; }
-  const C = csCompute(), opps = csFiltered(C.opps);
-  const groups = [...new Set(C.opps.map(o => o.group).filter(Boolean))].sort();
+  const C = csCompute(), opps = csOpps(C), total = opps.reduce((t, o) => t + o.value, 0);
   const states = [...new Set(C.opps.map(o => o.d.state).filter(Boolean))].sort();
-  const sum = a => a.reduce((t, o) => t + o.value, 0);
-  const wins90 = C.wins.filter(w => (CS.state === 'all' || w.d.state === CS.state) && (CS.region === 'all' || CS_REGION[w.d.state] === CS.region));
+  const groups = CS_MATRIX_GROUPS.filter(g => C.opps.some(o => o.group === g)).concat(C.opps.some(o => o.type === 'digital') ? ['Scanning'] : []);
   const sel = (id, opts, cur) => `<select class="gf-select" id="${id}">${opts.map(([v, l]) => `<option value="${esc(v)}"${String(v) === String(cur) ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
   el.innerHTML = `
     <div class="section-header">
       <div><div class="section-title">Cross Selling</div>
-        <div class="section-sub">Who could send us more, and what to offer. Every opportunity comes from what similar doctors already send — with its reason, an estimated yearly value and a talking point. Active doctors only (a case in the last 90 days).</div></div>
-      <div class="section-actions"><button class="btn-text" id="csExport">⬇ Download this view</button></div>
+        <div class="section-sub">Where today’s customers could send you more — ranked, with the evidence behind every suggestion.</div></div>
+      <div class="section-actions"><button class="btn-text" id="csHowBtn">${CSV2.how ? 'Hide' : 'How it’s worked out'}</button><button class="btn-text" id="csExport">⬇ Download action plan</button></div>
     </div>
-    <div class="cs-kpis">
-      <div class="cs-kpi"><label>Estimated yearly opportunity</label><b>${csUSD(sum(opps))}</b><small>${opps.length.toLocaleString()} opportunities</small></div>
-      <div class="cs-kpi"><label>Doctors with an opportunity</label><b>${new Set(opps.map(o => o.d.id)).size.toLocaleString()}</b><small>of ${C.N.toLocaleString()} active doctors</small></div>
-      <div class="cs-kpi" style="--k:${CS_TYPE.colleague.color}"><label>A colleague sends it</label><b>${opps.filter(o => o.type === 'colleague').length.toLocaleString()}</b><small>${csUSD(sum(opps.filter(o => o.type === 'colleague')))} · within a practice</small></div>
-      <div class="cs-kpi" style="--k:${CS_TYPE.lapsed.color}"><label>Stopped sending it</label><b>${opps.filter(o => o.type === 'lapsed').length.toLocaleString()}</b><small>${csUSD(sum(opps.filter(o => o.type === 'lapsed')))} to win back</small></div>
-      <div class="cs-kpi" style="--k:${CS_TYPE.similar.color}"><label>Similar doctors send it</label><b>${opps.filter(o => o.type === 'similar').length.toLocaleString()}</b><small>${csUSD(sum(opps.filter(o => o.type === 'similar')))}</small></div>
-      <div class="cs-kpi" style="--k:#16a34a"><label>Won in the last 90 days</label><b>${wins90.length.toLocaleString()}</b><small>new products for existing doctors</small></div>
-    </div>
-    <div class="card cs-filters">
-      <div class="cs-types">${Object.entries(CS_TYPE).map(([k, t]) => `<button type="button" class="cs-type${CS.types[k] ? ' on' : ''}" data-t="${k}" aria-pressed="${!!CS.types[k]}"><i style="background:${t.color}"></i>${esc(t.label)}</button>`).join('')}</div>
-      <div class="cs-frow">
-        <label class="coach-f"><span>Window</span>${sel('csMonths', [[6, 'Last 6 months'], [12, 'Last 12 months']], CS.months)}</label>
-        <label class="coach-f"><span>Product group</span>${sel('csGroup', [['all', 'All products']].concat(groups.map(g => [g, g])), CS.group)}</label>
-        <label class="coach-f"><span>Region</span>${sel('csRegion', [['all', 'All regions'], ['Midwest', 'Midwest'], ['Northeast', 'Northeast'], ['South', 'South'], ['West', 'West']], CS.region)}</label>
+    ${CSV2.how ? csHowHTML(C) : ''}
+    <div class="card cs-top">
+      <div class="cs-big"><span>Estimated yearly opportunity</span><b>${csUSD(total)}</b>
+        <small>${opps.length.toLocaleString()} suggestions for ${new Set(opps.map(o => o.d.id)).size.toLocaleString()} of your ${C.N.toLocaleString()} active doctors</small></div>
+      <div class="cs-filt">
         <label class="coach-f"><span>State</span>${sel('csState', [['all', 'All states']].concat(states.map(s => [s, s])), CS.state)}</label>
-        <label class="coach-f"><span>Priority</span>${sel('csPrio', [['all', 'Any'], ['High', 'High'], ['Medium', 'Medium'], ['Low', 'Low']], CS.prio)}</label>
-        <label class="coach-f"><span>At least</span>${sel('csMin', [[0, 'Any value'], [500, '$500 a year'], [1000, '$1,000'], [2500, '$2,500'], [5000, '$5,000']], CS.minVal)}</label>
-        <label class="coach-f cs-search"><span>Search</span><input class="gf-select" id="csQ" placeholder="Doctor, practice, city or product" value="${esc(CS.q)}"></label>
+        <label class="coach-f"><span>Product group</span>${sel('csGroup', [['all', 'All products']].concat(groups.map(g => [g, g])), CS.group)}</label>
+        <label class="coach-f"><span>Based on</span>${sel('csMonths', [[12, 'The last 12 months'], [6, 'The last 6 months']], CS.months)}</label>
       </div>
-      ${CS.cat ? `<div class="cs-chipline">Product: <span class="coach-chip">${esc(CS.cat)}<button class="coach-chip-x" id="csCatX" title="Show all products">×</button></span></div>` : ''}
+      <div class="cs-src">Based on ${C.nLines.toLocaleString()} invoice lines from ${csDay(C.wStart)} to ${csDay(C.end)} · ${C.N.toLocaleString()} active doctors (a case in the last 90 days) · bridges left out</div>
     </div>
-    <div class="cs-views">${CS_VIEWS.map(([k, l]) => `<button type="button" class="coach-bucket${CS.view === k ? ' active' : ''}" data-v="${k}">${esc(l)}</button>`).join('')}</div>
-    <div id="csBody"></div>`;
-  const re = () => { CS.limit = 100; renderCrossSell(); };
-  el.querySelectorAll('.cs-type').forEach(b => b.onclick = () => { CS.types[b.dataset.t] = !CS.types[b.dataset.t]; re(); });
-  [['csMonths', v => { CS.months = +v; CS.cache = null; }], ['csGroup', v => CS.group = v], ['csRegion', v => { CS.region = v; CS.state = 'all'; }], ['csState', v => CS.state = v],
-   ['csPrio', v => CS.prio = v], ['csMin', v => CS.minVal = +v]].forEach(([id, f]) => document.getElementById(id).onchange = e => { f(e.target.value); re(); });
-  let qt = null; document.getElementById('csQ').oninput = e => { clearTimeout(qt); qt = setTimeout(() => { CS.q = e.target.value; csDrawBody(); }, 200); };
-  const cx = document.getElementById('csCatX'); if (cx) cx.onclick = () => { CS.cat = ''; re(); };
-  el.querySelectorAll('.cs-views .coach-bucket').forEach(b => b.onclick = () => { CS.view = b.dataset.v; CS.limit = 100; CS.sort = { key: null, dir: -1 }; renderCrossSell(); });
+    ${csHighlightsHTML(C, opps)}
+    <div id="csProducts"></div><div id="csDoctors"></div><div id="csPractices"></div>`;
+  const re = () => { CSV2.lim = { product: 10, doctor: 10, practice: 10 }; CSV2.open = { product: '', doctor: '', practice: '' }; renderCrossSell(); };
+  document.getElementById('csState').onchange = e => { CS.state = e.target.value; re(); };
+  document.getElementById('csGroup').onchange = e => { CS.group = e.target.value; re(); };
+  document.getElementById('csMonths').onchange = e => { CS.months = +e.target.value; CS.cache = null; re(); };
+  document.getElementById('csHowBtn').onclick = () => { CSV2.how = !CSV2.how; renderCrossSell(); };
   document.getElementById('csExport').onclick = csExport;
-  csDrawBody();
+  csPaintProducts(C, opps); csPaintDoctors(C, opps); csPaintPractices(C, opps);
 }
 
-/* a sortable table, shared by every view */
-function csTable(cols, rows, rowAttr, extra) {
-  const t = CS.sort, col = cols.find(c => c.k === t.key);
-  if (col) { const g = col.v || (r => r[col.k]);
-    rows = rows.slice().sort((a, b) => { const x = g(a), y = g(b); if (x == null || x === '') return 1; if (y == null || y === '') return -1;
-      return (typeof x === 'string' ? String(x).localeCompare(String(y)) : x - y) * t.dir; }); }
-  const vis = rows.slice(0, CS.limit);
-  return { rows, html: `<div class="grid-table-wrap cs-table"><table class="grid-table"><thead><tr>${cols.map(c => `<th class="${c.num ? 'r ' : ''}gt-sort${t.key === c.k ? ' on' : ''}" data-k="${c.k}">${esc(c.l)}${t.key === c.k ? (t.dir < 0 ? ' ▾' : ' ▴') : ''}</th>`).join('')}</tr></thead>
-    <tbody>${vis.map((r, i) => `<tr ${rowAttr ? rowAttr(r, i) : ''}>${cols.map(c => `<td${c.num ? ' class="r"' : ''}${c.wrap ? ' style="white-space:normal;min-width:' + c.wrap + 'px"' : ''}>${c.f ? c.f(r) : esc(r[c.k] == null || r[c.k] === '' ? '—' : String(r[c.k]))}</td>`).join('')}</tr>${extra ? extra(r, i) : ''}`).join('')}</tbody></table></div>
-    ${rows.length > vis.length ? `<div style="text-align:center;margin-top:8px"><button class="btn-text" id="csMore">Show ${Math.min(100, rows.length - vis.length)} more · ${(rows.length - vis.length).toLocaleString()} remaining</button></div>` : ''}` };
+/* three or four plain sentences: what matters most in these numbers */
+function csHighlightsHTML(C, opps) {
+  if (!opps.length) return '<div class="card cs-hl"><p>No opportunities for these filters.</p></div>';
+  const sum = a => a.reduce((t, o) => t + o.value, 0), total = sum(opps);
+  const by = (f) => { const m = new Map(); opps.forEach(o => { const k = f(o); m.set(k, (m.get(k) || 0) + o.value); }); return [...m.entries()].sort((a, b) => b[1] - a[1]); };
+  const prod = by(o => o.cat), doc = by(o => o.d.id), prac = by(csPracOf);
+  const top3 = prod.slice(0, 3), top3Share = top3.reduce((t, x) => t + x[1], 0) / (total || 1);
+  const quick = opps.filter(o => o.type === 'colleague' || o.type === 'lapsed'), d1 = C.active.find(d => d.id === doc[0][0]);
+  const st = C.catStats.get(prod[0][0]);
+  const top10docs = doc.slice(0, 10).reduce((t, x) => t + x[1], 0) / (total || 1);
+  return `<div class="card cs-hl"><div class="cs-hl-h">Highlights</div><ul>
+    <li><b>${esc(prod[0][0])}</b> is the biggest product opportunity — <b>${csUSD(prod[0][1])}</b> a year${st ? `; ${st.adopters.toLocaleString()} active doctors (${csPct(st.adoption)}) already send it` : ''}. With ${esc(top3[1] ? top3[1][0] : '')}${top3[2] ? ' and ' + esc(top3[2][0]) : ''}, the top three products are <b>${csPct(top3Share)}</b> of the total.</li>
+    <li><b>${quick.length.toLocaleString()} quick wins</b> worth <b>${csUSD(sum(quick))}</b>: products a colleague at the same practice already sends us, or that the doctor sent us before and stopped. These are the easiest conversations.</li>
+    <li>The <b>top 10 doctors</b> hold <b>${csPct(top10docs)}</b> of the opportunity — led by <b>${esc(csDr(d1 ? d1.name : ''))}</b> (${esc(d1 ? d1.main : '')}, ${csUSD(doc[0][1])}).</li>
+    <li><b>${esc(prac[0][0])}</b> is the practice with the most room to grow (${csUSD(prac[0][1])} a year).</li></ul></div>`;
 }
-function csBindTable(cols, redraw) {
-  document.querySelectorAll('#csBody .gt-sort').forEach(th => th.onclick = () => { const c = cols.find(x => x.k === th.dataset.k);
-    if (CS.sort.key === th.dataset.k) CS.sort.dir = -CS.sort.dir; else { CS.sort.key = th.dataset.k; CS.sort.dir = c && c.num ? -1 : 1; } redraw(); });
-  const m = document.getElementById('csMore'); if (m) m.onclick = () => { CS.limit += 100; redraw(); };
+
+/* a section: title, what it ranks, the rows, and "Show 25 more" */
+function csSectionHTML(key, title, intro, rows, total, rowHTML) {
+  const lim = CSV2.lim[key], vis = rows.slice(0, lim);
+  return `<div class="card cs-sec2">
+    <div class="cs-sh"><div><h3>${title}</h3><p>${intro}</p></div><span class="cs-count">${rows.length ? 'Top ' + vis.length + ' of ' + rows.length.toLocaleString() : 'None'}</span></div>
+    <div class="cs-rows">${vis.map((r, i) => rowHTML(r, i)).join('') || '<div class="cs-empty">Nothing for these filters.</div>'}</div>
+    ${rows.length > lim || lim > 10 ? `<div class="cs-moreline">${rows.length > lim ? `<button class="btn-text" data-more="${key}">Show ${Math.min(25, rows.length - lim)} more · ${(rows.length - lim).toLocaleString()} left</button>` : ''}
+      ${lim > 10 ? `<button class="btn-text" data-less="${key}">Back to the top 10</button>` : ''}</div>` : ''}</div>`;
 }
-const csTypeTag = t => `<span class="cs-tag" style="--c:${CS_TYPE[t].color}">${esc(CS_TYPE[t].short)}</span>`;
-const csPrioTag = p => `<span class="cs-prio cs-prio-${p.toLowerCase()}">${p}</span>`;
+function csBindSection(key, host, redraw) {
+  host.querySelectorAll('[data-open="' + key + '"]').forEach(b => b.onclick = e => { if (e.target.closest('a,[data-stop]')) return;
+    CSV2.open[key] = CSV2.open[key] === b.dataset.key ? '' : b.dataset.key; redraw(); });
+  const m = host.querySelector('[data-more="' + key + '"]'); if (m) m.onclick = () => { CSV2.lim[key] += 25; redraw(); };
+  const l = host.querySelector('[data-less="' + key + '"]'); if (l) l.onclick = () => { CSV2.lim[key] = 10; redraw(); host.scrollIntoView({ block: 'start' }); };
+  host.querySelectorAll('.cs-open-dr').forEach(b => b.onclick = () => { APP.selectedDoctorId = b.dataset.id; switchTab('docdetail'); });
+}
+const csRowMain = (key, k, open, cells) => `<button type="button" class="cs-rowmain" data-open="${key}" data-key="${esc(k)}" aria-expanded="${open}">${cells}<span class="cs-chev">${open ? '▴' : '▾'}</span></button>`;
 
-let _csRows = [], _csCols = [];   // what the current view shows (for its download)
-function csDrawBody() {
-  const body = document.getElementById('csBody'); if (!body) return;
-  const C = csCompute(), opps = csFiltered(C.opps).sort((a, b) => b.value - a.value), V = CS.view, redraw = () => csDrawBody();
-  let cols, rows, attr = null, extra = null, intro = '';
+/* ── 1. PRODUCTS ─────────────────────────────────────────────────────────────── */
+function csPaintProducts(C, opps) {
+  const host = document.getElementById('csProducts'); if (!host) return;
+  const m = new Map();
+  opps.forEach(o => { const x = m.get(o.cat) || { cat: o.cat, group: o.group, value: 0, list: [], kinds: {} };
+    x.value += o.value; x.list.push(o); x.kinds[o.type] = (x.kinds[o.type] || [0, 0]); x.kinds[o.type][0]++; x.kinds[o.type][1] += o.value; m.set(o.cat, x); });
+  const rows = [...m.values()].sort((a, b) => b.value - a.value);
+  host.innerHTML = csSectionHTML('product', 'Top products to cross-sell',
+    'Products your active doctors could add, ranked by estimated yearly value. Open one for who already buys it, what it’s linked to, and who to call first.',
+    rows, 0, (x, i) => {
+      const st = C.catStats.get(x.cat), open = CSV2.open.product === x.cat;
+      return `<div class="cs-row2${open ? ' open' : ''}">${csRowMain('product', x.cat, open, `
+        <span class="cs-rank">${i + 1}</span>
+        <span class="cs-name"><b>${esc(x.cat)}</b><small>${esc(x.group)}${st ? ` · already sent by ${st.adopters.toLocaleString()} active doctors (${csPct(st.adoption)})` : ' · physical impressions on 70%+ of cases'}</small></span>
+        <span class="cs-metric"><b>${x.list.length.toLocaleString()}</b><small>doctors could add it</small></span>
+        <span class="cs-metric cs-val"><b>${csUSD(x.value)}</b><small>est. a year</small></span>`)}
+        ${open ? csProductDetail(C, x, st) : ''}</div>`;
+    });
+  csBindSection('product', host, () => csPaintProducts(C, opps));
+  const dl = host.querySelector('[data-dlcat]'); if (dl) dl.onclick = () => csExport(o => o.cat === dl.dataset.dlcat, 'cross-sell-' + dl.dataset.dlcat);
+}
+function csProductDetail(C, x, st) {
+  const kinds = Object.entries(x.kinds).sort((a, b) => b[1][1] - a[1][1]);
+  const first = x.list.slice().sort((a, b) => b.value - a.value).slice(0, 5);
+  return `<div class="cs-det">
+    <div class="cs-why">${st ? `<p><b>${st.adopters.toLocaleString()} of your ${C.N.toLocaleString()} active doctors (${csPct(st.adoption)})</b> already send ${esc(x.cat)}, typically <b>${csUSD(st.med)}</b> a year each (the middle half spend ${csUSD(st.p25)}–${csUSD(st.p75)}).</p>` :
+        `<p>These doctors send most of their cases as <b>physical impressions</b>${C.triosMed ? `; doctors on the scanner program typically spend ${csUSD(C.triosMed)} a year on it` : ''}.</p>`}
+      <p><b>${x.list.length.toLocaleString()} more active doctors</b> look like those buyers — together worth an estimated <b>${csUSD(x.value)}</b> a year:</p>
+      <div class="cs-kinds">${kinds.map(([t, [n, v]]) => `<div class="cs-kind" style="--c:${CS_TYPE[t].color}"><b>${n.toLocaleString()}</b><span>${esc(CS_TYPE[t].label)}</span><small>${csUSD(v)}</small></div>`).join('')}</div></div>
+    ${st && st.anchors.length ? `<div class="cs-subh">What it’s linked to</div>
+      <table class="cs-mini"><thead><tr><th>Doctors who send…</th><th class="r">…also send ${esc(x.cat)}</th><th class="r">vs. all active doctors</th></tr></thead><tbody>
+      ${st.anchors.map(a => `<tr><td>${esc(a.a)} <small class="text-mut">(${a.n.toLocaleString()} doctors)</small></td><td class="r"><b>${csPct(a.p)}</b> <small class="text-mut">${a.both.toLocaleString()} of ${a.n.toLocaleString()}</small></td><td class="r">${a.lift.toFixed(1)}× more likely</td></tr>`).join('')}
+      </tbody></table><div class="cs-fn">On average ${csPct(st.adoption)} of active doctors send ${esc(x.cat)}. A doctor who already sends the product on the left is that many times more likely to send it too — the basis for the “similar doctors” suggestions.</div>` : ''}
+    <div class="cs-subh">Doctors to call first</div>
+    ${first.map(o => `<div class="cs-call"><div><b>${esc(csDr(o.d.name))}</b> <small class="text-mut">${esc(o.d.main)} · ${esc(csWhere(o.d))}</small><div class="cs-callwhy">${csTypeTag(o.type)} ${esc(o.why)}</div></div><b class="cs-callv">${o.value ? csUSD(o.value) : 'strategic'}</b></div>`).join('')}
+    <div class="cs-detact"><button class="btn-text" data-dlcat="${esc(x.cat)}" data-stop>⬇ All ${x.list.length.toLocaleString()} doctors for ${esc(x.cat)}</button></div></div>`;
+}
 
-  if (V === 'plan') {
-    intro = `<div class="cs-note">The opportunities in priority order — the best ones first. Click a row for the doctor’s details.</div>`;
-    cols = [{ k: 'prio', l: 'Priority', v: o => ({ High: 3, Medium: 2, Low: 1 })[o.prio], num: 0, f: o => csPrioTag(o.prio) },
-      { k: 'doctor', l: 'Doctor', v: o => o.d.name, f: o => `<b>${esc(csDr(o.d.name))}</b><small class="cs-sub">${esc(o.d.main)}</small>` },
-      { k: 'where', l: 'Where', v: o => (o.d.city || '') + ' ' + o.d.state, f: o => esc([o.d.city, o.d.state].filter(Boolean).join(', ') || '—') },
-      { k: 'offer', l: 'Offer', v: o => o.cat, f: o => `${csTypeTag(o.type)} <b>${esc(o.cat)}</b>` },
-      { k: 'value', l: 'Est. a year', num: 1, v: o => o.value, f: o => o.value ? csUSD(o.value) : '<span class="text-mut">strategic</span>' },
-      { k: 'why', l: 'Why', wrap: 260, f: o => esc(o.why) }, { k: 'say', l: 'Talking point', wrap: 300, f: o => `<i>${esc(o.say)}</i>` },
-      { k: 'contact', l: 'Contact', f: o => [o.d.phone ? `<a href="tel:${esc(String(o.d.phone).replace(/[^0-9+]/g, ''))}">${esc(o.d.phone)}</a>` : '', o.d.email ? `<a href="mailto:${esc(o.d.email)}">${esc(o.d.email)}</a>` : ''].filter(Boolean).join('<br>') || '—' }];
-    rows = opps; attr = o => `class="gt-row" data-doc="${esc(o.d.id)}"`;
-  } else if (V === 'product') {
-    intro = `<div class="cs-note">For each product: how many active doctors already send it, and who could. Click a product to see its opportunities.</div>`;
-    const by = new Map(); opps.forEach(o => { const x = by.get(o.cat) || { cat: o.cat, group: o.group, n: 0, value: 0, docs: new Set(), types: {} }; x.n++; x.value += o.value; x.docs.add(o.d.id); x.types[o.type] = (x.types[o.type] || 0) + 1; by.set(o.cat, x); });
-    rows = [...by.values()].map(x => Object.assign(x, { adopters: C.nA.get(x.cat) || 0, adoption: (C.nA.get(x.cat) || 0) / (C.N || 1), typical: C.medSpend.get(x.cat) }));
-    cols = [{ k: 'cat', l: 'Product', f: x => `<b>${esc(x.cat)}</b><small class="cs-sub">${esc(x.group)}</small>` },
-      { k: 'adopters', l: 'Already send it', num: 1, f: x => x.cat === 'Digital scanning' ? '—' : `${x.adopters.toLocaleString()} <small class="text-mut">(${csPct(x.adoption)})</small>` },
-      { k: 'typical', l: 'Typical a year', num: 1, f: x => csUSD(x.typical) },
-      { k: 'n', l: 'Could send it', num: 1, f: x => x.n.toLocaleString() },
-      { k: 'mix', l: 'Kinds', f: x => Object.entries(x.types).map(([t, n]) => `${csTypeTag(t)} ${n}`).join(' ') },
-      { k: 'value', l: 'Est. a year', num: 1, f: x => csUSD(x.value) }];
-    if (!CS.sort.key) rows.sort((a, b) => b.value - a.value);
-    attr = x => `class="gt-row" data-cat="${esc(x.cat)}"`;
-  } else if (V === 'doctor') {
-    intro = `<div class="cs-note">Each doctor’s opportunities together. Click a doctor to see every suggestion with its reason and talking point.</div>`;
-    const by = new Map(); opps.forEach(o => { const x = by.get(o.d.id) || { d: o.d, opps: [], value: 0 }; x.opps.push(o); x.value += o.value; by.set(o.d.id, x); });
-    rows = [...by.values()]; if (!CS.sort.key) rows.sort((a, b) => b.value - a.value);
-    cols = [{ k: 'doctor', l: 'Doctor', v: x => x.d.name, f: x => `<b>${esc(csDr(x.d.name))}</b><small class="cs-sub">${esc(x.d.main)}</small>` },
-      { k: 'where', l: 'Where', v: x => x.d.state, f: x => esc([x.d.city, x.d.state].filter(Boolean).join(', ') || '—') },
-      { k: 'status', l: 'Status', f: x => statusBadgeHTML(x.d.id, 'sm') || '' },
-      { k: 'rev', l: `Revenue (${CS.months} mo)`, num: 1, v: x => x.d.rev, f: x => csUSD(x.d.rev) },
-      { k: 'sends', l: 'Sends now', num: 1, v: x => x.d.sends.size, f: x => x.d.sends.size },
-      { k: 'n', l: 'Opportunities', num: 1, v: x => x.opps.length, f: x => x.opps.length },
-      { k: 'top', l: 'Best suggestions', wrap: 280, f: x => x.opps.slice().sort((a, b) => b.value - a.value).slice(0, 3).map(o => `${csTypeTag(o.type)} ${esc(o.cat)}`).join('<br>') },
-      { k: 'value', l: 'Est. a year', num: 1, v: x => x.value, f: x => csUSD(x.value) }];
-    attr = x => `class="gt-row" data-docrow="${esc(x.d.id)}"`;
-    extra = x => CS.open === x.d.id ? `<tr class="cs-open"><td colspan="${cols.length}">${csDoctorCard(x.d, x.opps)}</td></tr>` : '';
-  } else if (V === 'practice') {
-    intro = `<div class="cs-note">Practices with room to grow. “Within the practice” counts products one doctor sends us and a colleague there doesn’t — the easiest conversations.</div>`;
-    const by = new Map(); opps.forEach(o => { const p = o.type === 'colleague' ? o.evidence.practice : o.d.main; if (!p) return;
-      const x = by.get(p) || { practice: p, docs: new Set(), opps: 0, value: 0, colleague: 0, cats: new Map(), state: o.d.state, city: o.d.city }; x.docs.add(o.d.id); x.opps++; x.value += o.value;
-      if (o.type === 'colleague') x.colleague++; x.cats.set(o.cat, (x.cats.get(o.cat) || 0) + o.value); by.set(p, x); });
-    const prDocs = new Map(); C.active.forEach(d => d.pr.forEach((n, p) => prDocs.set(p, (prDocs.get(p) || 0) + 1)));
-    rows = [...by.values()].map(x => Object.assign(x, { activeDocs: prDocs.get(x.practice) || 0 })); if (!CS.sort.key) rows.sort((a, b) => b.value - a.value);
-    cols = [{ k: 'practice', l: 'Practice', f: x => `<b>${esc(x.practice)}</b><small class="cs-sub">${esc([x.city, x.state].filter(Boolean).join(', '))}</small>` },
-      { k: 'activeDocs', l: 'Active doctors', num: 1, f: x => x.activeDocs },
-      { k: 'ndocs', l: 'Doctors with an opportunity', num: 1, v: x => x.docs.size, f: x => x.docs.size },
-      { k: 'colleague', l: 'Within the practice', num: 1, f: x => x.colleague ? `<b style="color:${CS_TYPE.colleague.color}">${x.colleague}</b>` : '0' },
-      { k: 'opps', l: 'Opportunities', num: 1 },
-      { k: 'top', l: 'Biggest products', wrap: 240, f: x => [...x.cats.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([c]) => esc(c)).join(', ') },
-      { k: 'value', l: 'Est. a year', num: 1, f: x => csUSD(x.value) }];
-    attr = x => `class="gt-row" data-prac="${esc(x.practice)}"`;
-  } else if (V === 'region') {
-    intro = `<div class="cs-note">Where the opportunity is. Click a region or a state to focus the whole tab on it.</div>`;
-    const by = new Map(); opps.forEach(o => { const s = o.d.state || '—', x = by.get(s) || { state: s, region: o.region, opps: 0, value: 0, docs: new Set(), colleague: 0 };
-      x.opps++; x.value += o.value; x.docs.add(o.d.id); if (o.type === 'colleague') x.colleague++; by.set(s, x); });
-    const regions = new Map(); [...by.values()].forEach(x => { const r = regions.get(x.region) || { value: 0, opps: 0 }; r.value += x.value; r.opps += x.opps; regions.set(x.region, r); });
-    intro += `<div class="cs-regions">${[...regions.entries()].sort((a, b) => b[1].value - a[1].value).map(([r, x]) => `<button type="button" class="cs-region${CS.region === r ? ' on' : ''}" data-r="${esc(r)}"><b>${esc(r)}</b><span>${csUSD(x.value)}</span><small>${x.opps.toLocaleString()} opportunities</small></button>`).join('')}</div>`;
-    rows = [...by.values()]; if (!CS.sort.key) rows.sort((a, b) => b.value - a.value);
-    cols = [{ k: 'state', l: 'State', f: x => `<b>${esc(x.state)}</b>` }, { k: 'region', l: 'Region' },
-      { k: 'ndocs', l: 'Doctors', num: 1, v: x => x.docs.size, f: x => x.docs.size }, { k: 'opps', l: 'Opportunities', num: 1 },
-      { k: 'colleague', l: 'Within a practice', num: 1 }, { k: 'value', l: 'Est. a year', num: 1, f: x => csUSD(x.value) }];
-    attr = x => `class="gt-row" data-state="${esc(x.state)}"`;
-  } else if (V === 'wins') {
-    intro = `<div class="cs-note">Existing doctors who sent a product for the <b>first time</b> in the last 90 days — cross-selling that has already happened. Use them as proof: “doctors like you added this recently”.</div>`;
-    rows = C.wins.filter(w => (CS.state === 'all' || w.d.state === CS.state) && (CS.region === 'all' || CS_REGION[w.d.state] === CS.region)
-      && (CS.group === 'all' || coachCat(w.cat).group === CS.group) && (!CS.cat || w.cat === CS.cat));
-    cols = [{ k: 'first', l: 'First sent', num: 1, v: w => +w.first, f: w => csDay(w.first) },
-      { k: 'doctor', l: 'Doctor', v: w => w.d.name, f: w => `<b>${esc(csDr(w.d.name))}</b><small class="cs-sub">${esc(w.d.main)}</small>` },
-      { k: 'where', l: 'Where', f: w => esc([w.d.city, w.d.state].filter(Boolean).join(', ') || '—') },
-      { k: 'cat', l: 'New product', f: w => `<b>${esc(w.cat)}</b>` }, { k: 'rev', l: 'Since then', num: 1, f: w => csUSD(w.rev) },
-      { k: 'since', l: 'Customer since', num: 1, v: w => +w.d.first, f: w => csDay(w.d.first) }];
-    attr = w => `class="gt-row" data-doc="${esc(w.d.id)}"`;
-  } else {
-    body.innerHTML = csHowHTML(C); _csRows = []; _csCols = []; return;
-  }
-  const t = csTable(cols, rows, attr, extra);
-  _csRows = t.rows; _csCols = cols;
-  body.innerHTML = intro + (t.rows.length ? t.html : '<div class="empty-state" style="padding:30px">Nothing matches these filters.</div>');
-  csBindTable(cols, redraw);
-  // a row in the plan or wins → that doctor, opened, in By doctor (searched by name so they're at the top)
-  body.querySelectorAll('[data-doc]').forEach(tr => tr.onclick = e => { if (e.target.closest('a')) return;
-    const d = (C.active.find(x => x.id === tr.dataset.doc) || {}); CS.view = 'doctor'; CS.open = tr.dataset.doc; CS.q = d.name || ''; CS.sort = { key: null, dir: -1 }; CS.limit = 100;
-    renderCrossSell(); const r = document.querySelector(`[data-docrow="${CSS.escape(CS.open)}"]`); if (r) r.scrollIntoView({ block: 'center' }); });
-  body.querySelectorAll('[data-docrow]').forEach(tr => tr.onclick = e => { if (e.target.closest('a,button')) return; CS.open = CS.open === tr.dataset.docrow ? null : tr.dataset.docrow; redraw(); });
-  body.querySelectorAll('[data-cat]').forEach(tr => tr.onclick = () => { CS.cat = tr.dataset.cat; CS.view = 'plan'; CS.limit = 100; renderCrossSell(); });
-  body.querySelectorAll('[data-prac]').forEach(tr => tr.onclick = () => { CS.q = tr.dataset.prac; CS.view = 'plan'; CS.limit = 100; renderCrossSell(); });
-  body.querySelectorAll('[data-state]').forEach(tr => tr.onclick = () => { CS.state = tr.dataset.state; CS.view = 'plan'; CS.limit = 100; renderCrossSell(); });
-  body.querySelectorAll('.cs-region').forEach(b => b.onclick = () => { CS.region = CS.region === b.dataset.r ? 'all' : b.dataset.r; CS.state = 'all'; renderCrossSell(); });
-  body.querySelectorAll('.cs-open-dr').forEach(b => b.onclick = () => { APP.selectedDoctorId = b.dataset.id; switchTab('docdetail'); });
+/* ── 2. DOCTORS ──────────────────────────────────────────────────────────────── */
+function csPaintDoctors(C, opps) {
+  const host = document.getElementById('csDoctors'); if (!host) return;
+  const m = new Map();
+  opps.forEach(o => { const x = m.get(o.d.id) || { d: o.d, value: 0, list: [] }; x.value += o.value; x.list.push(o); m.set(o.d.id, x); });
+  const rows = [...m.values()].sort((a, b) => b.value - a.value);
+  host.innerHTML = csSectionHTML('doctor', 'Top doctors to cross-sell',
+    'Doctors with the most to add, ranked by estimated yearly value. Open one for what they send now and each suggestion with its evidence and a talking point.',
+    rows, 0, (x, i) => {
+      const open = CSV2.open.doctor === x.d.id, top = x.list.slice().sort((a, b) => b.value - a.value);
+      return `<div class="cs-row2${open ? ' open' : ''}">${csRowMain('doctor', x.d.id, open, `
+        <span class="cs-rank">${i + 1}</span>
+        <span class="cs-name"><b>${esc(csDr(x.d.name))}</b><small>${esc(x.d.main)} · ${esc(csWhere(x.d))}</small></span>
+        <span class="cs-sugg">${top.slice(0, 2).map(o => `${csTypeTag(o.type)} ${esc(o.cat)}`).join('<br>')}${top.length > 2 ? `<small class="text-mut"> +${top.length - 2} more</small>` : ''}</span>
+        <span class="cs-metric"><b>${csK(x.d.rev)}</b><small>sent in ${CS.months} mo</small></span>
+        <span class="cs-metric cs-val"><b>${csUSD(x.value)}</b><small>est. a year</small></span>`)}
+        ${open ? csDoctorDetail(x.d, top) : ''}</div>`;
+    });
+  csBindSection('doctor', host, () => csPaintDoctors(C, opps));
+}
+function csDoctorDetail(d, list) {
+  const sends = [...d.cats.values()].filter(x => x.rev > 0).sort((a, b) => b.rev - a.rev), max = sends.length ? sends[0].rev : 1;
+  return `<div class="cs-det">
+    ${d.spec ? `<div class="cs-fn">Specialist (${esc(d.spec.label)}, from the practice name) — “similar doctors” suggestions are limited to what that specialty uses.</div>` : ''}
+    <div class="cs-docgrid">
+      <div><div class="cs-subh">Sends us now · ${csUSD(d.rev)} in ${CS.months} months, ${d.cases.size.toLocaleString()} cases</div>
+        ${sends.map(x => `<div class="cs-bar"><span>${esc(x.cat)}</span><i style="width:${Math.max(4, Math.round(x.rev / max * 100))}%"></i><b>${csK(x.rev)}</b></div>`).join('') || '<div class="text-mut">—</div>'}
+        <div class="cs-contact">${d.phone ? `<a href="tel:${esc(String(d.phone).replace(/[^0-9+]/g, ''))}">${esc(d.phone)}</a>` : ''}${d.email ? ` · <a href="mailto:${esc(d.email)}">${esc(d.email)}</a>` : ''}
+          · last case ${csDay(d.last)} <button class="btn-text cs-open-dr" data-id="${esc(d.id)}" data-stop>Doctor Detail ↗</button></div></div>
+      <div><div class="cs-subh">Suggested next</div>
+        ${list.map(o => `<div class="cs-opp"><div class="cs-opp-h">${csPrioTag(o.prio)} ${csTypeTag(o.type)} <b>${esc(o.cat)}</b><span>${o.value ? csUSD(o.value) + ' a year' : 'strategic'}</span></div>
+          <div class="cs-opp-why">${esc(o.why)}</div><div class="cs-opp-say">“${esc(o.say)}”</div></div>`).join('')}</div>
+    </div></div>`;
+}
+
+/* ── 3. PRACTICES ────────────────────────────────────────────────────────────── */
+function csPaintPractices(C, opps) {
+  const host = document.getElementById('csPractices'); if (!host) return;
+  const m = new Map();
+  opps.forEach(o => { const k = csPracOf(o), x = m.get(k) || { practice: k, value: 0, list: [], colleague: 0, d0: o.d }; x.value += o.value; x.list.push(o); if (o.type === 'colleague') x.colleague++; m.set(k, x); });
+  const rows = [...m.values()].sort((a, b) => b.value - a.value);
+  host.innerHTML = csSectionHTML('practice', 'Top practices to cross-sell',
+    'Practices with the most room to grow. Open one for a grid of its doctors and product lines — what each sends, and where the gaps are.',
+    rows, 0, (x, i) => {
+      const open = CSV2.open.practice === x.practice, docs = (C.atPractice.get(x.practice) || []);
+      return `<div class="cs-row2${open ? ' open' : ''}">${csRowMain('practice', x.practice, open, `
+        <span class="cs-rank">${i + 1}</span>
+        <span class="cs-name"><b>${esc(x.practice)}</b><small>${esc(csWhere(x.d0))} · ${docs.length.toLocaleString()} active doctor${docs.length === 1 ? '' : 's'}</small></span>
+        <span class="cs-metric"><b>${x.colleague ? x.colleague : '—'}</b><small>within-practice gaps</small></span>
+        <span class="cs-metric"><b>${csK(C.pracRev.get(x.practice))}</b><small>sent in ${CS.months} mo</small></span>
+        <span class="cs-metric cs-val"><b>${csUSD(x.value)}</b><small>est. a year</small></span>`)}
+        ${open ? csPracticeDetail(C, x, docs) : ''}</div>`;
+    });
+  csBindSection('practice', host, () => csPaintPractices(C, opps));
+}
+function csPracticeDetail(C, x, docs) {
+  const groups = CS_MATRIX_GROUPS.filter(g => docs.some(d => [...d.cats.values()].some(c => c.group === g && c.rev > 0)) || x.list.some(o => o.group === g));
+  const cell = (d, g) => {
+    const has = [...d.cats.values()].filter(c => c.group === g && c.rev > 0 && c.atPrac && (c.atPrac.get(x.practice) || 0) > 0).reduce((t, c) => t + c.atPrac.get(x.practice), 0);
+    if (has > 0) return `<td class="cs-has2" title="Sends us ${csUSD(has)} of ${esc(g)} from this practice">● ${csK(has)}</td>`;
+    const os = x.list.filter(o => o.d === d && o.group === g).sort((a, b) => b.value - a.value);
+    if (os.length) return `<td class="cs-gap" style="--c:${CS_TYPE[os[0].type].color}" title="${esc(os[0].why)}">+${csK(os.reduce((t, o) => t + o.value, 0))}<small>${esc(CS_TYPE[os[0].type].short)}</small></td>`;
+    return '<td class="cs-none">—</td>';
+  };
+  const big = x.list.slice().sort((a, b) => b.value - a.value).slice(0, 5);
+  return `<div class="cs-det">
+    <div class="cs-why"><p>${docs.length ? `<b>${docs.length} active doctor${docs.length === 1 ? '' : 's'}</b> sent us <b>${csUSD(C.pracRev.get(x.practice))}</b> from this practice in ${CS.months} months.` : ''}
+      ${x.colleague ? ` <b>${x.colleague}</b> of the gaps are products one doctor here already sends and a colleague doesn’t — the easiest conversations.` : ''}</p></div>
+    ${docs.length ? `<div class="cs-subh">Doctors × product lines</div>
+    <div class="grid-table-wrap"><table class="cs-matrix"><thead><tr><th>Doctor</th>${groups.map(g => `<th>${esc(g)}</th>`).join('')}<th class="r">Opportunity</th></tr></thead><tbody>
+      ${docs.slice().sort((a, b) => b.rev - a.rev).map(d => `<tr><td><b>${esc(csDr(d.name))}</b></td>${groups.map(g => cell(d, g)).join('')}<td class="r"><b>${csUSD(x.list.filter(o => o.d === d).reduce((t, o) => t + o.value, 0))}</b></td></tr>`).join('')}
+    </tbody></table></div>
+    <div class="cs-fn">● what the doctor sends us from this practice in ${CS.months} months · +$ an estimated yearly opportunity (hover for the reason) · — nothing suggested</div>` : ''}
+    <div class="cs-subh">Biggest gaps</div>
+    ${big.map(o => `<div class="cs-call"><div><b>${esc(csDr(o.d.name))} — ${esc(o.cat)}</b><div class="cs-callwhy">${csTypeTag(o.type)} ${esc(o.why)}</div></div><b class="cs-callv">${o.value ? csUSD(o.value) : 'strategic'}</b></div>`).join('')}</div>`;
+}
+
+/* the action plan: every suggestion the filters let through (or one product's) */
+function csExport(filter, name) {
+  const C = csCompute(), opps = csOpps(C).filter(typeof filter === 'function' ? filter : () => true).sort((a, b) => b.value - a.value);
+  downloadCSV((typeof name === 'string' ? name : 'cross-sell-action-plan') + '-' + isoDate(new Date()) + '.csv', opps.map(o => ({
+    Priority: o.prio, Kind: CS_TYPE[o.type].label, Doctor: csDr(o.d.name), Practice: o.d.main, City: o.d.city, State: o.d.state, Offer: o.cat, 'Product group': o.group,
+    'Est. yearly value': Math.round(o.value), Likelihood: Math.round(o.p * 100) + '%', Why: o.why, 'Talking point': o.say, Phone: o.d.phone, Email: o.d.email,
+    [`Doctor revenue (${CS.months} mo)`]: Math.round(o.d.rev), 'Last case': isoDate(o.d.last) })));
 }
 
 function csDoctorCard(d, opps) {
@@ -9286,27 +9426,18 @@ function csDoctorCard(d, opps) {
 
 function csHowHTML(C) {
   return `<div class="card cs-how">
-    <h3>How the opportunities are found</h3>
-    <p>Only <b>active doctors</b> are assessed: at least one case in the last 90 days and 3 or more in the last ${CS.months} months (${C.N.toLocaleString()} doctors right now). Suggestions are <b>sellable products</b> — crowns, bridges, veneers and inlays, implant work, dentures, partials and flippers, and appliances — never fees, parts, repairs or try-in steps. The tab follows the State and Group filters at the top of the page.</p>
-    <p><span class="cs-tag" style="--c:${CS_TYPE.colleague.color}">Colleague</span> <b>A colleague sends it.</b> Another active doctor at the same practice sends us this product and this doctor doesn’t. Estimated at 60% of what the colleague sends (capped at twice the typical amount). The strongest signal: the practice already trusts us for it.</p>
-    <p><span class="cs-tag" style="--c:${CS_TYPE.lapsed.color}">Lapsed</span> <b>Stopped sending it.</b> They sent at least $300 of it (in the window or the one before) and nothing in the last 120 days. Estimated at half of their best year.</p>
-    <p><span class="cs-tag" style="--c:${CS_TYPE.similar.color}">Similar</span> <b>Similar doctors send it.</b> For each product the doctor already sends, we look at every active doctor who sends that product and count how many also send the suggestion — for example, “62% of the 480 doctors who send zirconia crowns also send nightguards”. The doctor’s most telling product is used, it needs at least 25 doctors behind it, and suggestions under 20% are dropped. Estimated as that percentage × what those doctors typically spend on it in a year × this doctor’s size (their revenue against a typical buyer’s, kept between half and double).</p>
-    <p><span class="cs-tag" style="--c:${CS_TYPE.digital.color}">Digital</span> <b>Go digital.</b> At least 10 cases, and 70% or more came in as physical impressions. ${C.triosMed ? `Valued at 30% of the typical scanner-program spend (${csUSD(C.triosMed)} a year).` : 'Shown as strategic — there isn’t enough scanner-program billing yet to put a value on it.'}</p>
-    <p><b>Specialists.</b> When the practice name shows a specialty, “similar doctors” suggestions are limited to what it uses: periodontists and oral surgeons — implant work and surgical guides; orthodontists — appliances; endodontists — none. Colleague and lapsed opportunities still show, because they’re based on what the office actually sent.</p>
-    <p><b>Priority:</b> the top 20% by value are High, the next 30% Medium, the rest Low — and colleague and lapsed opportunities are never Low. Values are estimates to rank the work, not forecasts.</p>
-    <p><b>Recent wins</b> are existing doctors (customers for more than 90 days) whose first-ever line of a product came in the last 90 days.</p></div>`;
-}
-
-function csExport() {
-  const C = csCompute(), V = CS.view, stamp = isoDate(new Date());
-  if (V === 'plan' || V === 'how') {
-    const opps = csFiltered(C.opps).sort((a, b) => b.value - a.value);
-    return downloadCSV('cross-sell-action-plan-' + stamp + '.csv', opps.map(o => ({ Priority: o.prio, Kind: CS_TYPE[o.type].label, Doctor: csDr(o.d.name), Practice: o.d.main,
-      City: o.d.city, State: o.d.state, Region: o.region, Offer: o.cat, 'Product group': o.group, 'Est. yearly value': Math.round(o.value), Likelihood: Math.round(o.p * 100) + '%',
-      Why: o.why, 'Talking point': o.say, Phone: o.d.phone, Email: o.d.email, [`Doctor revenue (${CS.months} mo)`]: Math.round(o.d.rev), 'Last case': isoDate(o.d.last) })));
-  }
-  const plain = v => String(v == null ? '' : v).replace(/<br>/g, '; ').replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").trim();
-  downloadCSV('cross-sell-' + V + '-' + stamp + '.csv', _csRows.map(r => Object.fromEntries(_csCols.map(c => [c.l, plain(c.f ? c.f(r) : r[c.k])]))));
+    <h3>How the opportunities are worked out</h3>
+    <p><b>Who is looked at.</b> Active doctors only — a case in the last 90 days and at least 3 in the period (${C.N.toLocaleString()} right now). Doctors who have stopped altogether belong on the Retention tab.</p>
+    <p><b>What is suggested.</b> Sellable products: crowns, veneers and inlays, implant work, dentures, partials and flippers, and appliances. Never fees, parts, repairs or try-in steps — and bridges are never suggested (the bridge line and screw-retained implant bridges). A bridge-named product filed under another line — a hybrid “bridge” under Implant Hybrid / Full Arch — still counts as work the doctor already sends.</p>
+    <p><b>Four kinds of evidence</b>, strongest first:</p>
+    <ul>
+      <li>${csTypeTag('colleague')} <b>A colleague sends it</b> — another active doctor at the same practice sends us this product and this doctor doesn’t. Valued at 60% of what the colleague sends (capped at twice the typical spend).</li>
+      <li>${csTypeTag('lapsed')} <b>Stopped sending it</b> — the doctor sent at least $300 of it (in this period or the one before) and nothing in the last 120 days. Valued at half of their best year.</li>
+      <li>${csTypeTag('similar')} <b>Similar doctors send it</b> — of all active doctors who send a product this doctor sends, the share who also send the suggestion (it must be 20% or more, with at least 25 doctors behind it). Valued at that share × what those doctors typically spend on it × this doctor’s size (their revenue against a typical buyer’s, kept between half and double).</li>
+      <li>${csTypeTag('digital')} <b>Go digital</b> — 70% or more of their cases came in as physical impressions (at least 10 cases).</li>
+    </ul>
+    <p><b>Specialists.</b> When the practice name shows a specialty, “similar doctors” suggestions are limited to what it uses (periodontists and oral surgeons: implant work and surgical guides; orthodontists: appliances; endodontists: none).</p>
+    <p>Values are estimates for ranking the work, not forecasts. Products, doctors and practices are three views of the same suggestions, so all three add up to the same total.</p></div>`;
 }
 
 
@@ -14503,7 +14634,7 @@ const pmAbbr = s => { const t = String(s || '').trim(); if (!t) return ''; if (/
   return PM_ST[t.toLowerCase().replace(/[^a-z]+/g, ' ').trim()] || t; };
 
 const PMAP = { view: (() => { try { return localStorage.getItem('dash.prospectView') || 'list'; } catch (e) { return 'list'; } })(),
-               state: '', tiers: { A: true, B: true, S: false }, f: { gVisit: '', gStatus: '', gHeat: [], gLab: [], filter: [], repFilter: [], dFrom: '', dTo: '', q: '' },
+               state: '', tiers: { A: true, B: true, S: true }, f: { gVisit: '', gStatus: '', gHeat: [], gLab: [], filter: [], repFilter: [], dFrom: '', dTo: '', q: '' },
                more: false, counts: null, cache: new Map(), offices: [], shown: [], markers: new Map(), map: null, cluster: null, reps: [], user: null, city: '', geo: null };
 
 let _pmLibs = null;
@@ -14562,53 +14693,46 @@ function renderProspects() {
         <div class="section-actions"><div class="view-toggle" id="prViewToggle" role="group" aria-label="Show as">
           <button type="button" data-v="list">☰ List</button><button type="button" data-v="map">🗺 Map</button></div></div>
       </div>
-      <div id="prListHost"></div><div id="prMapHost"></div>`;
+      <div id="pmCtlHost"></div><div id="prListHost"></div><div id="prMapHost"></div>`;
     el.querySelectorAll('#prViewToggle button').forEach(b => b.addEventListener('click', () => {
       PMAP.view = b.dataset.v; try { localStorage.setItem('dash.prospectView', PMAP.view); } catch (e) {}
       renderProspects();
     }));
+    pmBuildControls();
   }
   el.querySelectorAll('#prViewToggle button').forEach(b => { const on = b.dataset.v === PMAP.view; b.classList.toggle('active', on); b.setAttribute('aria-pressed', on); });
   document.getElementById('prListHost').style.display = PMAP.view === 'list' ? '' : 'none';
   document.getElementById('prMapHost').style.display = PMAP.view === 'map' ? '' : 'none';
-  if (PMAP.view === 'list') renderProspectsList(); else renderProspectMap();
+  pmInit().then(ok => { if (!ok) return; if (PMAP.view === 'list') pmPaintListView(); else renderProspectMap(); });
 }
 
-async function renderProspectMap() {
-  const host = document.getElementById('prMapHost'); if (!host) return;
-  if (!host.dataset.built) {
-    host.dataset.built = '1';
-    host.innerHTML = `
-      <div class="card pm-controls">
-        <div class="pm-row1">
-          <label class="coach-f"><span>State</span><select class="gf-select" id="pmState"><option value="">Loading states…</option></select></label>
-          <label class="coach-f pm-q"><span>Search — name, city, address, doctor, lab or zip</span><input class="gf-select" id="pmQ" placeholder="Search offices"></label>
-          <div class="pm-tiers" role="group" aria-label="Show">${PM_TIERS.map(([t, l]) => `<button type="button" class="pm-tier" data-t="${t}">${l}</button>`).join('')}</div>
-        </div>
-        <div class="pm-filters" id="pmFilters"></div>
-        <div class="pm-more" id="pmMore"></div>
-        <div class="pm-msg" id="pmMsg"></div>
+/* the controls card — shared by the List and the Map, so both show the same offices */
+function pmBuildControls() {
+  const host = document.getElementById('pmCtlHost'); if (!host || host.dataset.built) return;
+  host.dataset.built = '1';
+  host.innerHTML = `
+    <div class="card pm-controls">
+      <div class="pm-row1">
+        <label class="coach-f"><span>State</span><select class="gf-select" id="pmState"><option value="">Loading states…</option></select></label>
+        <label class="coach-f pm-q"><span>Search — name, city, address, doctor, lab or zip</span><input class="gf-select" id="pmQ" placeholder="Search offices"></label>
+        <div class="pm-tiers" role="group" aria-label="Show">${PM_TIERS.map(([t, l]) => `<button type="button" class="pm-tier" data-t="${t}">${l}</button>`).join('')}</div>
       </div>
-      <div class="pm-fill card" id="pmFill" style="display:none"></div>
-      <div class="pm-body">
-        <div class="pm-map card" id="pmMap"><div class="pm-empty" id="pmEmpty">Pick a state to see its offices.</div></div>
-        <aside class="pm-side card">
-          <div class="pm-sec" id="pmCitiesHead">Cities</div><input class="gf-select pm-cityq" id="pmCityQ" placeholder="Find a city" style="display:none">
-          <div id="pmCities" class="pm-areas"><div class="pm-note">Pick a state first.</div></div>
-          <div class="pm-sec" id="pmInViewHead">In view</div><div id="pmList" class="pm-list"></div>
-        </aside>
-      </div>`;
-    host.querySelector('#pmState').addEventListener('change', e => pmShowState(e.target.value));
-    let qt = null; host.querySelector('#pmQ').addEventListener('input', e => { clearTimeout(qt); qt = setTimeout(() => { PMAP.f.q = e.target.value.trim(); pmApply(false); }, 200); });
-    host.querySelectorAll('.pm-tier').forEach(b => b.addEventListener('click', () => { PMAP.tiers[b.dataset.t] = !PMAP.tiers[b.dataset.t]; pmPaintFilters(); pmApply(false); }));
-    host.querySelector('#pmCityQ').addEventListener('input', () => pmPaintCities());
-  }
+      <div class="pm-filters" id="pmFilters"></div>
+      <div class="pm-more" id="pmMore"></div>
+      <div class="pm-msg" id="pmMsg"></div>
+    </div>
+    <div class="pm-fill card" id="pmFill" style="display:none"></div>`;
+  host.querySelector('#pmState').addEventListener('change', e => pmShowState(e.target.value));
+  let qt = null; host.querySelector('#pmQ').addEventListener('input', e => { clearTimeout(qt); qt = setTimeout(() => { PMAP.f.q = e.target.value.trim(); pmApply(false); }, 200); });
+  host.querySelectorAll('.pm-tier').forEach(b => b.addEventListener('click', () => { PMAP.tiers[b.dataset.t] = !PMAP.tiers[b.dataset.t]; pmPaintFilters(); pmApply(false); }));
+}
+
+/* signed in? who is it, the reps, and the state list — needed by both views */
+async function pmInit() {
   const msg = t => { const m = document.getElementById('pmMsg'); if (m) m.innerHTML = t; };
   const db = typeof pgClient === 'function' ? pgClient() : null;
   const session = db ? await pgSession() : null;
-  if (!db || !session) { msg('Sign in on the <b>Salesly Bridge</b> tab first — the map reads the offices from Supabase.'); return; }
-  try { await pmLoadLibs(); } catch (e) { msg(esc(e.message) + ' — check the internet connection and try again.'); return; }
-  if (!PMAP.map) pmMakeMap(); else setTimeout(() => PMAP.map.invalidateSize(), 50);
+  if (!db || !session) { msg('Sign in on the <b>Salesly Bridge</b> tab first — this reads the offices from Supabase.'); return false; }
   if (!PMAP.user) {   // who's signed in and the reps — for Salesly's "Mine" and "By rep" filters
     const uid = (session.user && session.user.id) || session.id || null;
     const { data: reps } = await db.from('reps').select('*');
@@ -14618,22 +14742,46 @@ async function renderProspectMap() {
   pmPaintFilters();
   if (!PMAP.counts) {
     const { data, error } = await db.rpc('prospect_state_counts');
-    if (error) { msg(/function|does not exist|PGRST202/i.test(error.message || '') ? 'Run <b>salesly_states_and_cities.sql</b> in Supabase once to turn the map on.' : 'Could not load states: ' + esc(error.message)); return; }
+    if (error) { msg(/function|does not exist|PGRST202/i.test(error.message || '') ? 'Run <b>salesly_states_and_cities.sql</b> in Supabase once to turn this on.' : 'Could not load states: ' + esc(error.message)); return false; }
     const c = new Map();
     (data || []).forEach(r => { const s = pmAbbr(r.state); if (!s) return; const x = c.get(s) || { A: 0, B: 0, S: 0 }; x[r.tier] = (x[r.tier] || 0) + Number(r.n || 0); c.set(s, x); });
     PMAP.counts = c;
   }
   const sel = document.getElementById('pmState');
-  const states = [...PMAP.counts.entries()].sort((a, b) => (b[1].A + b[1].B) - (a[1].A + a[1].B));
-  sel.innerHTML = '<option value="">— pick a state —</option>' + states.map(([s, x]) =>
-    `<option value="${esc(s)}"${s === PMAP.state ? ' selected' : ''}>${esc(s)}${PM_ST[s] ? ' — ' + esc(PM_ST[s]) : ''} · ${(x.A + x.B).toLocaleString()} prospects${x.S ? ' · ' + x.S.toLocaleString() + ' customers' : ''}</option>`).join('');
-  if (!PMAP.state) msg(`${states.length} states. Busiest: ${states.slice(0, 3).map(([s, x]) => esc(s) + ' (' + (x.A + x.B).toLocaleString() + ')').join(', ')}.`);
+  if (sel && !sel.dataset.filled) {
+    sel.dataset.filled = '1';
+    const states = [...PMAP.counts.entries()].sort((a, b) => (b[1].A + b[1].B) - (a[1].A + a[1].B));
+    sel.innerHTML = '<option value="">— pick a state —</option>' + states.map(([s, x]) =>
+      `<option value="${esc(s)}"${s === PMAP.state ? ' selected' : ''}>${esc(s)}${PM_ST[s] ? ' — ' + esc(PM_ST[s]) : ''} · ${(x.A + x.B).toLocaleString()} prospects${x.S ? ' · ' + x.S.toLocaleString() + ' customers' : ''}</option>`).join('');
+    if (!PMAP.state) msg(`${states.length} states. Busiest: ${states.slice(0, 3).map(([s, x]) => esc(s) + ' (' + (x.A + x.B).toLocaleString() + ')').join(', ')}.`);
+  }
+  return true;
 }
 
-/* the filter bar — Salesly's chips, in Salesly's order */
+async function renderProspectMap() {
+  const host = document.getElementById('prMapHost'); if (!host) return;
+  if (!host.dataset.built) {
+    host.dataset.built = '1';
+    host.innerHTML = `
+      <div class="pm-body">
+        <div class="pm-map card" id="pmMap"><div class="pm-empty" id="pmEmpty"${PMAP.state ? ' style="display:none"' : ''}>Pick a state to see its offices.</div></div>
+        <aside class="pm-side card">
+          <div class="pm-sec" id="pmCitiesHead">Cities</div><input class="gf-select pm-cityq" id="pmCityQ" placeholder="Find a city" style="display:none">
+          <div id="pmCities" class="pm-areas"><div class="pm-note">Pick a state first.</div></div>
+          <div class="pm-sec" id="pmInViewHead">In view</div><div id="pmList" class="pm-list"></div>
+        </aside>
+      </div>`;
+    host.querySelector('#pmCityQ').addEventListener('input', () => pmPaintCities());
+  }
+  const msg = t => { const m = document.getElementById('pmMsg'); if (m) m.innerHTML = t; };
+  try { await pmLoadLibs(); } catch (e) { msg(esc(e.message) + ' — check the internet connection and try again.'); return; }
+  if (!PMAP.map) pmMakeMap(); else setTimeout(() => PMAP.map.invalidateSize(), 50);
+  if (PMAP.state) pmApply(!PMAP._mapFitted);   // draw what the list was showing (first time: fit to it)
+}
+
 function pmPaintFilters() {
   const f = PMAP.f, box = document.getElementById('pmFilters'); if (!box) return;
-  document.querySelectorAll('#prMapHost .pm-tier').forEach(b => { const on = !!PMAP.tiers[b.dataset.t]; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); });
+  document.querySelectorAll('#pmCtlHost .pm-tier').forEach(b => { const on = !!PMAP.tiers[b.dataset.t]; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); });
   const pool = PMAP.offices.filter(o => PMAP.tiers[pmTierOf(o)]);
   const heatN = k => pool.filter(o => SLF.heatOf(o) === k).length, labN = k => pool.filter(o => SLF.statuses(o).includes(k)).length;
   const seg = (k, v, l) => `<button type="button" class="pm-seg${f[k] === v ? ' on' : ''}" data-k="${k}" data-v="${v}">${l}</button>`;
@@ -14718,7 +14866,10 @@ async function pmLoadState(st) {
 }
 
 async function pmShowState(st) {
-  PMAP.state = st; PMAP.city = ''; const msg = t => { const m = document.getElementById('pmMsg'); if (m) m.innerHTML = t; };
+  PMAP.state = st; PMAP.city = ''; PMAP._mapFitted = false;
+  // customers are always shown when a state is picked
+  if (st) PMAP.tiers.S = true;
+  const msg = t => { const m = document.getElementById('pmMsg'); if (m) m.innerHTML = t; };
   const empty = document.getElementById('pmEmpty');
   if (!st) { PMAP.offices = []; PMAP.cluster && PMAP.cluster.clearLayers(); if (empty) empty.style.display = ''; pmPaintFilters(); pmPaintCities(); pmPaintInView(); pmPaintFill(); return; }
   msg('Loading ' + esc(st) + '…');
@@ -14735,19 +14886,21 @@ function pmApply(fit) {
   const f = PMAP.f, q = String(f.q || '').toLowerCase(), S = v => (v == null ? '' : String(v)).toLowerCase();
   PMAP.shown = PMAP.offices.filter(o => PMAP.tiers[pmTierOf(o)] && SLF.pass(o, f)
     && (!q || S(o.name).includes(q) || S(o.city).includes(q) || S(o.addr).includes(q) || S(o.drs).includes(q) || S(o.lab).includes(q) || S(o.zip).includes(q)));
-  if (!PMAP.cluster) return;
+  if (PMAP.cluster) {
   PMAP.markers = new Map(); PMAP.cluster.clearLayers();
   PMAP.cluster.addLayers(PMAP.shown.filter(pmHasPos).map(o => {
     const m = L.circleMarker([+o.lat, +o.lng], { radius: pmTierOf(o) === 'S' ? 6 : 7, color: '#fff', weight: 1.5, fillColor: pmColor(o), fillOpacity: 0.95 });
     m._pm = o; m.bindPopup(() => pmPopupHTML(o), { maxWidth: 320 }); PMAP.markers.set(o.id, m); return m;
   }));
+  }
   const nPos = PMAP.shown.filter(pmHasPos).length, nT = t => PMAP.shown.filter(o => pmTierOf(o) === t).length;
   const m = document.getElementById('pmMsg');
   if (m) m.innerHTML = `<b>${esc(PMAP.state)}</b>: ${PMAP.shown.length.toLocaleString()} offices match — ${nT('A').toLocaleString()} A · ${nT('B').toLocaleString()} B${PMAP.tiers.S ? ' · ' + nT('S').toLocaleString() + ' customers' : ''}`
     + (PMAP.shown.length > nPos ? ` · <span class="text-mut">${(PMAP.shown.length - nPos).toLocaleString()} have no map position yet</span>` : '');
   pmPaintCities();
-  if (fit) { const b = PMAP.shown.filter(pmHasPos); if (b.length) PMAP.map.fitBounds(L.latLngBounds(b.map(o => [+o.lat, +o.lng])), { padding: [20, 20] }); }
+  if (fit && PMAP.map) { const b = PMAP.shown.filter(pmHasPos); if (b.length) { PMAP.map.fitBounds(L.latLngBounds(b.map(o => [+o.lat, +o.lng])), { padding: [20, 20] }); PMAP._mapFitted = true; } }
   pmPaintInView();
+  pmPaintListView();
 }
 
 /* the cities of the state, busiest first — click one to zoom to it */
@@ -14865,7 +15018,94 @@ async function pmFillCities(list) {
   pmApply(false); pmPaintFill();
 }
 
-/* the List view — the server-side prospect search, unchanged */
+/* ── the List view: the SAME filtered offices as the map, by city, in street order ──
+   Each city is a card (busiest first; all open when the filters leave 300 or fewer).
+   A row shows the office, its lab statuses and last visit; click it for the details
+   and "Show on map", which opens the map on that office. */
+const PMLV = { open: new Set(), more: {}, exp: '', allOpen: false };
+const pmBldKeyOf = o => { const p = pmAddrParts(o.addr); return p.num === Infinity ? '' : p.num + ' ' + p.street + '|' + String(o.city || '').toLowerCase(); };
+const pmDay = d => { const x = normDateStr(d); return x ? new Date(x + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : ''; };
+function normDateStr(s) { const t = String(s || '').trim(); let m = t.match(/^(\d{4})-(\d{2})-(\d{2})/); if (m) return m[1] + '-' + m[2] + '-' + m[3];
+  m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/); return m ? m[3] + '-' + m[1].padStart(2, '0') + '-' + m[2].padStart(2, '0') : ''; }
+function pmLvRow(o, same) {
+  const sts = SLF.statuses(o), heat = SLF.heatOf(o), lv = SLF.lastVisit(o), h = PM_HEAT.find(x => x[0] === heat), tier = pmTierOf(o);
+  const lab = sts.map(k => { const x = PM_LAB.find(l => l[0] === k); return x ? `<span class="pm-lvchip" style="--c:${x[2]}">${esc(x[1])}</span>` : ''; }).join('');
+  const open = PMLV.exp === String(o.id);
+  return `<div class="pm-lvrow${same ? ' same' : ''}${open ? ' open' : ''}">
+    <button type="button" class="pm-lvmain" data-lvx="${esc(o.id)}" aria-expanded="${open}">
+      <span class="pm-dot" style="background:${pmColor(o)}"></span>
+      <span class="pm-lvtxt"><b>${same ? '↳ ' : ''}${esc(o.name || 'Unnamed office')}</b><small>${esc(o.addr || 'No address')}${o.zip ? ' · ' + esc(o.zip) : ''}</small></span>
+      <span class="pm-lvlab">${lab}</span>
+      <span class="pm-lvlast">${heat === 'closed' ? '<b class="pm-closed">★ Closed</b>' : lv ? (h ? `<i style="background:${h[2]}"></i>` : '') + esc(pmDay(lv)) : '<span class="text-mut">Not visited</span>'}</span>
+      <span class="pm-lvtier pm-t${tier}">${tier === 'S' ? 'Customer' : esc(tier)}</span>
+    </button>${open ? pmLvDetail(o) : ''}</div>`;
+}
+function pmLvDetail(o) {
+  const labLines = String(o.notes || '').split('\n').filter(l => /LAB:\s*[A-Za-z]/i.test(l)), other = SLF.stripLab(o.notes), vis = (o.visits || []).slice(0, 4);
+  const addr = [o.addr, [o.city, [pmAbbr(o.state), o.zip].filter(Boolean).join(' ')].filter(Boolean).join(', ')].filter(Boolean).join(', ');
+  const f = (l, v) => `<div><label>${l}</label><span>${v}</span></div>`;
+  return `<div class="pm-lvdet">
+    <div class="pm-lvgrid">${f('Phone', o.phone ? `<a href="tel:${esc(String(o.phone).replace(/[^0-9+]/g, ''))}">${esc(o.phone)}</a>` : '—')}${f('Scanner', esc(o.scanner || '—'))}
+      ${f('Doctors', esc(o.drs || '—'))}${f('Current lab', esc(o.lab || '—'))}
+      ${f('Account', SLF.isClosed(o) ? '★ Closed sale' + (o.claimedByName ? ' — ' + esc(o.claimedByName) : '') : SLF.isClaimed(o) ? '☆ Claimed by ' + esc(o.claimedByName || 'a rep') : '—')}</div>
+    ${labLines.length ? `<div class="pm-lvsec">Lab</div>${labLines.map(l => `<div class="pm-lvline">${esc(l.replace(/^.*?LAB:\s*/i, ''))}</div>`).join('')}` : ''}
+    ${vis.length ? `<div class="pm-lvsec">Recent visits</div>${vis.map(v => { const h = PM_HEAT.find(x => x[0] === v.color);
+        return `<div class="pm-lvline">${h ? `<i style="background:${h[2]}"></i>` : ''}${esc(pmDay(v.date))}${v.rep ? ' · ' + esc(v.rep) : ''}${v.note ? ' — ' + esc(v.note) : ''}</div>`; }).join('')}` : ''}
+    ${other ? `<div class="pm-lvsec">Notes</div><div class="pm-lvline pm-lvnote">${esc(other.slice(0, 500))}</div>` : ''}
+    <div class="pm-lvact">${pmHasPos(o) ? `<button type="button" class="btn-text" data-lvmap="${esc(o.id)}">🗺 Show on map</button>` : '<span class="text-mut">No map position yet</span>'}
+      ${addr ? `<a class="btn-text" href="https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(addr)}" target="_blank" rel="noopener">Directions ↗</a>` : ''}</div></div>`;
+}
+function pmPaintListView() {
+  const host = document.getElementById('prListHost'); if (!host || PMAP.view !== 'list') return;
+  if (!PMAP.state) { host.innerHTML = '<div class="card pm-lv-empty">Pick a state above to list its offices — customers included.</div>'; return; }
+  const groups = new Map();
+  PMAP.shown.forEach(o => { const c = String(o.city || '').trim(); (groups.get(c) || groups.set(c, []).get(c)).push(o); });
+  const order = [...groups.entries()].sort((a, b) => (a[0] ? 0 : 1) - (b[0] ? 0 : 1) || b[1].length - a[1].length || a[0].localeCompare(b[0]));
+  const autoOpen = PMLV.allOpen || PMAP.shown.length <= 300 || order.length === 1;
+  let html = `<div class="pm-lvbar"><span><b>${PMAP.shown.length.toLocaleString()}</b> office${PMAP.shown.length === 1 ? '' : 's'} in ${order.length.toLocaleString()} cit${order.length === 1 ? 'y' : 'ies'} · street order within each city</span>
+    <span>${PMAP.shown.length > 300 ? `<button type="button" class="btn-text" id="pmLvAll">${PMLV.allOpen ? 'Collapse all' : 'Open all'}</button>` : ''}
+    <button type="button" class="btn-text" id="pmLvCsv"${PMAP.shown.length ? '' : ' disabled'}>⬇ Download list</button></span></div>`;
+  if (!PMAP.shown.length) html += '<div class="card pm-lv-empty">No offices match these filters — try Clear all.</div>';
+  html += order.map(([city, list]) => {
+    const open = autoOpen || PMLV.open.has(city), n = t => list.filter(o => pmTierOf(o) === t).length;
+    let body = '';
+    if (open) {
+      const lim = PMLV.more[city] || 200, sorted = list.slice().sort(pmAddrCmp); let prev = null;
+      body = `<div class="pm-lvrows">${sorted.slice(0, lim).map(o => { const k = pmBldKeyOf(o), r = pmLvRow(o, !!k && k === prev); prev = k; return r; }).join('')}</div>`
+        + (sorted.length > lim ? `<button type="button" class="btn-text pm-lvmore" data-lvmore="${esc(city)}">Show ${Math.min(200, sorted.length - lim)} more · ${(sorted.length - lim).toLocaleString()} left</button>` : '');
+    }
+    return `<div class="card pm-lvcity${open ? ' open' : ''}"><button type="button" class="pm-lvhead" data-lvcity="${esc(city)}" aria-expanded="${open}">
+      <span class="pm-lvchev">${open ? '▾' : '▸'}</span><b>${esc(city || 'No city on file')}</b><span class="pm-lvcnt">${list.length.toLocaleString()}</span>
+      <small>${[n('S') ? n('S').toLocaleString() + ' customers' : '', n('A') ? n('A').toLocaleString() + ' A' : '', n('B') ? n('B').toLocaleString() + ' B' : ''].filter(Boolean).join(' · ')}</small></button>${body}</div>`;
+  }).join('');
+  host.innerHTML = html;
+  host.querySelectorAll('[data-lvcity]').forEach(b => b.onclick = () => { const c = b.dataset.lvcity; if (autoOpen && !PMLV.allOpen) return; PMLV.open.has(c) ? PMLV.open.delete(c) : PMLV.open.add(c); pmPaintListView(); });
+  host.querySelectorAll('[data-lvx]').forEach(b => b.onclick = () => { PMLV.exp = PMLV.exp === b.dataset.lvx ? '' : b.dataset.lvx; pmPaintListView(); });
+  host.querySelectorAll('[data-lvmore]').forEach(b => b.onclick = () => { const c = b.dataset.lvmore; PMLV.more[c] = (PMLV.more[c] || 200) + 200; pmPaintListView(); });
+  host.querySelectorAll('[data-lvmap]').forEach(b => b.onclick = () => pmShowOnMap(b.dataset.lvmap));
+  const all = document.getElementById('pmLvAll'); if (all) all.onclick = () => { PMLV.allOpen = !PMLV.allOpen; PMLV.open.clear(); pmPaintListView(); };
+  const csv = document.getElementById('pmLvCsv'); if (csv) csv.onclick = () => downloadCSV(`offices-${PMAP.state}-${isoDate(new Date())}.csv`, PMAP.shown.slice().sort(pmAddrCmp).map(o => ({
+    Name: o.name, Tier: pmTierOf(o) === 'S' ? 'Customer' : pmTierOf(o), Address: o.addr, City: o.city, State: pmAbbr(o.state), Zip: o.zip, Phone: o.phone, Scanner: o.scanner,
+    'Lab status': SLF.statuses(o).join(', '), 'Last visit': normDateStr(SLF.lastVisit(o)), 'Last visit result': SLF.heatOf(o), 'Claimed by': o.claimedByName || '',
+    'Closed sale': SLF.isClosed(o) ? 'Yes' : '', Doctors: o.drs, 'Current lab': o.lab })));
+}
+/* "Show on map": switch to the map and open that office there */
+async function pmShowOnMap(id) {
+  const o = PMAP.shown.find(x => String(x.id) === String(id)) || PMAP.offices.find(x => String(x.id) === String(id));
+  if (!o || !pmHasPos(o)) return;
+  PMAP._mapFitted = true;   // the map opens on this office, not fitted to everything
+  PMAP.view = 'map'; try { localStorage.setItem('dash.prospectView', 'map'); } catch (e) {}
+  renderProspects();
+  for (let i = 0; i < 80 && !(PMAP.map && PMAP.cluster && PMAP.markers && PMAP.markers.size); i++) await new Promise(r => setTimeout(r, 150));
+  if (!PMAP.map) return;
+  PMAP.map.setView([+o.lat, +o.lng], 17, { animate: false });
+  await new Promise(r => setTimeout(r, 350));   // let the balloons re-form at this zoom
+  const m = PMAP.markers.get(String(o.id));
+  if (m && PMAP.cluster.getVisibleParent(m) === m) m.openPopup();
+  else L.popup({ maxWidth: 320 }).setLatLng([+o.lat, +o.lng]).setContent(pmPopupHTML(o)).openOn(PMAP.map);   // still inside a balloon: open it anyway
+}
+
+/* the old server-side search list (no longer shown — the List view above replaced it) */
 function renderProspectsList() {
   const el = document.getElementById('prListHost');
   if (!el) return;
