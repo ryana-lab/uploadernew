@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.10.29-DL21</title>
+<title>Lab Sales Dashboard v2026.10.29-DL23</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -172,6 +172,12 @@ html, body {
 .sv-dupe-note { color: #a16207; }
 /* ── COACH ── */
 /* ── CROSS SELLING v3: cards on top, one panel below ── */
+.cs-incl { margin: 6px 0 4px; }
+.cs-cat { margin: 12px 16px 4px 0; }
+.cs-cath { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; padding: 4px 2px 6px; border-bottom: 2px solid var(--border); }
+.cs-cath b { font-size: 14px; color: var(--ink); } .cs-cath span { font-size: 12px; color: var(--mut); }
+#csPanel .cs-cat .cs-prow { margin: 6px 0 0; }
+#csPanel .cs-cat .cs-prow > .cs-rowmain { grid-template-columns: minmax(260px, 1fr) 110px 130px 18px; padding-left: 16px; }
 .cs-ca { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; font-style: normal; font-size: 11.5px; line-height: 1.35; color: var(--accent-ink); white-space: normal; overflow: hidden; margin-top: 2px; }
 .cs-act { display: block; font-style: normal; font-size: 12.5px; color: var(--accent-ink); margin-top: 3px; white-space: normal; line-height: 1.4; }
 .cs-name .cs-act { overflow: visible; }
@@ -239,7 +245,7 @@ html, body {
 #csProducts .cs-rowmain { grid-template-columns: 30px minmax(220px, 1fr) 130px 130px 18px; }
 #csDoctors .cs-rowmain { grid-template-columns: 30px minmax(220px, 1.2fr) minmax(180px, 1fr) 100px 130px 18px; }
 #csPractices .cs-rowmain { grid-template-columns: 30px minmax(220px, 1fr) 120px 100px 130px 18px; }
-.cs-rowmain:hover, .cs-row2.open .cs-rowmain { background: var(--accent-soft); }
+.cs-rowmain:hover, .cs-row2.open > .cs-rowmain { background: var(--accent-soft); }
 .cs-rowmain:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .cs-rank { width: 26px; height: 26px; border-radius: 50%; background: var(--card-2); color: var(--dim); font-size: 12px; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; }
 .cs-row2:nth-child(-n+3) .cs-rank { background: var(--accent); color: #fff; }
@@ -323,6 +329,8 @@ tr.cs-open td { background: var(--card-2); white-space: normal; cursor: default;
 .cs-opp-say { font-size: 12.5px; color: var(--ink); font-style: italic; margin-top: 2px; }
 .cs-how { padding: 16px 18px; font-size: 13.5px; line-height: 1.55; } .cs-how h3 { margin: 0 0 8px; font-size: 16px; } .cs-how p { margin: 0 0 10px; }
 /* ── PROSPECT MAP: the List view ── */
+.pm-sech { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.pm-dl { font-size: 11.5px; padding: 3px 8px; text-transform: none; letter-spacing: 0; }
 .pm-lvbar { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; color: var(--dim); margin: 2px 2px 10px; }
 .pm-lv-empty { padding: 26px; text-align: center; color: var(--mut); font-size: 14px; }
 .pm-lvcity { padding: 0; margin-bottom: 10px; overflow: hidden; }
@@ -7353,6 +7361,8 @@ async function renderSalesVisitDetail() {
       <div class="section-actions">
         <select class="gf-select" id="svRepPick">${opts.join('')}</select>
         <button class="btn-text" id="svReload2">↻ Reload</button>
+        <button class="btn-text" id="svCsvMonth" title="Every visit in the month on the calendar, for the rep picked (or everyone)">⬇ This month (CSV)</button>
+        <button class="btn-text" id="svCsvAll" title="Every visit, for the rep picked (or everyone)">⬇ All visits (CSV)</button>
       </div>
     </div>
     <div class="kpi-row">
@@ -7369,6 +7379,8 @@ async function renderSalesVisitDetail() {
     SV.rep = e.target.value; SV.calY = SV.calM = SV.day = null; SV.view = 'day'; renderSalesVisitDetail(); });
   document.getElementById('svReload2').addEventListener('click', async () => { await svLoad(true); renderSalesVisitDetail(); });
   SV._ctx = { mine, closedList, all };
+  document.getElementById('svCsvMonth').onclick = () => svVisitsCSV('month');
+  document.getElementById('svCsvAll').onclick = () => svVisitsCSV('all');
   svRedraw();
 }
 
@@ -7378,6 +7390,20 @@ async function renderSalesVisitDetail() {
 /* One redraw for everything below the headline tiles: the calendar and the
    area under it — a picked day (its visits and its closed accounts), or the
    month's / every closed account. */
+/* the visits shown on Sales Visit Detail, as a CSV: the month on the calendar or
+   all of them, for the rep picked (or everyone) — each with its office's figures */
+function svVisitsCSV(scope) {
+  const c = SV._ctx; if (!c) return;
+  const ym = SV.calY != null ? SV.calY + '-' + String(SV.calM + 1).padStart(2, '0') : '';
+  const list = c.mine.filter(v => scope === 'all' || String(v.date || '').slice(0, 7) === ym).slice().sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
+  const who = c.all ? 'everyone' : ((SV.repInfo.get(SV.rep) || {}).name || 'rep');
+  if (!list.length) { toast('No visits to download for ' + who + (scope === 'all' ? '' : ' in ' + ym)); return; }
+  downloadCSV(`sales-visits-${who.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${scope === 'all' ? 'all' : ym}.csv`, list.map(v => { const o = v.o || {};
+    return { Date: v.date, Rep: v.rep || (SV.repInfo.get(v.key) || {}).name || '', Office: o.name || '', Address: o.addr || '', City: o.city || '', State: pmAbbr(o.state) || o.state || '',
+      Zip: o.zip || '', Tier: o.tier || '', 'Office status': o.status || '', Outcome: (SV_OUTCOME[v.color] || {}).label || '', Note: v.note || '',
+      'Closed account': o._closedKey ? 'Yes' : '', 'Closed on': o._closedDay || '', 'Closed by': o._closedKey ? (o.claimed_by_name || '') : '',
+      'Revenue last 90 days': Math.round(o._rev90 || 0), 'Lifetime revenue': Math.round(o._life || 0), Phone: o.phone || '', Email: o.email || '' }; }));
+}
 function svRedraw() {
   const c = SV._ctx; if (!c) return;
   svDrawCalendar(c.mine, c.closedList, c.all); svDrawDetail();
@@ -9106,6 +9132,14 @@ const csDr = name => 'Dr. ' + String(name || '').replace(/^\s*dr\.?\s+/i, '');  
 // sellable product lines only. Bridge lines (the Bridges group, screw-retained implant bridges) are never
 // suggested. A bridge-named product filed under another line (e.g. a hybrid "bridge" under Implant Hybrid /
 // Full Arch) still counts as that line's work — otherwise a doctor still sending hybrids would look "lapsed".
+/* Crowns · Implants · Removables — the three lines the products roll up to.
+   Fees, models and anything with "Bridge" in its name are left out. */
+const CS_SUPERS = ['Crowns', 'Implants', 'Removables'];
+const CS_SUPER_NOTE = { Crowns: 'crowns, veneers, inlays and onlays, temps and copings',
+                        Implants: 'implant crowns, abutments, hybrids and full-arch, implant temporaries, parts and surgical guides',
+                        Removables: 'dentures, partials, flippers, repairs and try-ins, nightguards, retainers and whitening trays' };
+const csSuperOf = c => !c || /bridge/i.test(c.cat || '') ? null : c.cat === 'Surgical Guide' ? 'Implants'
+  : ({ Crowns: 'Crowns', 'Other fixed': 'Crowns', Implants: 'Implants', Dentures: 'Removables', 'Partials & Flippers': 'Removables', 'Removable steps & repairs': 'Removables', Appliances: 'Removables' })[c.group] || null;
 const csIsTarget = name => { if (!String(name || '').trim()) return null; const c = coachCat(name); return CS_GROUPS.has(c.group) && !CS_SKIP_CATS.has(c.cat) && !/bridge/i.test(c.cat) ? c : null; };
 
 /* ── the engine: one pass over the lines, then the opportunities ─────────────── */
@@ -9117,7 +9151,7 @@ function csCompute() {
   const wStart = new Date(md.getFullYear(), md.getMonth() - CS.months, md.getDate() + 1);
   const pStart = new Date(md.getFullYear(), md.getMonth() - 2 * CS.months, md.getDate() + 1);
   const activeCut = new Date(+end - 90 * DAY), lapseCut = new Date(+end - 120 * DAY), winCut = new Date(+end - 90 * DAY);
-  const docs = new Map(), firstEver = new Map(), pracRev = new Map(), pracWhere = new Map(); let nLines = 0;   // firstEver: drId|cat → first line date (all time)
+  const docs = new Map(), firstEver = new Map(), pracRev = new Map(), pracWhere = new Map(), prodStats = new Map(); let nLines = 0;   // firstEver: drId|cat → first line date (all time)
   for (const r of rows) {
     if (!r || !r.drId || !r.anchorDate) continue;
     let d = docs.get(r.drId);
@@ -9142,6 +9176,10 @@ function csCompute() {
       if (r.caseKey && sc && !/^(unknown|not applicable|n\/a|none)$/i.test(sc)) { const phys = /physical|^1_?impression$/i.test(sc); d.scan.set(r.caseKey, (d.scan.get(r.caseKey) || false) || phys); }
     }
     if (!d.email && r.email) d.email = r.email; if (!d.phone && r.phone) d.phone = r.phone;
+    if (inW) { const pn = String(r.product || '').trim();
+      if (pn && !/bridge/i.test(pn)) { const pc = coachCat(pn), sup = csSuperOf(pc);
+        if (sup) { let P = prodStats.get(pn); if (!P) { P = { name: pn, cat: pc.cat, group: pc.group, sup, rev: 0, units: 0, buyers: new Map() }; prodStats.set(pn, P); }
+          P.rev += r.netCost || 0; P.units += r.qty || 0; P.buyers.set(r.drId, (P.buyers.get(r.drId) || 0) + (r.netCost || 0)); } } }
     const c = csIsTarget(r.product); if (!c) continue;
     const fk = r.drId + '\t' + c.cat; if (!firstEver.has(fk) || t < firstEver.get(fk)) firstEver.set(fk, t);   // ids contain "|", so a tab joins them
     let x = d.cats.get(c.cat); if (!x) { x = { cat: c.cat, group: c.group, rev: 0, revPrior: 0, units: 0, last: null, atPrac: new Map() }; d.cats.set(c.cat, x); }
@@ -9294,7 +9332,15 @@ function csCompute() {
     x.vAdd = x.add.reduce((t, o) => t + o.value, 0); x.vBack = x.back.reduce((t, o) => t + o.value, 0); x.vLow = x.low.reduce((t, o) => t + o.value, 0);
     x.value = x.vAdd + x.vBack + x.vLow;
   });
-  CS.cache = { key, opps, wins, active, N, nA, cats, medSpend, triosMed, wStart, end, catStats, pracRev, atPractice, nLines,
+  const catListedRev = new Map(); prodStats.forEach(P => catListedRev.set(P.cat, (catListedRev.get(P.cat) || 0) + Math.max(0, P.rev)));
+  const suggestible = new Set(cats);
+  prodStats.forEach(P => {
+    const act = [...P.buyers.entries()].filter(([id, v]) => v > 0 && (docs.get(id) || {}).active);
+    P.activeBuyers = act.length; P.med = csMed(act.map(([, v]) => v));
+    P.share = catListedRev.get(P.cat) ? Math.max(0, P.rev) / catListedRev.get(P.cat) : 0;
+    P.suggestible = suggestible.has(P.cat);
+  });
+  CS.cache = { key, opps, wins, active, N, nA, cats, medSpend, triosMed, wStart, end, catStats, pracRev, atPractice, nLines, prodStats,
                practices: livePr.filter(x => x.value > 0).sort((a, b) => b.value - a.value), NP, pA };
   return CS.cache;
 }
@@ -9306,20 +9352,10 @@ const CSV2 = { panel: '', lim: { product: 10, doctor: 10, practice: 10 }, open: 
 const CS_MATRIX_GROUPS = ['Crowns', 'Other fixed', 'Implants', 'Dentures', 'Partials & Flippers', 'Appliances'];
 const csTypeTag = t => `<span class="cs-tag" style="--c:${CS_TYPE[t].color}">${esc(CS_TYPE[t].short)}</span>`;
 const csPrioTag = p => `<span class="cs-prio cs-prio-${p.toLowerCase()}">${p}</span>`;
-const csK = n => n == null ? '—' : n >= 1000 ? '$' + (n / 1000).toFixed(n >= 10000 ? 0 : 1) + 'k' : '$' + Math.round(n);
+const csK = n => n == null ? '—' : Math.abs(n) >= 1e6 ? '$' + (n / 1e6).toFixed(n >= 1e7 ? 1 : 2) + 'M' : Math.abs(n) >= 1000 ? '$' + (n / 1000).toFixed(Math.abs(n) >= 10000 ? 0 : 1) + 'k' : '$' + Math.round(n);
 const csWhere = d => [d.city, d.state].filter(Boolean).join(', ');
 function csOpps(C) { return C.opps.filter(o => CS.state === 'all' || o.d.state === CS.state); }
 function csPracs(C) { return C.practices.filter(x => CS.state === 'all' || x.state === CS.state); }
-function csGroups(opps) {   // product categories, each with its products
-  const g = new Map();
-  opps.forEach(o => {
-    let G = g.get(o.group); if (!G) { G = { group: o.group, value: 0, docs: new Set(), prods: new Map() }; g.set(o.group, G); }
-    G.value += o.value; G.docs.add(o.d.id);
-    let P = G.prods.get(o.cat); if (!P) { P = { cat: o.cat, group: o.group, value: 0, list: [], kinds: {} }; G.prods.set(o.cat, P); }
-    P.value += o.value; P.list.push(o); P.kinds[o.type] = P.kinds[o.type] || [0, 0]; P.kinds[o.type][0]++; P.kinds[o.type][1] += o.value;
-  });
-  return [...g.values()].map(G => Object.assign(G, { prods: [...G.prods.values()].sort((a, b) => b.value - a.value) })).sort((a, b) => b.value - a.value);
-}
 function csDoctors(opps) {
   const m = new Map(); opps.forEach(o => { const x = m.get(o.d.id) || { d: o.d, value: 0, list: [] }; x.value += o.value; x.list.push(o); m.set(o.d.id, x); });
   return [...m.values()].sort((a, b) => b.value - a.value);
@@ -9328,7 +9364,7 @@ function csDoctors(opps) {
 function renderCrossSell() {
   const el = document.getElementById('panel-crosssell'); if (!el) return;
   if (!getMaxDate()) { el.innerHTML = '<div class="empty-state">Load data first.</div>'; return; }
-  const C = csCompute(), opps = csOpps(C), groups = csGroups(opps), doctors = csDoctors(opps), pracs = csPracs(C);
+  const C = csCompute(), opps = csOpps(C), groups = csSupers(C, opps), doctors = csDoctors(opps), pracs = csPracs(C);
   const states = [...new Set(C.opps.map(o => o.d.state).concat(C.practices.map(x => x.state)).filter(Boolean))].sort();
   const sel = (id, opts, cur) => `<select class="gf-select" id="${id}">${opts.map(([v, l]) => `<option value="${esc(v)}"${String(v) === String(cur) ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
   const card = (key, title, sub, rows, row) => `<div class="card cs-c${CSV2.panel === key ? ' on' : ''}">
@@ -9348,7 +9384,7 @@ function renderCrossSell() {
     </div>
     ${CSV2.how ? csHowHTML(C) : ''}
     <div class="cs-cards">
-      ${card('product', 'Products', 'by category — what doctors could add', groups, (G, i) => crow('product', G.group, i, G.group, `${G.prods.length} product${G.prods.length === 1 ? '' : 's'} · ${G.docs.size.toLocaleString()} doctors`, G.value, csActGroup(G)))}
+      ${card('product', 'Products', 'Crowns · Implants · Removables', groups, (S, i) => crow('product', S.sup, i, S.sup, `${S.nProducts} products · ${S.docs.size.toLocaleString()} doctors could add`, S.value, csActSuper(S)))}
       ${card('doctor', 'Doctors', 'most to add, from their own mix', doctors, (x, i) => crow('doctor', x.d.id, i, csDr(x.d.name), x.d.main, x.value, csActDoctor(x)))}
       ${card('practice', 'Practices', 'practice-level gaps, counted once', pracs, (x, i) => crow('practice', x.name, i, x.name, [x.city, x.state].filter(Boolean).join(', '), x.value, csActPractice(x)))}
     </div>
@@ -9374,9 +9410,9 @@ function csScrollPanel(toOpen) {
 function csPaintPanel(C, groups, doctors, pracs) {
   const host = document.getElementById('csPanel'); if (!host) return;
   const redraw = () => csPaintPanel(C, groups, doctors, pracs);
-  if (CSV2.panel === 'product') host.innerHTML = csListHTML('product', 'Products to cross-sell, by category',
-    'Each category’s estimated yearly opportunity across your active doctors. Open a category for its products; open a product for who already buys it, what it’s linked to, and who to call first.',
-    groups, (G, i) => csGroupRow(C, G, i));
+  if (CSV2.panel === 'product') host.innerHTML = csListHTML('product', 'Products to cross-sell — Crowns, Implants, Removables',
+    'Open a line for every product in it: who buys it, its share of the work, and the opportunity on it. Open a product for its biggest buyers and the evidence behind the suggestion.',
+    groups, (S, i) => csSuperRow(C, S, i));
   else if (CSV2.panel === 'doctor') host.innerHTML = csListHTML('doctor', 'Doctors to cross-sell',
     'Ranked by estimated yearly value. Open a doctor for what they send now and each suggestion with its evidence and a talking point.',
     doctors, (x, i) => csDoctorRow(x, i));
@@ -9404,22 +9440,70 @@ function csListHTML(key, title, intro, rows, rowHTML) {
 const csRowMain = (key, k, open, cells) => `<button type="button" class="cs-rowmain" data-open="${key}" data-key="${esc(k)}" aria-expanded="${open}">${cells}<span class="cs-chev">${open ? '▴' : '▾'}</span></button>`;
 
 /* ── PRODUCTS: category → its products → one product's evidence ────────────── */
-function csGroupRow(C, G, i) {
-  const open = CSV2.open.group === G.group;
-  const already = C.active.filter(d => [...d.cats.values()].some(c => c.group === G.group && c.rev > 0)).length;
-  return `<div class="cs-row2${open ? ' open' : ''}">${csRowMain('group', G.group, open, `
-    <span class="cs-rank">${i + 1}</span>
-    <span class="cs-name"><b>${esc(G.group)}</b><small>${G.prods.length} product${G.prods.length === 1 ? '' : 's'} · ${already.toLocaleString()} of ${C.N.toLocaleString()} active doctors already send this line (${csPct(already / (C.N || 1))})</small><em class="cs-act">→ ${esc(csActGroup(G))}</em></span>
-    <span class="cs-metric"><b>${G.docs.size.toLocaleString()}</b><small>doctors could add</small></span>
-    <span class="cs-metric cs-val"><b>${csUSD(G.value)}</b><small>est. a year</small></span>`)}
-    ${open ? `<div class="cs-sub2">${G.prods.map((P, j) => { const st = C.catStats.get(P.cat), po = CSV2.open.product === P.cat;
-      return `<div class="cs-row2 cs-prow${po ? ' open' : ''}">${csRowMain('product', P.cat, po, `
-        <span class="cs-rank cs-rank-s">${j + 1}</span>
-        <span class="cs-name"><b>${esc(P.cat)}</b><small>${st ? `bought by ${st.adopters.toLocaleString()} active doctors (${csPct(st.adoption)}) · typically ${csUSD(st.med)} a year each` : ''}</small><em class="cs-act">→ ${esc(csActProduct(P))}</em></span>
-        <span class="cs-metric"><b>${P.list.length.toLocaleString()}</b><small>could add it</small></span>
-        <span class="cs-metric cs-val"><b>${csUSD(P.value)}</b><small>est. a year</small></span>`)}
-        ${po ? csProductDetail(C, P, st) : ''}</div>`; }).join('')}</div>` : ''}</div>`;
+/* ── PRODUCTS: Crowns · Implants · Removables → every product in each ────────
+   The opportunity is worked out per product line (doctors who'd add zirconia
+   crowns, say) and split across that line's products by what buyers actually
+   send — so each product shows what to offer. Steps, parts and add-ons are
+   listed with their real figures but aren't a stand-alone cross-sell. */
+const csKinds = list => { const k = {}; list.forEach(o => { k[o.type] = k[o.type] || [0, 0]; k[o.type][0]++; k[o.type][1] += o.value; }); return k; };
+function csSupers(C, opps) {
+  const byCat = new Map(); opps.forEach(o => (byCat.get(o.cat) || byCat.set(o.cat, []).get(o.cat)).push(o));
+  return CS_SUPERS.map(sup => {
+    const cats = new Map();
+    C.prodStats.forEach(P => { if (P.sup !== sup) return;
+      let K = cats.get(P.cat);
+      if (!K) { const list = byCat.get(P.cat) || []; K = { cat: P.cat, group: P.group, list, kinds: csKinds(list), value: list.reduce((t, o) => t + o.value, 0), items: [], rev: 0, suggestible: P.suggestible }; cats.set(P.cat, K); }
+      K.items.push({ P, v: 0 }); K.rev += P.rev; });
+    const subs = [...cats.values()];
+    subs.forEach(K => { K.items.forEach(it => it.v = K.value * it.P.share); K.items.sort((a, b) => b.v - a.v || b.P.rev - a.P.rev); });
+    subs.sort((a, b) => b.value - a.value || b.rev - a.rev);
+    const docs = new Set(); subs.forEach(K => K.list.forEach(o => docs.add(o.d.id)));
+    const already = new Set(); subs.forEach(K => K.items.forEach(it => it.P.buyers.forEach((v, id) => { if (v > 0 && C.active.some(d => d.id === id)) already.add(id); })));
+    return { sup, subs, value: subs.reduce((t, K) => t + K.value, 0), docs, already: already.size, nProducts: subs.reduce((t, K) => t + K.items.length, 0) };
+  }).filter(S => S.nProducts);
 }
+function csActSuper(S) {
+  const K = S.subs.find(k => k.value > 0); if (!K) return '';
+  const o = K.list.slice().sort((a, b) => b.value - a.value)[0], col = (K.kinds.colleague || [0])[0], it = K.items[0];
+  return `Lead with ${K.cat} (${csK(K.value)} of ${csK(S.value)}) — offer ${it.P.name}, ${csShare(it.P.share)} of that work${col ? `; ${col} doctors already have a colleague sending it` : ''}; first call ${csDr(o.d.name)}.`;
+}
+const csShare = p => p > 0 && p < 0.01 ? '<1%' : csPct(p);
+function csActItem(K, it) {
+  const P = it.P, lead = K.items[0];
+  if (!it.v) return `Bought by ${P.activeBuyers.toLocaleString()} active doctor${P.activeBuyers === 1 ? '' : 's'} — ${K.suggestible ? 'no doctors to suggest ' + K.cat + ' to right now' : 'a step, part or add-on, not a stand-alone cross-sell'}.`;
+  if (it === lead) { const o = K.list.slice().sort((a, b) => b.value - a.value)[0];
+    return `Lead product for ${K.cat}: offer it to the ${K.list.length.toLocaleString()} doctors who could add ${K.cat} — it’s ${csShare(P.share)} of the work; first call ${csDr(o.d.name)} (${o.d.main}).`; }
+  if (P.share >= 0.05) return `Also offered within ${K.cat} — ${csShare(P.share)} of the work, bought by ${P.activeBuyers.toLocaleString()} active doctors${P.med ? ` (typically ${csUSD(P.med)} a year)` : ''}.`;
+  return `A niche option (${csShare(P.share)} of ${K.cat} work) — lead with ${lead.P.name} instead.`;
+}
+function csSuperRow(C, S, i) {
+  const open = CSV2.open.group === S.sup;
+  return `<div class="cs-row2${open ? ' open' : ''}">${csRowMain('group', S.sup, open, `
+    <span class="cs-rank">${i + 1}</span>
+    <span class="cs-name"><b>${esc(S.sup)}</b><small>${S.nProducts} products · ${S.already.toLocaleString()} of ${C.N.toLocaleString()} active doctors already send ${esc(S.sup.toLowerCase())} (${csPct(S.already / (C.N || 1))})</small><em class="cs-act">→ ${esc(csActSuper(S))}</em></span>
+    <span class="cs-metric"><b>${S.docs.size.toLocaleString()}</b><small>doctors could add</small></span>
+    <span class="cs-metric cs-val"><b>${csUSD(S.value)}</b><small>est. a year</small></span>`)}
+    ${open ? `<div class="cs-sub2"><div class="cs-fn cs-incl">${esc(S.sup)} includes ${esc(CS_SUPER_NOTE[S.sup])}. Every product sent in the last ${CS.months} months is listed.</div>
+      ${S.subs.map(K => `<div class="cs-cat"><div class="cs-cath"><b>${esc(K.cat)}</b>
+          <span>${K.value ? `${csUSD(K.value)} est. a year · ${K.list.length.toLocaleString()} doctors could add it` : K.suggestible ? 'no doctors to suggest it to right now' : 'steps, parts and add-ons — not a stand-alone cross-sell'} · ${csK(K.rev)} sent in ${CS.months} mo</span></div>
+        ${K.items.map(it => { const P = it.P, po = CSV2.open.product === P.name;
+          return `<div class="cs-row2 cs-prow${po ? ' open' : ''}">${csRowMain('product', P.name, po, `
+            <span class="cs-name"><b>${esc(P.name)}</b><small>bought by ${P.activeBuyers.toLocaleString()} active doctor${P.activeBuyers === 1 ? '' : 's'}${P.med ? ` · typically ${csUSD(P.med)} a year each` : ''} · ${csShare(P.share)} of ${esc(K.cat)} work</small><em class="cs-act">→ ${esc(csActItem(K, it))}</em></span>
+            <span class="cs-metric"><b>${csK(P.rev)}</b><small>sent in ${CS.months} mo</small></span>
+            <span class="cs-metric cs-val"><b>${it.v ? csUSD(it.v) : '—'}</b><small>est. a year</small></span>`)}
+            ${po ? csItemDetail(C, K, it) : ''}</div>`; }).join('')}</div>`).join('')}</div>` : ''}</div>`;
+}
+function csItemDetail(C, K, it) {
+  const P = it.P, st = C.catStats.get(K.cat);
+  const buyers = [...P.buyers.entries()].filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).slice(0, 5)
+    .map(([id, v]) => { const d = C.active.find(x => x.id === id); return d ? `<div class="cs-call"><div><b>${esc(csDr(d.name))}</b> <small class="text-mut">${esc(d.main)} · ${esc(csWhere(d))}</small></div><b class="cs-callv">${csUSD(v)}</b></div>` : ''; }).join('');
+  return `<div class="cs-det">
+    <div class="cs-why"><p><b>${esc(P.name)}</b> — ${csUSD(P.rev)} and ${Math.round(P.units).toLocaleString()} units in the last ${CS.months} months, sent by <b>${P.activeBuyers.toLocaleString()} active doctors</b>${P.med ? `, typically ${csUSD(P.med)} a year each` : ''}. It is <b>${csShare(P.share)}</b> of all ${esc(K.cat)} work${it.v ? `, so ${csShare(P.share)} of the ${esc(K.cat)} opportunity (${csUSD(K.value)}) is put on it: <b>${csUSD(it.v)}</b> a year` : ''}.</p></div>
+    ${buyers ? `<div class="cs-subh">Its biggest buyers — proof it sells</div>${buyers}` : ''}
+    ${K.list.length ? `<div class="cs-subh">The ${esc(K.cat)} opportunity — offer them this product</div>${csProductDetail(C, K, st)}` : `<div class="cs-nil">${K.suggestible ? 'No active doctor looks likely to add ' + esc(K.cat) + ' right now.' : esc(K.cat) + ' is a step, part or add-on bought with other work — it isn’t suggested on its own.'}</div>`}
+  </div>`;
+}
+
 
 /* ── DOCTORS ─────────────────────────────────────────────────────────────────── */
 function csDoctorRow(x, i) {
@@ -9531,16 +9615,6 @@ function csDoctorDetail(d, list) {
 const csShortWhy = o => o.type === 'colleague' ? `${csDr(o.evidence.colleague)} at the same practice sends ${csK(o.evidence.colleagueRev)} of it`
   : o.type === 'lapsed' ? `they sent ${csK(o.evidence.yearly)} a year of it, nothing since ${csDay(o.evidence.last)}`
   : `${csPct(o.p)} of doctors who send ${o.evidence.anchor} also send it`;
-function csActProduct(P) {
-  const t = P.list.slice().sort((a, b) => b.value - a.value), o = t[0]; if (!o) return '';
-  const k = x => (P.kinds[x] || [0])[0], rest = [k('colleague') ? `${k('colleague')} with a colleague who sends it` : '', k('lapsed') ? `${k('lapsed')} who stopped` : '', k('similar') ? `${k('similar')} similar doctors` : ''].filter(Boolean);
-  return `Call ${csDr(o.d.name)} (${o.d.main}) first — ${csShortWhy(o)} (~${csK(o.value)}).${t.length > 1 ? ` Then ${(t.length - 1).toLocaleString()} more: ${rest.join(', ')}.` : ''}`;
-}
-function csActGroup(G) {
-  const P = G.prods[0]; if (!P) return '';
-  const o = P.list.slice().sort((a, b) => b.value - a.value)[0], col = (P.kinds.colleague || [0])[0];
-  return `Lead with ${P.cat} (${csK(P.value)} of ${csK(G.value)})${col ? ` — ${col} doctors already have a colleague sending it` : ''}; first call ${csDr(o.d.name)}.`;
-}
 function csActDoctor(x) {
   const t = x.list.slice().sort((a, b) => b.value - a.value), o = t[0]; if (!o) return '';
   return `Offer ${o.cat} first — ${csShortWhy(o)} (~${csK(o.value)})${t[1] ? `; then ${t[1].cat}${t[2] ? ' and ' + t[2].cat : ''}` : ''}.`;
@@ -9563,26 +9637,27 @@ async function csLoadXlsx() {
     sc.onload = ok; sc.onerror = () => bad(new Error('Could not load the Excel writer')); document.head.appendChild(sc); });
 }
 function csPlanSheets() {
-  const C = csCompute(), opps = csOpps(C), groups = csGroups(opps), doctors = csDoctors(opps), pracs = csPracs(C), r0 = n => Math.round(n || 0);
+  const C = csCompute(), opps = csOpps(C), groups = csSupers(C, opps), doctors = csDoctors(opps), pracs = csPracs(C), r0 = n => Math.round(n || 0);
   const scope = CS.state === 'all' ? 'All states' : CS.state;
   const sheets = [];
   sheets.push(['Read me', [
     { Item: 'What this is', Detail: 'Cross-selling action plan from the Lab Sales Dashboard' },
     { Item: 'Made', Detail: new Date().toLocaleString() }, { Item: 'States', Detail: scope },
     { Item: 'Based on', Detail: `${C.nLines.toLocaleString()} invoice lines, ${csDay(C.wStart)} – ${csDay(C.end)}; ${C.N} active doctors (a case in the last 90 days); ${C.NP} active practices` },
-    { Item: 'Product categories / Products', Detail: 'What active doctors could add, with who already buys each product and who to call first' },
+    { Item: 'Lines & categories / Products', Detail: 'Crowns, Implants and Removables, then every product in each: who buys it, its share of the work, the opportunity on it and who to call first' },
     { Item: 'Doctors / Doctor suggestions', Detail: 'Each doctor’s total, then every suggestion with its evidence and a talking point' },
     { Item: 'Practices / Practice findings', Detail: 'Each practice judged as a whole: lines it could add, doctors who stopped sending from it, doctors sending far less than colleagues' },
     { Item: 'Values', Detail: 'Estimated yearly value — for ranking the work, not a forecast. Bridges are never suggested.' }]]);
-  sheets.push(['Product categories', groups.map((G, i) => { const already = C.active.filter(d => [...d.cats.values()].some(c => c.group === G.group && c.rev > 0)).length;
-    return { Rank: i + 1, Category: G.group, Products: G.prods.length, 'Doctors who could add': G.docs.size, 'Active doctors already sending this line': already,
-      'Share already sending': csPct(already / (C.N || 1)), 'Est. yearly value': r0(G.value), 'Biggest product': G.prods[0] ? G.prods[0].cat : '', Action: csActGroup(G) }; })]);
-  const prodRows = []; groups.forEach(G => G.prods.forEach(P => { const st = C.catStats.get(P.cat) || {}, a = (st.anchors || [])[0], top = P.list.slice().sort((x, y) => y.value - x.value)[0], k = t => (P.kinds[t] || [0, 0]);
-    prodRows.push({ Category: G.group, Product: P.cat, 'Active doctors who buy it': st.adopters || 0, 'Share of active doctors': csPct(st.adoption), 'Typical yearly spend per buyer': r0(st.med),
-      'Middle half of buyers spend': st.p25 != null ? `${csUSD(st.p25)} – ${csUSD(st.p75)}` : '', 'Strongest link': a ? `${csPct(a.p)} of the ${a.n} doctors who send ${a.a} also send it (${a.lift.toFixed(1)}× average)` : '',
-      'Doctors who could add it': P.list.length, 'Colleague sends it': k('colleague')[0], 'Stopped sending it': k('lapsed')[0], 'Similar doctors send it': k('similar')[0], 'Est. yearly value': r0(P.value),
-      'Call first': top ? csDr(top.d.name) : '', 'Call first — practice': top ? top.d.main : '', 'Call first — city': top ? csWhere(top.d) : '', Action: csActProduct(P) }); }));
-  sheets.push(['Products', prodRows.sort((x, y) => y['Est. yearly value'] - x['Est. yearly value']).map((r, i) => Object.assign({ Rank: i + 1 }, r))]);
+  sheets.push(['Lines & categories', groups.flatMap((S, i) => [{ Line: S.sup, Category: '(whole line)', Products: S.nProducts, 'Doctors who could add': S.docs.size,
+      'Active doctors already sending this line': S.already, [`Revenue (${CS.months} mo)`]: r0(S.subs.reduce((t, K) => t + K.rev, 0)), 'Est. yearly value': r0(S.value), Action: csActSuper(S) }]
+    .concat(S.subs.map(K => ({ Line: S.sup, Category: K.cat, Products: K.items.length, 'Doctors who could add': K.list.length, 'Active doctors already sending this line': '',
+      [`Revenue (${CS.months} mo)`]: r0(K.rev), 'Est. yearly value': r0(K.value), Action: K.value ? '' : (K.suggestible ? 'No doctors to suggest it to right now' : 'Steps, parts and add-ons — not a stand-alone cross-sell') }))))]);
+  const prodRows = [];
+  groups.forEach(S => S.subs.forEach(K => K.items.forEach(it => { const P = it.P, top = K.list.slice().sort((x, y) => y.value - x.value)[0];
+    prodRows.push({ Line: S.sup, Category: K.cat, Product: P.name, 'Active doctors who buy it': P.activeBuyers, [`Revenue (${CS.months} mo)`]: r0(P.rev), Units: Math.round(P.units),
+      'Typical yearly spend per buyer': P.med ? r0(P.med) : '', 'Share of its category': csShare(P.share), 'Doctors who could add the category': K.list.length,
+      'Est. yearly value': r0(it.v), 'Call first': top ? csDr(top.d.name) : '', 'Call first — practice': top ? top.d.main : '', 'Call first — city': top ? csWhere(top.d) : '', Action: csActItem(K, it) }); })));
+  sheets.push(['Products', prodRows.sort((x, y) => y['Est. yearly value'] - x['Est. yearly value'] || y[`Revenue (${CS.months} mo)`] - x[`Revenue (${CS.months} mo)`]).map((r, i) => Object.assign({ Rank: i + 1 }, r))]);
   sheets.push(['Doctors', doctors.map((x, i) => ({ Rank: i + 1, Doctor: csDr(x.d.name), Practice: x.d.main, City: x.d.city, State: x.d.state,
     [`Revenue (${CS.months} mo)`]: r0(x.d.rev), [`Cases (${CS.months} mo)`]: x.d.cases.size, 'Sends now': [...x.d.cats.values()].filter(c => c.rev > 0).sort((a, b) => b.rev - a.rev).map(c => c.cat).join(', '),
     Suggestions: x.list.length, 'Est. yearly value': r0(x.value), 'Offer first': (x.list.slice().sort((a, b) => b.value - a.value)[0] || {}).cat || '', Action: csActDoctor(x),
@@ -14989,10 +15064,15 @@ async function renderProspectMap() {
         <aside class="pm-side card">
           <div class="pm-sec" id="pmCitiesHead">Cities</div><input class="gf-select pm-cityq" id="pmCityQ" placeholder="Find a city" style="display:none">
           <div id="pmCities" class="pm-areas"><div class="pm-note">Pick a state first.</div></div>
-          <div class="pm-sec" id="pmInViewHead">In view</div><div id="pmList" class="pm-list"></div>
+          <div class="pm-sec pm-sech"><span id="pmInViewHead">In view</span><button type="button" class="btn-text pm-dl" id="pmInViewCsv" title="Download the offices on the map right now, with the filters applied">⬇ Download what’s in view</button></div><div id="pmList" class="pm-list"></div>
         </aside>
       </div>`;
     host.querySelector('#pmCityQ').addEventListener('input', () => pmPaintCities());
+    host.querySelector('#pmInViewCsv').addEventListener('click', () => {
+      if (!PMAP.map) return; const bnd = PMAP.map.getBounds(), vis = PMAP.shown.filter(o => pmHasPos(o) && bnd.contains([+o.lat, +o.lng]));
+      if (!vis.length) { toast('Nothing in view — zoom out or pick a city'); return; }
+      downloadCSV(`offices-in-view-${PMAP.state || 'map'}-${isoDate(new Date())}.csv`, pmCsvRows(vis));
+    });
   }
   const msg = t => { const m = document.getElementById('pmMsg'); if (m) m.innerHTML = t; };
   try { await pmLoadLibs(); } catch (e) { msg(esc(e.message) + ' — check the internet connection and try again.'); return; }
@@ -15305,10 +15385,14 @@ function pmPaintListView() {
   host.querySelectorAll('[data-lvmore]').forEach(b => b.onclick = () => { const c = b.dataset.lvmore; PMLV.more[c] = (PMLV.more[c] || 200) + 200; pmPaintListView(); });
   host.querySelectorAll('[data-lvmap]').forEach(b => b.onclick = () => pmShowOnMap(b.dataset.lvmap));
   const all = document.getElementById('pmLvAll'); if (all) all.onclick = () => { PMLV.allOpen = !PMLV.allOpen; PMLV.open.clear(); pmPaintListView(); };
-  const csv = document.getElementById('pmLvCsv'); if (csv) csv.onclick = () => downloadCSV(`offices-${PMAP.state}-${isoDate(new Date())}.csv`, PMAP.shown.slice().sort(pmAddrCmp).map(o => ({
+  const csv = document.getElementById('pmLvCsv'); if (csv) csv.onclick = () => downloadCSV(`offices-${PMAP.state}-${isoDate(new Date())}.csv`, pmCsvRows(PMAP.shown));
+}
+/* the columns every Prospect Map download uses (the list, or what's in view) */
+function pmCsvRows(list) {
+  return list.slice().sort(pmAddrCmp).map(o => ({
     Name: o.name, Tier: pmTierOf(o) === 'S' ? 'Customer' : pmTierOf(o), Address: o.addr, City: o.city, State: pmAbbr(o.state), Zip: o.zip, Phone: o.phone, Scanner: o.scanner,
     'Lab status': SLF.statuses(o).join(', '), 'Last visit': normDateStr(SLF.lastVisit(o)), 'Last visit result': SLF.heatOf(o), 'Claimed by': o.claimedByName || '',
-    'Closed sale': SLF.isClosed(o) ? 'Yes' : '', Doctors: o.drs, 'Current lab': o.lab })));
+    'Closed sale': SLF.isClosed(o) ? 'Yes' : '', Doctors: o.drs, 'Current lab': o.lab, Latitude: pmHasPos(o) ? +o.lat : '', Longitude: pmHasPos(o) ? +o.lng : '' }));
 }
 /* "Show on map": switch to the map and open that office there */
 async function pmShowOnMap(id) {
