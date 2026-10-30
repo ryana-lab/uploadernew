@@ -13,17 +13,14 @@ name: Pilot daily pull
 
 on:
   schedule:
-    # Three times a day, because GitHub can start a scheduled run hours late — or
-    # skip it — when it's busy (on 10/27 the 6:30 run started at 11:44). Every run
-    # is safe to repeat: the later ones add only what the earlier ones missed,
-    # including invoices entered late in the morning. Odd minutes avoid GitHub's
-    # busiest times (the top of each hour). Times are UTC:
-    #   11:17 UTC =  6:17 am Chicago in summer (CDT),  5:17 am in winter (CST)
-    #   13:47 UTC =  8:47 am CDT,  7:47 am CST
-    #   17:17 UTC = 12:17 pm CDT, 11:17 am CST
-    - cron: '17 11 * * *'
-    - cron: '47 13 * * *'
-    - cron: '17 17 * * *'
+    # GitHub's clock is UTC and ignores daylight saving, and it can start a
+    # scheduled run late — so two runs, each re-reading the last 3 days:
+    #   05:20 UTC  = 11:20 pm Chicago in winter (CST), 12:20 am in summer (CDT):
+    #               right after the 11 pm report, so today's cases are in tonight
+    #   12:17 UTC  =  6:17 am CST / 7:17 am CDT: completes anything invoiced late
+    # Odd minutes avoid GitHub's busiest moments (the top of the hour).
+    - cron: '20 5 * * *'
+    - cron: '17 12 * * *'
   workflow_dispatch:
     inputs:
       days_back:
