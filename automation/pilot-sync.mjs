@@ -22,7 +22,7 @@
 //    PROD_DAYS_BACK       production days to re-check, ending END_DATE (default 14) —
 //                         a task scanned in today is often finished days later, and
 //                         re-reading it records the completion
-//    END_DATE             last day to pull, YYYY-MM-DD   (default yesterday, Chicago time)
+//    END_DATE             last day to pull, YYYY-MM-DD   (default today, Chicago time)
 //    DRY_RUN=1            fetch and check only — load nothing
 //    STATUS_FILE          where to write the counts-only run summary
 //    PILOT_API_BASE       default https://api.pilotlms.com/api/v1
@@ -45,7 +45,7 @@ const CHUNK = 2000;   // rows per staging request — the dashboard's size
 const INVOICE_COLS = ['Case_Number', 'Case_Status', 'Case_Received_Date', 'Days_On_Hold', 'On_Hold_Reason', 'Tooth_Number', 'Shade',
   'Dentist_Last_Name', 'Dentist_First_Name', 'Invoice_Date', 'Quantity', 'Unit_Price', 'phone', 'Net_Cost', 'Product_ID', 'Product_Name',
   'email', 'address', 'Scanner_Source', 'Transaction_Type', 'Remake', 'Product_Remake', 'Remake_Qty', 'Remake_Discount', 'Remake_percent',
-  'Remake_Reason', 'Shipped', 'state', 'city', 'dd', 'pracname'];
+  'Remake_Reason', 'Shipped', 'state', 'city', 'dd', 'pracname', 'Put_On_Hold_Date', 'Put_Off_Hold_Date'];
 // The production loader reads these (salesly_production_tasks.sql). "patient"
 // is NOT among them: patient names are dropped here, before anything is sent.
 const PRODUCTION_COLS = ['employee', 'attribution', 'workstation', 'department', 'scan_in_date', 'started_at', 'resolved_at', 'is_completed',
@@ -66,7 +66,10 @@ function addDays(ymd, n) {
   return t.toISOString().slice(0, 10);
 }
 function daysToPull(n) {
-  const end = /^\d{4}-\d{2}-\d{2}$/.test(env.END_DATE || '') ? env.END_DATE : addDays(chicagoToday(), -1);
+  // the window ends TODAY (Chicago): the 11 pm run then captures the day it runs on,
+  // and the morning run completes it. Re-sending a day is harmless — the loader
+  // recognises lines it already has.
+  const end = /^\d{4}-\d{2}-\d{2}$/.test(env.END_DATE || '') ? env.END_DATE : chicagoToday();
   return Array.from({ length: n }, (_, i) => addDays(end, i - n + 1));
 }
 // "2026-10-21", "2026-10-21T00:00:00" or "10/21/2026" → "2026-10-21"
@@ -111,18 +114,29 @@ async function findReport(name) {
   if (!exact.length) fail(`report "${name}" not found in Pilot — check INVOICE_REPORT / PRODUCTION_REPORT and the service account's access`);
   fail(`${exact.length} reports in Pilot are named "${name}" — rename one so the name is unique`);
 }
-async function runReport(id, name, day) {
-  const url = `${PILOT}/insights/${encodeURIComponent(id)}/data?dateFilter=${encodeURIComponent(day + 'rangeTo' + day)}`;
-  const body = await http(url, { headers: pilotHeaders() }, `running "${name}" for ${day}`);
-  if (!body) fail(`"${name}" for ${day}: empty response`);
-  if (body.errorMessage) fail(`"${name}" for ${day}: Pilot could not run the report`);
+async function runReport(id, name, from, to) {
+  const span = from === to ? from : `${from} → ${to}`;
+  const url = `${PILOT}/insights/${encodeURIComponent(id)}/data?dateFilter=${encodeURIComponent(from + 'rangeTo' + to)}`;
+  const body = await http(url, { headers: pilotHeaders() }, `running "${name}" for ${span}`);
+  if (!body) fail(`"${name}" for ${span}: empty response`);
+  if (body.errorMessage) fail(`"${name}" for ${span}: Pilot could not run the report`);
   const data = body.sqlData || body.behaviorData;
   if (!data || !Array.isArray(data.columns)) fail(`"${name}" is not a table (SQL) report — the job needs the Query Studio table version`);
-  // A run returns at most 5,000 rows. One day is normally a few hundred; if a
-  // day ever overflows, stop rather than load a silently incomplete day.
-  if (data.truncated) fail(`"${name}" for ${day} returned more than 5,000 rows — too many for one request`);
+  // A run returns at most 5,000 rows. If Pilot says it cut the result off, stop
+  // rather than load days that may be incomplete.
+  if (data.truncated) fail(`"${name}" returned over 5,000 rows and Pilot cut it off — set its saved date range to the last 7 days`);
   const cols = data.columns.map(c => String(typeof c === 'object' && c ? (c.name ?? c.label ?? '') : c));
   return (data.rows || []).map(r => Object.fromEntries(cols.map((c, i) => [c, Array.isArray(r) ? r[i] : r[c]])));
+}
+
+// Pilot's SQL reports ignore the requested dates when their SQL sets its own
+// range, so keep only lines dated inside the window — never more, never twice.
+function inWindow(rows, col, days, what) {
+  const want = new Set(days), seen = new Map(); const kept = [];
+  rows.forEach(r => { const d = dayOf(r[col]); seen.set(d || '(no date)', (seen.get(d || '(no date)') || 0) + 1); if (want.has(d)) kept.push(r); });
+  const outside = rows.length - kept.length, ds = [...seen.keys()].filter(d => d !== '(no date)').sort();
+  if (outside) log(`  ${what}: Pilot sent ${rows.length} rows dated ${ds[0]} → ${ds[ds.length - 1]}; kept the ${kept.length} inside ${days[0]} → ${days[days.length - 1]}, ignored ${outside} outside it (the report's own date range overrides the request).`);
+  return { kept, perDay: days.map(d => [d, seen.get(d) || 0]) };
 }
 
 // keep only the loader's columns, matched ignoring case; values as text
@@ -166,23 +180,20 @@ async function main() {
   const invId = await findReport(INVOICE_REPORT), prodId = await findReport(PRODUCTION_REPORT);
   log(`Found both reports in Pilot.`);
 
-  // fetch, one day per request
-  const inv = {}, prod = {};
+  // fetch: ONE request per report for the whole window
   let invMissing = new Set(), prodMissing = new Set(), patientDropped = false;
-  for (const day of days) {
-    // every line the report returns is kept: each one comes back in exactly one
-    // day's request, whichever date the report filters on
-    const si = shape(await runReport(invId, INVOICE_REPORT, day), INVOICE_COLS);
-    si.missing.forEach(m => invMissing.add(m)); inv[day] = si.rows;
-    log(`  invoices   ${day}: ${inv[day].length} lines`);
-  }
-  for (const day of prodDays) {
-    const rp = await runReport(prodId, PRODUCTION_REPORT, day);
-    if (rp.length && Object.keys(rp[0]).some(k => /patient/i.test(k))) patientDropped = true;
-    const sp = shape(rp, PRODUCTION_COLS);   // "patient" isn't a wanted column, so it never leaves this step
-    sp.missing.forEach(m => prodMissing.add(m)); prod[day] = sp.rows;
-    log(`  production ${day}: ${prod[day].length} rows (${sp.rows.filter(r => /^(yes|true|1)$/i.test(String(r.is_completed))).length} complete)`);
-  }
+  const si = shape(await runReport(invId, INVOICE_REPORT, days[0], days[days.length - 1]), INVOICE_COLS);
+  si.missing.forEach(m => invMissing.add(m));
+  const invW = inWindow(si.rows, 'Invoice_Date', days, 'invoices');
+  const inv = invW.kept;
+  invW.perDay.forEach(([d, n]) => log(`  invoices   ${d}: ${n} lines`));
+  const rp = await runReport(prodId, PRODUCTION_REPORT, prodDays[0], prodDays[prodDays.length - 1]);
+  if (rp.length && Object.keys(rp[0]).some(k => /patient/i.test(k))) patientDropped = true;
+  const sp = shape(rp, PRODUCTION_COLS);   // "patient" isn't a wanted column, so it never leaves this step
+  sp.missing.forEach(m => prodMissing.add(m));
+  const prodW = inWindow(sp.rows, 'scan_in_date', prodDays, 'production');
+  const prod = prodW.kept;
+  log(`  production ${prodDays[0]} → ${prodDays[prodDays.length - 1]}: ${prod.length} rows (${prod.filter(r => /^(yes|true|1)$/i.test(String(r.is_completed))).length} complete)`);
   if (patientDropped) log('Patient column removed from production rows before loading.');
   // missing optional columns are fine; missing key ones are not
   const invKey = ['Case_Number', 'Invoice_Date', 'Product_Name', 'Net_Cost', 'Dentist_Last_Name', 'pracname'].filter(c => invMissing.has(c));
@@ -191,54 +202,42 @@ async function main() {
   if (prodKey.length) fail(`the production report is missing columns the loader needs: ${prodKey.join(', ')}`);
   if (invMissing.size) log(`Note: invoice report has no ${[...invMissing].join(', ')} (left blank).`);
 
-  if (DRY_RUN) { status.ok = true; status.invoices.fetched = days.reduce((t, d) => t + inv[d].length, 0);
-                 status.production.fetched = prodDays.reduce((t, d) => t + prod[d].length, 0); log('Dry run complete — nothing loaded.'); return; }
+  if (DRY_RUN) { status.ok = true; status.invoices.fetched = inv.length; status.production.fetched = prod.length; log('Dry run complete — nothing loaded.'); return; }
 
   await signIn();
   log('Signed in to Supabase.');
 
-  // ── invoices: group the lines by their OWN invoice date and send only the
-  //    days whose count differs from the database, exactly as the dashboard
-  //    does; fingerprints discard any true repeats
-  const dbDays = (await rpc('lab_day_counts')) || {};
-  const byDay = {};
-  days.forEach(d => inv[d].forEach(r => { const k = dayOf(r.Invoice_Date) || '(no date)'; (byDay[k] = byDay[k] || []).push(r); }));
-  const send = [], sentDays = [], completeDays = [];
-  for (const k of Object.keys(byDay).sort()) {
-    const n = byDay[k].length, inDb = Number(dbDays[k] || 0);
-    if (k !== '(no date)' && n === inDb) { completeDays.push(k); continue; }
-    sentDays.push(k); send.push(...byDay[k]);
-  }
-  status.invoices = { fetched: days.reduce((t, d) => t + inv[d].length, 0), days_sent: sentDays.length, days_already_complete: completeDays.length, loaded: 0 };
-  if (send.length) {
+  // ── invoices: send every line in the window. The loader recognises a line
+  //    it already has (case, product, tooth, quantity, amount, within a day),
+  //    refreshes its status and holds, and removes surplus copies — the same
+  //    path a CSV upload takes. So nothing is ever stored twice.
+  status.invoices = { fetched: inv.length, loaded: 0, updated: 0, removed: 0 };
+  if (inv.length) {
     await rpc('lab_stage_reset');
-    for (let i = 0; i < send.length; i += CHUNK) await rpc('lab_stage_rows', { p_rows: send.slice(i, i + CHUNK) });
-    let batch = null, loaded = 0;
+    for (let i = 0; i < inv.length; i += CHUNK) await rpc('lab_stage_rows', { p_rows: inv.slice(i, i + CHUNK) });
+    let batch = null, loaded = 0, updated = 0, removed = 0;
     for (let guard = 0; guard < 200; guard++) {
       const ch = await rpc('lab_load_chunk', { p_batch: batch, p_source: `pilot-auto ${days[0]}..${days[days.length - 1]}`, p_limit: 20000 });
-      batch = ch.batch_id; loaded += Number(ch.loaded || 0);
+      batch = ch.batch_id; loaded += Number(ch.loaded || 0); updated += Number(ch.updated || 0); removed += Number(ch.removed || 0);
       if (ch.done) break;
     }
-    status.invoices.loaded = loaded;
-    log(`Invoices: ${send.length} lines sent for ${sentDays.length} day(s); ${loaded} new loaded (the rest were already stored).`);
+    Object.assign(status.invoices, { loaded, updated, removed });
+    log(`Invoices: ${inv.length} lines sent — ${loaded} new, ${updated} already stored (refreshed)${removed ? `, ${removed} surplus copies removed` : ''}.`);
   } else {
-    log(`Invoices: nothing to send — ${completeDays.length} day(s) already complete in the database.`);
+    log('Invoices: Pilot sent no lines for these days.');
   }
 
-  // ── production: always send, one day at a time (small, quick loads); the
-  //    loader updates tasks it already has, so re-reading 14 days records the
-  //    tasks that were finished after the earlier pulls
-  let pSent = 0, pTouched = 0;
-  for (const day of prodDays) {
-    const prows = prod[day]; if (!prows.length) continue;
+  // ── production: one load for the whole window; the loader updates tasks it
+  //    already has, so re-reading 14 days records tasks finished since
+  let pTouched = 0;
+  if (prod.length) {
     await rpc('ptask_stage_reset');
-    for (let i = 0; i < prows.length; i += CHUNK) await rpc('ptask_stage_rows', { p_rows: prows.slice(i, i + CHUNK) });
-    const res = await rpc('ptask_load', { p_source: `pilot-auto ${day}` });
-    const n = res && (res.rows ?? res.loaded ?? res.rows_loaded ?? res.touched);
-    pSent += prows.length; pTouched += Number(n || 0);
+    for (let i = 0; i < prod.length; i += CHUNK) await rpc('ptask_stage_rows', { p_rows: prod.slice(i, i + CHUNK) });
+    const res = await rpc('ptask_load', { p_source: `pilot-auto ${prodDays[0]}..${prodDays[prodDays.length - 1]}` });
+    pTouched = Number((res && (res.rows ?? res.loaded ?? res.rows_loaded ?? res.touched)) || 0);
   }
-  status.production = { fetched: prodDays.reduce((t, d) => t + prod[d].length, 0), loaded: pTouched };
-  log(pSent ? `Production: ${pSent} rows sent over ${prodDays.length} days; ${pTouched} task rows added or updated.` : 'Production: no rows for these days.');
+  status.production = { fetched: prod.length, loaded: pTouched };
+  log(prod.length ? `Production: ${prod.length} rows sent; ${pTouched} task rows added or updated.` : 'Production: no rows for these days.');
   status.ok = true;
   log('Done.');
 }
