@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.10.29-DL23</title>
+<title>Lab Sales Dashboard v2026.10.30-DL24</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -12007,7 +12007,7 @@ function renderBridge() {
   const LAB_STAGE_COLS = ['Case_Number', 'Case_Status', 'Case_Received_Date', 'Days_On_Hold', 'On_Hold_Reason', 'Tooth_Number', 'Shade',
     'Dentist_Last_Name', 'Dentist_First_Name', 'Invoice_Date', 'Quantity', 'Unit_Price', 'phone', 'Net_Cost', 'Product_ID', 'Product_Name',
     'email', 'address', 'Scanner_Source', 'Transaction_Type', 'Remake', 'Product_Remake', 'Remake_Qty', 'Remake_Discount', 'Remake_percent',
-    'Remake_Reason', 'Shipped', 'state', 'city', 'dd', 'pracname'];
+    'Remake_Reason', 'Shipped', 'state', 'city', 'dd', 'pracname', 'Put_On_Hold_Date', 'Put_Off_Hold_Date'];
   const LAB_COL_BY_LOWER = new Map(LAB_STAGE_COLS.map(c => [c.toLowerCase(), c]));
   function labStageShape(r) {
     const o = {};
