@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.10.30-DL26</title>
+<title>Lab Sales Dashboard v2026.10.30-DL27</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -172,6 +172,14 @@ html, body {
 .sv-dupe-note { color: #a16207; }
 /* ── COACH ── */
 /* CRM: the log form and the Visits & calls card */
+.crm-btns { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.sl-list { margin-top: 10px; display: grid; gap: 8px; }
+.sl-it { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; }
+.sl-it b { display: block; font-size: 14px; } .sl-it small { display: block; font-size: 12px; color: var(--mut); margin-top: 2px; }
+a.crm-save { text-decoration: none; display: inline-block; white-space: nowrap; }
+.sl-foot { margin-top: 14px; font-size: 11.5px; color: var(--mut); word-break: break-all; } .sl-chg { font-size: 11.5px; padding: 0 4px; }
+.tl-log-btn { font: inherit; font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--accent); background: var(--accent-soft); color: var(--accent-ink); cursor: pointer; }
+.tl-log-btn:hover { background: var(--accent); color: #fff; }
 .crm-ov { position: fixed; inset: 0; z-index: 3000; background: rgba(15,23,42,.45); display: flex; align-items: center; justify-content: center; padding: 16px; }
 .crm-box { background: var(--card); color: var(--ink); border-radius: 14px; width: min(520px, 100%); max-height: 92vh; overflow: auto; padding: 18px 20px; box-shadow: 0 20px 60px rgba(0,0,0,.25); }
 .crm-h { display: flex; align-items: center; justify-content: space-between; } .crm-h h3 { margin: 0; font-size: 17px; }
@@ -1797,7 +1805,7 @@ const APP = {
 
 /* Bump when normalization logic changes, so it's possible to tell at a glance
    (bottom of the Avg Turnaround card) which build a browser is running. */
-const BUILD_ID = 'DL26 · 2026-10-30';
+const BUILD_ID = 'DL27 · 2026-10-30';
 
 const DB_NAME = 'LabOpsCache';
 const DB_STORE = 'datasets';
@@ -10753,6 +10761,7 @@ function tlRenderCards() {
         <div class="tl-card-footer">
           <span class="tl-cases-count">${c.totalCases} case${c.totalCases !== 1 ? 's' : ''}</span>
           ${c.allProducts.length > 0 ? `<button class="tl-products-toggle" data-toggle="${globalIdx}">All Products ▾</button>` : ''}
+          <button type="button" class="tl-log-btn" data-tllog="${globalIdx}">🚗 Log a visit</button>
         </div>
         <div class="tl-all-products" id="tl-products-${globalIdx}">
           ${c.allProducts.map(p => `<span class="tl-product-tag">${esc(p)}</span>`).join('')}
@@ -10762,6 +10771,9 @@ function tlRenderCards() {
   }).join('');
 
   // Wire up card interactions
+  grid.querySelectorAll('.tl-log-btn').forEach(b => b.addEventListener('click', () => {
+    const c = TL.filtered[+b.dataset.tllog]; if (c) slFromTimeline(c.name, c.practice);
+  }));
   grid.querySelectorAll('.tl-dr-link').forEach(a => a.addEventListener('click', e => {
     e.preventDefault(); APP.selectedDoctorId = a.dataset.dr; switchTab('docdetail');
   }));
@@ -15276,32 +15288,91 @@ document.addEventListener('click', e => {
   crmOpen([o], () => { if (PMAP.map) PMAP.map.closePopup(); pmApply(false); });
 });
 
+/* ── "Log a visit in Salesly": opens Salesly on that office's form, at Visit
+   history (Salesly VDA113 reads "?office=<id>&do=visit"). Salesly's web address
+   is asked for once and remembered in this browser. ── */
+const SALESLY_URL_KEY = 'dash.saleslyUrl';
+const saleslyUrl = () => { try { return localStorage.getItem(SALESLY_URL_KEY) || ''; } catch (e) { return ''; } };
+const saleslyLink = id => { const u = saleslyUrl(); return u + (u.includes('?') ? '&' : '?') + 'office=' + encodeURIComponent(id) + '&do=visit'; };
+// the doctor's Salesly offices: the bridge's LAB line naming them, or an office named after the practice
+async function crmFindOffices(drName, practice) {
+  const db = typeof pgClient === 'function' ? pgClient() : null;
+  if (!db || !(await pgSession())) return { error: 'signin' };
+  const like = s => String(s).replace(/[%_\\]/g, m => '\\' + m), rows = [];
+  const qs = [db.from('offices').select('*').ilike('notes', `%Dr. ${like(drName)} ·%`).limit(25)];
+  if (practice) qs.push(db.from('offices').select('*').ilike('name', like(practice)).limit(10));
+  for (const q of qs) { const { data, error } = await q; if (error) return { error: error.message }; rows.push(...(data || [])); }
+  const seen = new Set();
+  return { offs: rows.filter(r => !r.deleted_at && !r.merged_into && r.active !== false && !seen.has(r.id) && seen.add(r.id)).map(r => SLF.fromRow(r)) };
+}
+// one office and the address known → straight to Salesly; otherwise a small chooser
+function slOpen(offices, drName) {
+  if (offices && offices.length === 1 && saleslyUrl()) { window.open(saleslyLink(offices[0].id), 'salesly'); return; }
+  slChooser(offices, drName);
+}
+function slChooser(offices, drName, state) {
+  document.querySelectorAll('.crm-ov').forEach(x => x.remove());
+  const ov = document.createElement('div'); ov.className = 'crm-ov';
+  const close = () => { ov.remove(); document.removeEventListener('keydown', onKey); };
+  const onKey = e => { if (e.key === 'Escape') close(); };
+  document.addEventListener('keydown', onKey);
+  ov.addEventListener('click', e => { if (e.target === ov) close(); });
+  const paint = (offs, st) => {
+    const url = saleslyUrl();
+    ov.innerHTML = `<div class="crm-box" role="dialog" aria-modal="true" aria-labelledby="slT">
+      <div class="crm-h"><h3 id="slT">Log a visit in Salesly</h3><button type="button" class="crm-x" aria-label="Close">✕</button></div>
+      <div class="crm-off">Dr. ${esc(drName)} — opens Salesly on the office, at Visit history.</div>
+      ${!url ? `<label class="coach-f crm-note"><span>Salesly’s web address (asked once)</span><input class="gf-select" id="slUrl" placeholder="https://…github.io/…/" style="width:100%"></label>
+                <div class="crm-act" style="justify-content:flex-start"><button type="button" class="crm-save" id="slUrlSave">Save address</button></div>` :
+        st === 'loading' ? '<div class="crm-nil">Finding the office in Salesly…</div>' :
+        st === 'signin' ? '<div class="crm-nil">Sign in on the Salesly Bridge tab first, so the dashboard can find the office.</div>' :
+        st ? `<div class="crm-nil">Couldn’t read Salesly: ${esc(st)}</div>` :
+        !offs || !offs.length ? `<div class="crm-nil">No Salesly office is linked to Dr. ${esc(drName)} yet. Find the office in Salesly and log the visit there.</div>
+            <div class="crm-act" style="justify-content:flex-start"><a class="crm-save sl-go" href="${esc(url)}" target="salesly" rel="noopener">Open Salesly ↗</a></div>` :
+        `<div class="sl-list">${offs.map(o => { const lv = SLF.lastVisit(o);
+            return `<div class="sl-it"><div><b>${esc(o.name || 'Office')}</b><small>${esc([o.addr, o.city].filter(Boolean).join(', '))}${lv ? ' · last visit ' + esc(lv) : ' · not visited yet'}</small></div>
+              <a class="crm-save sl-go" href="${esc(saleslyLink(o.id))}" target="salesly" rel="noopener">Open in Salesly ↗</a></div>`; }).join('')}</div>`}
+      ${url ? `<div class="sl-foot">Salesly: ${esc(url)} · <button type="button" class="btn-text sl-chg" id="slChange">change</button></div>` : ''}
+    </div>`;
+    ov.querySelector('.crm-x').onclick = close;
+    ov.querySelectorAll('.sl-go').forEach(a => a.addEventListener('click', () => setTimeout(close, 50)));
+    const save = ov.querySelector('#slUrlSave');
+    if (save) { const inp = ov.querySelector('#slUrl'); inp.focus();
+      save.onclick = () => { let v = inp.value.trim(); if (!/^https?:\/\//i.test(v)) { inp.focus(); return; }
+        try { localStorage.setItem(SALESLY_URL_KEY, v); } catch (e) {} paint(offs, st); }; }
+    const chg = ov.querySelector('#slChange');
+    if (chg) chg.onclick = () => { try { localStorage.removeItem(SALESLY_URL_KEY); } catch (e) {} paint(offs, st); };
+  };
+  document.body.appendChild(ov);
+  paint(offices, state);
+  return paint;
+}
+// Client Timeline: find the doctor's office first, then choose
+async function slFromTimeline(drName, practice) {
+  const paint = slChooser(null, drName, 'loading');
+  const r = await crmFindOffices(drName, practice);
+  if (!document.querySelector('.crm-ov')) return;   // closed meanwhile
+  paint(r.offs || [], r.error || '');
+}
+
 /* Doctor Detail → "Visits & calls": every rep's visits, calls and emails at the
    doctor's office(s). An office belongs to the doctor when the Salesly Bridge
    has written the doctor onto it ("📊 LAB: … · Dr. <name> · …"), or its name is
    the doctor's practice. */
 async function ddCrmLoad(drName, practice, drId) {
   const host = document.getElementById('ddCrm'); if (!host) return;
-  const db = typeof pgClient === 'function' ? pgClient() : null;
-  if (!db || !(await pgSession())) { host.innerHTML = ddCrmHead(0, false) + '<div class="crm-nil">Sign in on the Salesly Bridge tab to see visits and calls here, and to log them.</div>'; return; }
-  const like = s => String(s).replace(/[%_\\]/g, m => '\\' + m), rows = [];
-  const qs = [db.from('offices').select('*').ilike('notes', `%Dr. ${like(drName)} ·%`).limit(25)];
-  if (practice) qs.push(db.from('offices').select('*').ilike('name', like(practice)).limit(10));
-  for (const q of qs) {
-    const { data, error } = await q;
-    if (error) { host.innerHTML = ddCrmHead(0, false) + `<div class="crm-nil">Couldn’t read Salesly: ${esc(error.message)}</div>`; return; }
-    rows.push(...(data || []));
-  }
+  const r = await crmFindOffices(drName, practice);
   if (APP.selectedDoctorId !== drId) return;   // moved on to another doctor meanwhile
-  const seen = new Set();
-  const offs = rows.filter(r => !r.deleted_at && !r.merged_into && r.active !== false && !seen.has(r.id) && seen.add(r.id)).map(r => SLF.fromRow(r));
-  host._offs = offs; host._lim = 12;
+  if (r.error === 'signin') { host.innerHTML = ddCrmHead(0, false) + '<div class="crm-nil">Sign in on the Salesly Bridge tab to see visits and calls here, and to log them.</div>'; return; }
+  if (r.error) { host.innerHTML = ddCrmHead(0, false) + `<div class="crm-nil">Couldn’t read Salesly: ${esc(r.error)}</div>`; return; }
+  host._offs = r.offs; host._lim = 12;
   ddCrmPaint(host, drName);
 }
 function ddCrmHead(n, canLog) {
   return `<div class="crm-ch"><div><div class="chart-title" style="margin:0">Visits &amp; calls</div>
     <div class="crm-sub">From Salesly — every rep’s visits, calls and emails${n ? ` · ${n} logged` : ''}</div></div>
-    ${canLog ? '<button type="button" class="crm-save" id="ddCrmLog">📝 Log call / email / visit</button>' : ''}</div>`;
+    <div class="crm-btns"><button type="button" class="btn-text" id="ddSlLog">🚗 Log a visit in Salesly</button>
+    ${canLog ? '<button type="button" class="crm-save" id="ddCrmLog">📝 Log call / email / visit</button>' : ''}</div></div>`;
 }
 function ddCrmPaint(host, drName) {
   const offs = host._offs || [], items = [];
@@ -15321,6 +15392,7 @@ function ddCrmPaint(host, drName) {
   const lb = host.querySelector('#ddCrmLog');
   if (lb) lb.onclick = () => crmOpen(offs, o => { if (typeof PMAP !== 'undefined' && o.state) PMAP.cache.delete(pmAbbr(o.state)); ddCrmPaint(host, drName); });
   const mb = host.querySelector('#ddCrmMore'); if (mb) mb.onclick = () => { host._lim = Infinity; ddCrmPaint(host, drName); };
+  const sb = host.querySelector('#ddSlLog'); if (sb) sb.onclick = () => slOpen(offs, drName);
 }
 
 /* load one state's offices — "IL" and "Illinois" both — the way the Sales Visits tab loads them */
