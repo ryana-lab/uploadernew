@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.10.30-DL28</title>
+<title>Lab Sales Dashboard v2026.10.31-DL29</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -171,6 +171,14 @@ html, body {
 .sv-daylist { display: flex; flex-direction: column; gap: 10px; min-width: 0; margin-top: 14px; }
 .sv-dupe-note { color: #a16207; }
 /* ── COACH ── */
+/* revenue trends: sparklines and the 30-business-day change */
+.dr-trend { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 8px 0 2px; padding-top: 8px; border-top: 1px dashed var(--border); }
+.dr-trend-r { text-align: right; } .dr-trend-r small { display: block; font-size: 10.5px; color: var(--mut); }
+.spark { display: block; }
+.chg { font-size: 12.5px; font-weight: 800; white-space: nowrap; padding: 1px 7px; border-radius: 999px; }
+.chg.up { color: #047857; background: #ecfdf5; } .chg.down { color: #b91c1c; background: #fef2f2; } .chg.flat { color: var(--dim); background: var(--card-2); }
+.dd-chg { font-size: 13px; color: var(--dim); margin: -4px 0 8px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.dd-chg small { flex-basis: 100%; font-size: 11px; color: var(--mut); }
 /* CRM: the log form and the Visits & calls card */
 .crm-btns { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .sl-list { margin-top: 10px; display: grid; gap: 8px; }
@@ -227,8 +235,15 @@ a.crm-save { text-decoration: none; display: inline-block; white-space: nowrap; 
 .cs-hdr { align-items: flex-end; }
 .cs-acts { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
 .cs-acts .coach-f { min-width: 140px; }
-.cs-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 8px; }
-@media (max-width: 1200px) { .cs-cards { grid-template-columns: 1fr; } }
+.cs-cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 8px; }
+@media (max-width: 1500px) { .cs-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 900px) { .cs-cards { grid-template-columns: 1fr; } }
+.fd-tag { font-size: 10.5px; font-weight: 800; padding: 1px 7px; border-radius: 999px; margin-right: 4px; vertical-align: 1px; }
+.fd-taper { background: #fff7ed; color: #c2410c; } .fd-split { background: #eef2ff; color: #4338ca; }
+.fd-filt { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+.fd-gap, .fd-gap-k { color: #b91c1c; font-weight: 800; background: #fef2f2; } .fd-gap-k { padding: 0 5px; border-radius: 4px; }
+.fd-spark { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; display: inline-block; }
+.fd-sparkx { display: flex; justify-content: space-between; font-size: 10.5px; color: var(--mut); width: 360px; }
 .cs-c { padding: 0; display: flex; flex-direction: column; overflow: hidden; border-top: 3px solid transparent; }
 .cs-c.on { border-top-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 .cs-ch { padding: 12px 16px 8px; } .cs-ch b { display: block; font-size: 15px; color: var(--ink); } .cs-ch small { font-size: 12px; color: var(--mut); }
@@ -1805,7 +1820,7 @@ const APP = {
 
 /* Bump when normalization logic changes, so it's possible to tell at a glance
    (bottom of the Avg Turnaround card) which build a browser is running. */
-const BUILD_ID = 'DL28 · 2026-10-30';
+const BUILD_ID = 'DL29 · 2026-10-31';
 
 const DB_NAME = 'LabOpsCache';
 const DB_STORE = 'datasets';
@@ -5376,6 +5391,10 @@ const DGRID_COLS = [
   { k: 'practice', l: 'Practice' }, { k: 'city', l: 'City' }, { k: 'state', l: 'State' },
   { k: 'status', l: 'Status', v: d => (statusBadgeHTML(d.drId, 'sm') || '').replace(/<[^>]+>/g, '').trim(), f: d => statusBadgeHTML(d.drId, 'sm') || '' },
   { k: 'revenue', l: 'Revenue', num: 1, f: d => fmtUSD(d.revenue) },
+  { k: 'trend12', l: 'Last 12 months', v: d => trendOf(d.drId).m.reduce((a, b) => a + b, 0), f: d => sparkSVG(trendOf(d.drId).m) },
+  { k: 'chg30', l: '30 business days', num: 1, v: d => { const x = trendOf(d.drId); return x.prev ? x.pct : (x.last ? Infinity : null); }, f: d => chgBadge(trendOf(d.drId)) },
+  { k: 'last30', l: 'Last 30 bus. days', num: 1, v: d => trendOf(d.drId).last, f: d => fmtUSD(trendOf(d.drId).last) },
+  { k: 'prev30', l: 'Prior 30 bus. days', num: 1, v: d => trendOf(d.drId).prev, f: d => fmtUSD(trendOf(d.drId).prev) },
   { k: 'cases', l: 'Cases', num: 1, f: d => fmtN(d.cases) },
   { k: 'units', l: 'Units', num: 1, f: d => fmtN(d.units) },
   { k: 'avgCase', l: 'Avg case', num: 1, f: d => fmtUSDFull(d.avgCase) },
@@ -5398,6 +5417,69 @@ const PGRID_COLS = [
   { k: 'medTat', l: 'Median TAT', num: 1, f: p => p.medTat == null ? '—' : fmtTat(p.medTat) + 'd' }
 ];
 
+/* ── REVENUE TRENDS, per doctor ───────────────────────────────────────────────
+   • the last 12 COMPLETE months of revenue (a half-finished month would make
+     everyone look like they're dropping early in the month), and
+   • the last 30 business days (Mon–Fri; holidays not excluded) against the 30
+     before — both counted back from the latest invoice date in the data, using
+     every date (not the date filter) within the current state/group filters. */
+function bizWindows(end, n) {
+  const d = new Date(end.getFullYear(), end.getMonth(), end.getDate()); let c = 0, lastStart = null, prevStart = null;
+  for (let guard = 0; guard < 400; guard++) {
+    const wd = d.getDay();
+    if (wd !== 0 && wd !== 6) { c++; if (c === n) lastStart = new Date(d); if (c === 2 * n) { prevStart = new Date(d); break; } }
+    d.setDate(d.getDate() - 1);
+  }
+  return { lastStart, prevStart, end: new Date(end.getFullYear(), end.getMonth(), end.getDate(), 23, 59, 59) };
+}
+function drTrends() {
+  if (APP.derived && APP.derived.drTrends) return APP.derived.drTrends;
+  const out = { byDr: new Map(), months: [], win: null }, md = getMaxDate(); if (!md) return out;
+  const w = bizWindows(md, 30), monthEnd = new Date(md.getFullYear(), md.getMonth() + 1, 0).getDate() === md.getDate();
+  for (let i = 12; i >= 1; i--) out.months.push(monthKey(new Date(md.getFullYear(), md.getMonth() - i + (monthEnd ? 1 : 0), 1)));
+  const mIdx = new Map(out.months.map((k, i) => [k, i]));
+  for (const r of rawByGroupState()) {
+    if (!r || !r.drId || !r.anchorDate || r.anchorDate > w.end) continue;
+    let x = out.byDr.get(r.drId); if (!x) { x = { m: new Array(12).fill(0), last: 0, prev: 0 }; out.byDr.set(r.drId, x); }
+    const i = mIdx.get(monthKey(r.anchorDate)); if (i != null) x.m[i] += r.netCost || 0;
+    if (r.anchorDate >= w.lastStart) x.last += r.netCost || 0; else if (r.anchorDate >= w.prevStart) x.prev += r.netCost || 0;
+  }
+  out.byDr.forEach(x => { x.pct = x.prev > 0 ? (x.last - x.prev) / x.prev : null; x.delta = x.last - x.prev; });
+  out.win = w;
+  if (APP.derived) APP.derived.drTrends = out;
+  return out;
+}
+const trendOf = id => drTrends().byDr.get(id) || { m: new Array(12).fill(0), last: 0, prev: 0, pct: null, delta: 0 };
+function trendWindowText() {
+  const w = drTrends().win; if (!w) return '';
+  const f = d => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), pe = new Date(w.lastStart); pe.setDate(pe.getDate() - 1);
+  return `${f(w.lastStart)} – ${f(w.end)} vs ${f(w.prevStart)} – ${f(pe)}`;
+}
+function sparkSVG(vals, wdt = 112, hgt = 26) {
+  const max = Math.max(0, ...vals), n = vals.length;
+  const pts = vals.map((v, i) => [2 + i * (wdt - 4) / Math.max(1, n - 1), hgt - 3 - (max > 0 ? v / max : 0) * (hgt - 6)]);
+  // coloured by the line's overall direction — the same fitted trend as Doctor Detail
+  const fit = trendLine(vals), up = fit[0] == null || fit[n - 1] >= fit[0];
+  const col = max <= 0 ? '#9ca3af' : up ? '#0f9f6e' : '#c2410c';
+  return `<svg class="spark" width="${wdt}" height="${hgt}" viewBox="0 0 ${wdt} ${hgt}" role="img" aria-label="Revenue, last 12 complete months"><polyline fill="none" stroke="${col}" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round" points="${pts.map(p => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ')}"/><circle cx="${pts[n - 1][0].toFixed(1)}" cy="${pts[n - 1][1].toFixed(1)}" r="2.4" fill="${col}"/></svg>`;
+}
+function chgBadge(x) {
+  const tip = `Last 30 business days ${fmtUSD(x.last)} vs ${fmtUSD(x.prev)} the 30 before (${trendWindowText()})`;
+  if (!x.last && !x.prev) return `<span class="chg flat" title="${esc(tip)}">—</span>`;
+  if (!x.prev) return `<span class="chg up" title="${esc(tip)}">new</span>`;
+  const p = x.pct, cls = p > 0.05 ? 'up' : p < -0.05 ? 'down' : 'flat';
+  return `<span class="chg ${cls}" title="${esc(tip)}">${p > 0.005 ? '▲' : p < -0.005 ? '▼' : ''} ${Math.abs(Math.round(p * 100))}%</span>`;
+}
+// least-squares straight line through a series (nulls skipped) → value at each index
+function trendLine(vals) {
+  const pts = vals.map((v, i) => [i, v]).filter(p => p[1] != null);
+  if (pts.length < 3) return vals.map(() => null);
+  const n = pts.length, sx = pts.reduce((a, p) => a + p[0], 0), sy = pts.reduce((a, p) => a + p[1], 0);
+  const sxx = pts.reduce((a, p) => a + p[0] * p[0], 0), sxy = pts.reduce((a, p) => a + p[0] * p[1], 0);
+  const b = (n * sxy - sx * sy) / (n * sxx - sx * sx || 1), a = (sy - b * sx) / n;
+  return vals.map((_, i) => Math.max(0, a + b * i));
+}
+
 const DGRID = { query: '', sort: 'revenue', limit: 60 };
 
 function renderDoctorGrid() {
@@ -5419,6 +5501,8 @@ function renderDoctorGrid() {
       </div>
       <div class="pill-group" id="dgSort">
         <button class="pill active" data-sort="revenue">Revenue</button>
+        <button class="pill" data-sort="grow" title="Biggest dollar increase, last 30 business days vs the 30 before">▲ Growing</button>
+        <button class="pill" data-sort="slip" title="Biggest dollar drop, last 30 business days vs the 30 before">▼ Slipping</button>
         <button class="pill" data-sort="cases">Cases</button>
         <button class="pill" data-sort="avgCase">Avg Case</button>
         <button class="pill" data-sort="remakeRate">Remake %</button>
@@ -5448,6 +5532,8 @@ function renderDoctorGrid() {
       name: d.name, email: d.email, phone: d.phone, city: d.city, state: d.state,
       cases: d.cases, revenue: d.revenue, avg_case: d.avgCase, remake_rate: d.remakeRate,
       median_turnaround_days: d.medTat, avg_turnaround_days: d.avgTat,
+      revenue_last_30_business_days: Math.round(trendOf(d.drId).last), revenue_prior_30_business_days: Math.round(trendOf(d.drId).prev),
+      change_30_business_days_pct: trendOf(d.drId).pct == null ? '' : Math.round(trendOf(d.drId).pct * 1000) / 10,
       top_products: d.topProducts.join('; ')
     })));
   });
@@ -5468,6 +5554,11 @@ function dgFilteredDocs() {
     );
   }
   if (DGRID.sort === 'name') docs.sort((a,b) => a.name.localeCompare(b.name));
+  else if (DGRID.sort === 'grow' || DGRID.sort === 'slip') {
+    // by the dollar change (last 30 business days vs the 30 before), so size counts
+    const dir = DGRID.sort === 'grow' ? -1 : 1;
+    docs.sort((a, b) => dir * (trendOf(a.drId).delta - trendOf(b.drId).delta));
+  }
   else docs.sort((a,b) => (b[DGRID.sort] || 0) - (a[DGRID.sort] || 0));
   return docs;
 }
@@ -5518,6 +5609,7 @@ function drawDGrid() {
           <div><label>Avg Case</label><div class="val">${fmtUSDFull(d.avgCase)}</div></div>
           <div><label>Avg Turnaround</label><div class="val">${d.avgTat == null ? '—' : d.avgTat.toFixed(1) + '<span style="font-size:11px;font-weight:600;color:var(--mut)"> days</span>'}</div></div>
         </div>
+        <div class="dr-trend">${sparkSVG(trendOf(d.drId).m)}<div class="dr-trend-r">${chgBadge(trendOf(d.drId))}<small>last 30 business days</small></div></div>
         ${onTimeMiniHTML(d)}
         <div class="dr-prods"><b>Top:</b> ${esc(d.topProducts.slice(0, 3).join(', ')) || '—'}</div>
       </div>
@@ -5749,6 +5841,7 @@ function renderDoctorDetail() {
     <div class="flex-row">
       <div class="card flex-1">
         <div class="chart-title">Revenue — Month over Month</div>
+        ${(() => { const x = trendOf(APP.selectedDoctorId); return `<div class="dd-chg">Last 30 business days <b>${fmtUSD(x.last)}</b> vs <b>${fmtUSD(x.prev)}</b> the 30 before ${chgBadge(x)}<small>${esc(trendWindowText())} · dashed line = trend across complete months</small></div>`; })()}
         <div class="chart-wrap"><canvas id="ddRev"></canvas></div>
       </div>
       <div class="card flex-1">
@@ -5840,7 +5933,11 @@ function renderDoctorDetail() {
   const ddLabels = months.map(m => fmtMonthKey(m.key));
   makeChart('ddRev', {
     type: 'bar',
-    data: { labels: ddLabels, datasets: [{ label: 'Revenue', data: months.map(m => m.revenue), backgroundColor: '#24bfcd', borderRadius: 4 }] },
+    data: { labels: ddLabels, datasets: [{ label: 'Revenue', data: months.map(m => m.revenue), backgroundColor: '#24bfcd', borderRadius: 4, order: 2 },
+      { type: 'line', label: 'Trend', order: 1, borderColor: '#0f766e', borderDash: [6, 4], borderWidth: 2, pointRadius: 0, fill: false, tension: 0,
+        // fitted on complete months only — the month still in progress would pull it down
+        data: (() => { const md = getMaxDate(), done = md && new Date(md.getFullYear(), md.getMonth() + 1, 0).getDate() === md.getDate();
+          const cur = md ? monthKey(md) : ''; return trendLine(months.map(m => (m.key === cur && !done) ? null : m.revenue)).map(v => v == null ? null : Math.round(v)); })() }] },
     options: { ...co, plugins: { ...co.plugins, legend: { display: false } }, scales: { ...co.scales, y: { ...co.scales.y, ticks: { ...co.scales.y.ticks, callback: v => fmtUSD(v) } } } }
   });
 
@@ -9424,7 +9521,7 @@ function csCompute() {
 /* ── the page: three compact cards on top (Products · Doctors · Practices, top 5
    each). "Expand" — or any row — opens that section's full version in ONE panel
    below, so there's little scrolling. Products are grouped by category first. */
-const CSV2 = { panel: '', lim: { product: 10, doctor: 10, practice: 10 }, open: { group: '', product: '', doctor: '', practice: '', pdoc: '' }, how: false };
+const CSV2 = { panel: '', lim: { product: 10, doctor: 10, practice: 10, finding: 10 }, open: { group: '', product: '', doctor: '', practice: '', pdoc: '', finding: '' }, fkind: 'all', how: false };
 const CS_MATRIX_GROUPS = ['Crowns', 'Other fixed', 'Implants', 'Dentures', 'Partials & Flippers', 'Appliances'];
 const csTypeTag = t => `<span class="cs-tag" style="--c:${CS_TYPE[t].color}">${esc(CS_TYPE[t].short)}</span>`;
 const csPrioTag = p => `<span class="cs-prio cs-prio-${p.toLowerCase()}">${p}</span>`;
@@ -9437,10 +9534,136 @@ function csDoctors(opps) {
   return [...m.values()].sort((a, b) => b.value - a.value);
 }
 
+/* ══ FINDINGS: patterns in what doctors actually did, worth a conversation ════
+   📉 TAPERED — a doctor started a product line (first case in it 6–24 months
+      ago, and at least 90 days after the data begins — so a long-time customer
+      isn't mistaken for a new starter), sent 3+ cases of it in their first 90 days, but half that or fewer in
+      the last 90 — while still sending us other paid work ($250+ in the last 90
+      days). They tried us for that line and took it elsewhere.
+   👥 SPLIT — at a practice with 2+ active doctors (5+ cases there in 12 months,
+      one in the last 90 days), one doctor sends a line (3+ cases in 12 months)
+      and a colleague sends none of it. Both doctors' real numbers are shown.
+   Lines: crowns, other fixed, implants, dentures, partials & flippers,
+   appliances (no bridges, fees or parts). Counted back from the latest invoice
+   date, within the current state/group filters. */
+const FD_DAY = 864e5;
+function csFindings() {
+  if (APP.derived && APP.derived.csFindings) return APP.derived.csFindings;
+  const md = getMaxDate(), out = { taper: [], split: [] }; if (!md) return out;
+  const end = new Date(md.getFullYear(), md.getMonth(), md.getDate(), 23, 59, 59), recentFrom = new Date(+end - 90 * FD_DAY), yearFrom = new Date(+end - 365 * FD_DAY);
+  const docs = new Map();   // drId → { name, practice, city, state, last, lines: Map(group → { cases: Map(caseKey → {t, rev}) }), recentOther }
+  // a line only "starts" if its first case comes 90+ days after the data begins —
+  // otherwise a long-time customer would look like they'd just started
+  let dataStart = null; for (const r of rawByGroupState()) if (r && r.anchorDate && (!dataStart || r.anchorDate < dataStart)) dataStart = r.anchorDate;
+  const startFloor = new Date(+(dataStart || end) + 90 * FD_DAY);
+  for (const r of rawByGroupState()) {
+    if (!r || !r.drId || !r.anchorDate || r.anchorDate > end || !r.caseKey) continue;
+    let d = docs.get(r.drId);
+    if (!d) { d = { id: r.drId, name: r.drName, practice: r.practice || '', city: r.city || '', state: r.state || '', last: null, lines: new Map(), pr: new Map() }; docs.set(r.drId, d); }
+    if (!d.last || r.anchorDate > d.last) { d.last = r.anchorDate; d.practice = r.practice || d.practice; d.city = r.city || d.city; d.state = r.state || d.state; }
+    const c = csIsTarget(r.product), g = c ? c.group : null;
+    if (g) {
+      const L = d.lines.get(g) || d.lines.set(g, new Map()).get(g);
+      const k = L.get(r.caseKey) || { t: r.anchorDate, rev: 0 }; if (r.anchorDate < k.t) k.t = r.anchorDate; k.rev += r.netCost || 0; L.set(r.caseKey, k);
+    }
+    if (r.practice && r.anchorDate >= yearFrom) {   // per practice, last 12 months
+      const P = d.pr.get(r.practice) || d.pr.set(r.practice, { cases: new Set(), rev: 0, last: null, lines: new Map(), city: r.city || '', state: r.state || '' }).get(r.practice);
+      P.cases.add(r.caseKey); P.rev += r.netCost || 0; if (!P.last || r.anchorDate > P.last) P.last = r.anchorDate;
+      if (g) { const x = P.lines.get(g) || P.lines.set(g, { cases: new Set(), rev: 0 }).get(g); x.cases.add(r.caseKey); x.rev += r.netCost || 0; }
+    }
+  }
+  // 📉 tapered
+  docs.forEach(d => {
+    if (!d.last || d.last < recentFrom) return;   // gone altogether — that's Retention's job
+    d.lines.forEach((L, g) => {
+      const cs = [...L.values()], first = cs.reduce((m, c) => c.t < m ? c.t : m, cs[0].t);
+      if (first > new Date(+end - 180 * FD_DAY) || first < new Date(+end - 730 * FD_DAY) || first < startFloor) return;
+      const earlyEnd = new Date(+first + 90 * FD_DAY);
+      const early = cs.filter(c => c.t < earlyEnd), recent = cs.filter(c => c.t >= recentFrom);
+      if (early.length < 3 || recent.length > Math.floor(early.length / 2)) return;
+      let otherCases = 0, otherRev = 0; const otherBy = new Map();
+      d.lines.forEach((M, g2) => { if (g2 === g) return; M.forEach(c => { if (c.t >= recentFrom) { otherCases++; otherRev += c.rev; otherBy.set(g2, (otherBy.get(g2) || 0) + c.rev); } }); });
+      if (otherCases < 2 || otherRev < 250) return;   // must still be sending us real, paid work
+      const earlyRev = early.reduce((a, c) => a + c.rev, 0), recentRev = recent.reduce((a, c) => a + c.rev, 0);
+      const months = []; for (let m = new Date(first.getFullYear(), first.getMonth(), 1); m <= end; m = new Date(m.getFullYear(), m.getMonth() + 1, 1)) months.push(monthKey(m));
+      const perMonth = months.map(k => cs.filter(c => monthKey(c.t) === k).length);
+      out.taper.push({ kind: 'taper', key: 'T|' + d.id + '|' + g, d, line: g, first, early: early.length, recent: recent.length, earlyRev, recentRev,
+        otherRev, otherTop: [...otherBy.entries()].sort((a, b) => b[1] - a[1]).slice(0, 2).map(e => e[0]), months, perMonth,
+        value: Math.max(0, (earlyRev - recentRev) * 365 / 90) });
+    });
+  });
+  // 👥 split practices
+  const pracs = new Map();
+  docs.forEach(d => d.pr.forEach((P, name) => { if (P.cases.size >= 5 && P.last >= recentFrom) (pracs.get(name) || pracs.set(name, []).get(name)).push({ d, P }); }));
+  pracs.forEach((list, name) => {
+    if (list.length < 2) return;
+    const spec = csSpecialty(name), gaps = [];
+    CS_GROUPS.forEach(g => {
+      if (spec && !spec.ok({ cat: '', group: g })) return;
+      const senders = list.filter(x => (x.P.lines.get(g) || { cases: new Set() }).cases.size >= 3);
+      const lacking = list.filter(x => !(x.P.lines.get(g) || { cases: new Set() }).cases.size);
+      if (senders.length && lacking.length) gaps.push({ g, senders, lacking, senderRev: senders.reduce((a, x) => a + x.P.lines.get(g).rev, 0) });
+    });
+    if (!gaps.length) return;
+    gaps.sort((a, b) => b.senderRev - a.senderRev);
+    const w = list[0].P;
+    out.split.push({ kind: 'split', key: 'S|' + name, practice: name, city: w.city, state: w.state, docs: list.sort((a, b) => b.P.rev - a.P.rev), gaps,
+      value: gaps.reduce((a, x) => a + x.senderRev, 0) });
+  });
+  out.taper.sort((a, b) => b.value - a.value); out.split.sort((a, b) => b.value - a.value);
+  if (APP.derived) APP.derived.csFindings = out;
+  return out;
+}
+const fdLine = g => ({ 'Crowns': 'crowns', 'Other fixed': 'veneers & inlays', 'Implants': 'implants', 'Dentures': 'dentures', 'Partials & Flippers': 'partials & flippers', 'Appliances': 'appliances' })[g] || String(g).toLowerCase();
+const fdMon = d => d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+function fdSentence(f) {
+  if (f.kind === 'taper') return `Started ${fdLine(f.line)} in ${fdMon(f.first)} — ${f.early} cases in the first 90 days, ${f.recent} in the last 90 — yet still sends us ${csUSD(f.otherRev)} of ${f.otherTop.map(fdLine).join(' and ') || 'other work'} in the last 90 days.`;
+  const x = f.gaps[0], s = x.senders[0], l = x.lacking[0];
+  return `${csDr(s.d.name)} sends ${fdLine(x.g)} (${s.P.lines.get(x.g).cases.size} cases, ${csUSD(s.P.lines.get(x.g).rev)} in 12 months); ${csDr(l.d.name)} sends us ${csUSD(l.P.rev)} of other work but no ${fdLine(x.g)}.${f.gaps.length > 1 ? ` · ${f.gaps.length - 1} more gap${f.gaps.length > 2 ? 's' : ''} here` : ''}`;
+}
+function fdTalk(f) {
+  if (f.kind === 'taper') return `“You sent us your first ${fdLine(f.line)} back in ${fdMon(f.first)} — how did they work out? We’d love to keep doing them for you.”`;
+  const x = f.gaps[0]; return `“${csDr(x.senders[0].d.name)} already sends us ${fdLine(x.g)} — who handles yours today?”`;
+}
+function fdRow(f, i) {
+  const open = CSV2.open.finding === f.key;
+  const name = f.kind === 'taper' ? `${csDr(f.d.name)} — ${fdLine(f.line)}` : f.practice;
+  const sub = f.kind === 'taper' ? `${f.d.practice} · ${[f.d.city, f.d.state].filter(Boolean).join(', ')}` : `${[f.city, f.state].filter(Boolean).join(', ')} · ${f.docs.length} active doctors`;
+  return `<div class="cs-row2 fd-row${open ? ' open' : ''}">${csRowMain('finding', f.key, open, `
+    <span class="cs-rank">${i + 1}</span>
+    <span class="cs-name"><b><span class="fd-tag fd-${f.kind}">${f.kind === 'taper' ? '📉 Tapered off' : '👥 Split practice'}</span> ${esc(name)}</b><small>${esc(sub)}</small><em class="cs-act">→ ${esc(fdSentence(f))}</em></span>
+    <span class="cs-metric">${f.kind === 'taper' ? `<b>${f.early} → ${f.recent}</b><small>cases, first vs last 90 days</small>` : `<b>${f.gaps.length}</b><small>line${f.gaps.length === 1 ? '' : 's'} not shared</small>`}</span>
+    <span class="cs-metric cs-val"><b>${csUSD(f.value)}</b><small>${f.kind === 'taper' ? 'a year, at their early pace' : 'colleagues send of it a year'}</small></span>`)}
+    ${open ? fdDetail(f) : ''}</div>`;
+}
+function fdDetail(f) {
+  const btns = (id, nm, pr) => `<button type="button" class="btn-text" data-fddr="${esc(id)}">Doctor Detail ↗</button> <button type="button" class="btn-text" data-fdsl="${esc(nm)}" data-fdpr="${esc(pr)}">🚗 Log in Salesly</button>`;
+  if (f.kind === 'taper') {
+    return `<div class="cs-det"><div class="cs-why">
+      <p><b>${esc(csDr(f.d.name))}</b> sent their first ${fdLine(f.line)} in <b>${fdMon(f.first)}</b>: <b>${f.early} cases (${csUSD(f.earlyRev)})</b> in the first 90 days. In the last 90 days: <b>${f.recent} case${f.recent === 1 ? '' : 's'} (${csUSD(f.recentRev)})</b>. Over the same 90 days they still sent us <b>${csUSD(f.otherRev)}</b> of ${f.otherTop.map(fdLine).join(' and ') || 'other work'} — they haven’t left, this line went elsewhere.</p></div>
+      <div class="cs-subh">${esc(fdLine(f.line))} cases per month since they started</div>
+      <div class="fd-spark">${sparkSVG(f.perMonth, 360, 54)}<div class="fd-sparkx"><span>${esc(fmtMonthKey(f.months[0]))}</span><span>${esc(fmtMonthKey(f.months[f.months.length - 1]))}</span></div></div>
+      <div class="cs-subh">Say</div><div class="cs-opp-say">${esc(fdTalk(f))}</div>
+      <div class="cs-detact">${btns(f.d.id, f.d.name, f.d.practice)}</div></div>`;
+  }
+  const lines = CS_GROUPS ? [...CS_GROUPS].filter(g => f.docs.some(x => x.P.lines.get(g))) : [];
+  return `<div class="cs-det"><div class="cs-subh">Who sends what here — last 12 months</div>
+    <div class="grid-table-wrap"><table class="cs-matrix"><thead><tr><th>Doctor</th>${lines.map(g => `<th>${esc(fdLine(g))}</th>`).join('')}<th class="r">Total</th><th></th></tr></thead><tbody>
+    ${f.docs.map(x => `<tr><td><b>${esc(csDr(x.d.name))}</b></td>${lines.map(g => { const v = x.P.lines.get(g); const gap = f.gaps.some(z => z.g === g && z.lacking.includes(x));
+        return v ? `<td class="cs-has2">${v.cases.size} · ${csK(v.rev)}</td>` : `<td class="${gap ? 'fd-gap' : 'cs-none'}">${gap ? 'none' : '—'}</td>`; }).join('')}
+      <td class="r"><b>${csK(x.P.rev)}</b></td><td>${btns(x.d.id, x.d.name, f.practice)}</td></tr>`).join('')}
+    </tbody></table></div>
+    <div class="cs-fn">Cases · revenue each doctor sent from this practice. <span class="fd-gap-k">none</span> = a line a colleague here sends but this doctor doesn’t.</div>
+    <div class="cs-subh">The gaps</div>
+    ${f.gaps.map(z => `<div class="cs-call"><div><b>${esc(fdLine(z.g))}</b>: ${z.senders.map(x => `${esc(csDr(x.d.name))} (${x.P.lines.get(z.g).cases.size} cases, ${csUSD(x.P.lines.get(z.g).rev)})`).join(', ')} send${z.senders.length === 1 ? 's' : ''} it; ${z.lacking.map(x => `${esc(csDr(x.d.name))} (${csUSD(x.P.rev)} of other work)`).join(', ')} ${z.lacking.length === 1 ? 'doesn’t' : 'don’t'}.
+      <div class="cs-callwhy">“${esc(csDr(z.senders[0].d.name))} already sends us ${esc(fdLine(z.g))} — who handles yours today?”</div></div></div>`).join('')}</div>`;
+}
+
 function renderCrossSell() {
   const el = document.getElementById('panel-crosssell'); if (!el) return;
   if (!getMaxDate()) { el.innerHTML = '<div class="empty-state">Load data first.</div>'; return; }
   const C = csCompute(), opps = csOpps(C), groups = csSupers(C, opps), doctors = csDoctors(opps), pracs = csPracs(C);
+  const FD = csFindings(), fdAll = FD.taper.concat(FD.split).sort((a, b) => b.value - a.value);
   const states = [...new Set(C.opps.map(o => o.d.state).concat(C.practices.map(x => x.state)).filter(Boolean))].sort();
   const sel = (id, opts, cur) => `<select class="gf-select" id="${id}">${opts.map(([v, l]) => `<option value="${esc(v)}"${String(v) === String(cur) ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
   const card = (key, title, sub, rows, row) => `<div class="card cs-c${CSV2.panel === key ? ' on' : ''}">
@@ -9463,6 +9686,8 @@ function renderCrossSell() {
       ${card('product', 'Products', 'Crowns · Implants · Removables', groups, (S, i) => crow('product', S.sup, i, S.sup, `${S.nProducts} products · ${S.docs.size.toLocaleString()} doctors could add`, S.value, csActSuper(S)))}
       ${card('doctor', 'Doctors', 'most to add, from their own mix', doctors, (x, i) => crow('doctor', x.d.id, i, csDr(x.d.name), x.d.main, x.value, csActDoctor(x)))}
       ${card('practice', 'Practices', 'practice-level gaps, counted once', pracs, (x, i) => crow('practice', x.name, i, x.name, [x.city, x.state].filter(Boolean).join(', '), x.value, csActPractice(x)))}
+      ${card('finding', 'Findings', `📉 ${FD.taper.length} tapered off · 👥 ${FD.split.length} split practices`, fdAll, (f, i) => crow('finding', f.key, i,
+          f.kind === 'taper' ? `📉 ${csDr(f.d.name)} — ${fdLine(f.line)}` : `👥 ${f.practice}`, f.kind === 'taper' ? f.d.practice : [f.city, f.state].filter(Boolean).join(', '), f.value, fdSentence(f)))}
     </div>
     <div class="cs-src">Based on ${C.nLines.toLocaleString()} invoice lines from ${csDay(C.wStart)} to ${csDay(C.end)} · ${C.N.toLocaleString()} active doctors (a case in the last 90 days) · ${C.NP.toLocaleString()} active practices · bridges left out</div>
     <div id="csPanel"></div>`;
@@ -9477,15 +9702,15 @@ function renderCrossSell() {
     if (k === 'product') { CSV2.open.group = b.dataset.key; CSV2.open.product = ''; } else CSV2.open[k] = b.dataset.key;
     renderCrossSell(); csScrollPanel(true);
   });
-  csPaintPanel(C, groups, doctors, pracs);
+  csPaintPanel(C, groups, doctors, pracs, fdAll);
 }
 function csScrollPanel(toOpen) {
   const p = document.getElementById('csPanel'); if (!p || !p.firstElementChild) return;
   const t = (toOpen && p.querySelector('.cs-row2.open')) || p; t.scrollIntoView({ block: 'start', behavior: 'smooth' });
 }
-function csPaintPanel(C, groups, doctors, pracs) {
+function csPaintPanel(C, groups, doctors, pracs, fdAll) {
   const host = document.getElementById('csPanel'); if (!host) return;
-  const redraw = () => csPaintPanel(C, groups, doctors, pracs);
+  const redraw = () => csPaintPanel(C, groups, doctors, pracs, fdAll);
   if (CSV2.panel === 'product') host.innerHTML = csListHTML('product', 'Products to cross-sell — Crowns, Implants, Removables',
     'Open a line for every product in it: who buys it, its share of the work, and the opportunity on it. Open a product for its biggest buyers and the evidence behind the suggestion.',
     groups, (S, i) => csSuperRow(C, S, i));
@@ -9495,6 +9720,13 @@ function csPaintPanel(C, groups, doctors, pracs) {
   else if (CSV2.panel === 'practice') host.innerHTML = csListHTML('practice', 'Practices to cross-sell',
     'Each practice judged as a whole: product lines it doesn’t send that similar practices do, doctors there who’ve stopped sending, and doctors sending far less than their colleagues. Open one for who sends what.',
     pracs, (x, i) => csPracticeRow(C, x, i));
+  else if (CSV2.panel === 'finding') {
+    const list = (fdAll || []).filter(f => CSV2.fkind === 'all' || f.kind === CSV2.fkind), nT = (fdAll || []).filter(f => f.kind === 'taper').length, nS = (fdAll || []).length - nT;
+    host.innerHTML = csListHTML('finding', 'Findings — patterns worth a call',
+      `<b>📉 Tapered off</b>: started a line 6–24 months ago (and since the data began), sent 3+ cases of it in their first 90 days, half that or fewer in the last 90 — while still sending us $250+ of other work. <b>👥 Split practice</b>: one active doctor at a practice sends a line, a colleague there sends none of it. Ranked by dollars a year. Open one for the evidence.
+       <span class="fd-filt">${[['all', 'All', (fdAll || []).length], ['taper', '📉 Tapered off', nT], ['split', '👥 Split practices', nS]].map(([k, l, n]) => `<button type="button" class="pill${CSV2.fkind === k ? ' active' : ''}" data-fkind="${k}">${l} · ${n}</button>`).join('')}</span>`,
+      list, (f, i) => fdRow(f, i));
+  }
   else { host.innerHTML = ''; return; }
   const key = CSV2.panel;
   host.querySelectorAll('[data-more]').forEach(b => b.onclick = () => { CSV2.lim[key] += 25; redraw(); });
@@ -9505,6 +9737,9 @@ function csPaintPanel(C, groups, doctors, pracs) {
   host.querySelectorAll('[data-pdoc]').forEach(b => b.onclick = e => { if (e.target.closest('a,[data-stop]')) return; CSV2.open.pdoc = CSV2.open.pdoc === b.dataset.pdoc ? '' : b.dataset.pdoc; redraw(); });
   host.querySelectorAll('.cs-open-dr').forEach(b => b.onclick = () => { APP.selectedDoctorId = b.dataset.id; switchTab('docdetail'); });
   host.querySelectorAll('[data-dlcat]').forEach(b => b.onclick = () => csExport(o => o.cat === b.dataset.dlcat, 'cross-sell-' + b.dataset.dlcat));
+  host.querySelectorAll('[data-fkind]').forEach(b => b.onclick = () => { CSV2.fkind = b.dataset.fkind; CSV2.lim.finding = 10; CSV2.open.finding = ''; redraw(); });
+  host.querySelectorAll('[data-fddr]').forEach(b => b.onclick = () => { APP.selectedDoctorId = b.dataset.fddr; switchTab('docdetail'); });
+  host.querySelectorAll('[data-fdsl]').forEach(b => b.onclick = () => slFromTimeline(b.dataset.fdsl, b.dataset.fdpr));
 }
 function csListHTML(key, title, intro, rows, rowHTML) {
   const lim = CSV2.lim[key], vis = rows.slice(0, lim);
@@ -9723,6 +9958,7 @@ function csPlanSheets() {
     { Item: 'Lines & categories / Products', Detail: 'Crowns, Implants and Removables, then every product in each: who buys it, its share of the work, the opportunity on it and who to call first' },
     { Item: 'Doctors / Doctor suggestions', Detail: 'Each doctor’s total, then every suggestion with its evidence and a talking point' },
     { Item: 'Practices / Practice findings', Detail: 'Each practice judged as a whole: lines it could add, doctors who stopped sending from it, doctors sending far less than colleagues' },
+    { Item: 'Findings', Detail: 'Tapered off: started a line 6–24 months ago, 3+ cases in the first 90 days, half that or fewer in the last 90, still sending $250+ of other work. Split practice: a colleague at the same practice sends a line this doctor does not.' },
     { Item: 'Values', Detail: 'Estimated yearly value — for ranking the work, not a forecast. Bridges are never suggested.' }]]);
   sheets.push(['Lines & categories', groups.flatMap((S, i) => [{ Line: S.sup, Category: '(whole line)', Products: S.nProducts, 'Doctors who could add': S.docs.size,
       'Active doctors already sending this line': S.already, [`Revenue (${CS.months} mo)`]: r0(S.subs.reduce((t, K) => t + K.rev, 0)), 'Est. yearly value': r0(S.value), Action: csActSuper(S) }]
@@ -9754,6 +9990,15 @@ function csPlanSheets() {
       Evidence: `Sent ${csUSD(l.v)} here vs ${csUSD(l.med)} for the typical active doctor here`, 'Est. yearly value': r0(l.value), Phone: l.d.phone || '', Email: l.d.email || '' }));
   });
   sheets.push(['Practice findings', fRows]);
+  const FDx = csFindings(), fdState = x => CS.state === 'all' || x === CS.state;
+  sheets.push(['Findings', FDx.taper.filter(f => fdState(f.d.state)).map(f => ({ Type: 'Tapered off', Doctor: csDr(f.d.name), Practice: f.d.practice, City: f.d.city, State: f.d.state,
+      Line: fdLine(f.line), 'Started': isoDate(f.first), 'Cases, first 90 days': f.early, 'Cases, last 90 days': f.recent, 'Revenue, first 90 days': r0(f.earlyRev), 'Revenue, last 90 days': r0(f.recentRev),
+      'Other work, last 90 days': r0(f.otherRev), 'A year at early pace': r0(f.value), Finding: fdSentence(f), 'Talking point': fdTalk(f) }))
+    .concat(FDx.split.filter(f => fdState(f.state)).flatMap(f => f.gaps.flatMap(z => z.lacking.map(l => ({ Type: 'Split practice', Doctor: csDr(l.d.name), Practice: f.practice, City: f.city, State: f.state,
+      Line: fdLine(z.g), 'Sent by': z.senders.map(x => `${csDr(x.d.name)} (${x.P.lines.get(z.g).cases.size} cases, ${csUSD(x.P.lines.get(z.g).rev)})`).join('; '),
+      "This doctor's other work, 12 months": r0(l.P.rev), 'Colleagues send of it a year': r0(z.senderRev),
+      Finding: `${csDr(l.d.name)} sends no ${fdLine(z.g)}; ${z.senders.map(x => csDr(x.d.name)).join(' and ')} at the same practice ${z.senders.length === 1 ? 'does' : 'do'}.`,
+      'Talking point': `“${csDr(z.senders[0].d.name)} already sends us ${fdLine(z.g)} — who handles yours today?”` })))))]);
   return sheets;
 }
 async function csExport(filter, name) {
