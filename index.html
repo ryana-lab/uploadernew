@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.10.31-DL29</title>
+<title>Lab Sales Dashboard v2026.10.31-DL31</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -1820,7 +1820,7 @@ const APP = {
 
 /* Bump when normalization logic changes, so it's possible to tell at a glance
    (bottom of the Avg Turnaround card) which build a browser is running. */
-const BUILD_ID = 'DL29 · 2026-10-31';
+const BUILD_ID = 'DL31 · 2026-10-31';
 
 const DB_NAME = 'LabOpsCache';
 const DB_STORE = 'datasets';
@@ -2700,18 +2700,17 @@ const fmtTat = v => v == null ? '—' : (Number.isInteger(v) ? String(v) : v.toF
 // "90% within" — the 90th percentile of a set of case turnarounds
 function tatP90(values) { if (!values || !values.length) return null; const v = values.slice().sort((a, b) => a - b); return v[Math.min(v.length - 1, Math.floor(0.9 * v.length))]; }
 
-/* ON-TIME, judged against each product's USUAL turnaround — its median —
-   with a day either side counting as on time:
-       early   = more than a day faster than the product's median
+/* ON-TIME, judged against each product's AVERAGE turnaround (rounded to whole
+   days), with a day either side counting as on time:
+       early   = more than a day faster than the product's average
        on-time = within a day of it
        late    = more than a day slower
-   Medians, because a few long holds pull an average up and would make most
-   normal cases look "early". Products with fewer than 5 cases use the median
-   across all products. A CASE is judged against its slowest product's target —
-   it can't leave before its slowest item is done — and every line of the case
-   carries the same verdict, so counters count each case once whatever the
-   filters hide. r.onTimeStatus is the verdict per case AND product (for the
-   product views); r.caseOnTime the verdict per case (doctors and the lab). */
+   Products with fewer than 5 cases use the average across all products. A CASE
+   is judged against its slowest product's target — it can't leave before its
+   slowest item is done — and every line of the case carries the same verdict,
+   so counters count each case once whatever the filters hide.
+   r.onTimeStatus is the verdict per case AND product (for the product views);
+   r.caseOnTime the verdict per case (doctors and the lab). */
 const TAT_ONTIME_BAND = 1;
 const tatVerdict = (t, target) => t < target - TAT_ONTIME_BAND ? 'early' : t > target + TAT_ONTIME_BAND ? 'late' : 'ontime';
 function applyProductBaselines(rows) {
@@ -2722,11 +2721,11 @@ function applyProductBaselines(rows) {
     const k = r.caseKey + '|' + key; if (seen.has(k)) continue; seen.add(k);
     (vals[key] || (vals[key] = [])).push(r.tat); all.push(r.tat);
   }
-  const overall = medianOf(all), byProduct = {};
+  const overall = all.length ? all.reduce((a, b) => a + b, 0) / all.length : null, byProduct = {};
   Object.keys(vals).forEach(k => {
     const v = vals[k], med = medianOf(v);
     byProduct[k] = { median: med, avg: v.reduce((a, b) => a + b, 0) / v.length, cases: v.length,
-      target: v.length >= PRODUCT_BASELINE_MIN_CASES ? Math.round(med) : (overall != null ? Math.round(overall) : null),
+      target: v.length >= PRODUCT_BASELINE_MIN_CASES ? Math.round(v.reduce((a, b) => a + b, 0) / v.length) : (overall != null ? Math.round(overall) : null),
       thin: v.length < PRODUCT_BASELINE_MIN_CASES };
   });
   PRODUCT_BASELINES = { byProduct, overall, builtFrom: all.length };
@@ -4023,7 +4022,7 @@ function onTimeKpiHTML(stats) {
       <div class="ontime"><span class="v">${pct(stats.onTimePct)}</span><span class="l">On-Time</span></div>
       <div class="late"><span class="v">${pct(stats.latePct)}</span><span class="l">Late</span></div>
     </div>
-    <div class="kpi-ontime-sub">${fmtN(stats.ontimeCases)} case${stats.ontimeCases===1?'':'s'} vs. each product’s usual time (±1 day)</div>
+    <div class="kpi-ontime-sub">${fmtN(stats.ontimeCases)} case${stats.ontimeCases===1?'':'s'} vs. each product’s average (±1 day)</div>
   </div>`;
 }
 
@@ -4119,7 +4118,7 @@ function onTimeCardHTML(stats, title) {
       <div class="ot-head">
         <div>
           <div class="ot-title">${esc(title || 'On-Time Delivery')}</div>
-          <div class="ot-sub">vs. each product’s usual (median) turnaround, ±1 day · ${fmtN(stats.ontimeCases)} case${stats.ontimeCases===1?'':'s'} measured</div>
+          <div class="ot-sub">vs. each product’s average turnaround, ±1 day · ${fmtN(stats.ontimeCases)} case${stats.ontimeCases===1?'':'s'} measured</div>
         </div>
       </div>
       <div class="ot-rows">
@@ -4307,7 +4306,7 @@ function renderOverview() {
       <div class="kpi"><div class="kpi-label">Active Doctors</div><div class="kpi-value">${fmtN(k.doctors)}</div><div class="kpi-sub">${fmtN(k.products)} unique products</div></div>
       <div class="kpi"><div class="kpi-label">Remake Rate</div><div class="kpi-value">${fmtPct(k.remakeRate)}</div><div class="kpi-sub">${fmtN(k.remakeUnits)} of ${fmtN(k.totalUnits)} units reworked</div></div>
       <div class="kpi"><div class="kpi-label">On-Hold Rate</div><div class="kpi-value">${fmtPct(k.onHoldRate)}</div><div class="kpi-sub">${fmtN(k.onHoldCount)} held cases</div></div>
-      <div class="kpi"><div class="kpi-label">Turnaround · median</div><div class="kpi-value">${k.medTAT == null ? '—' : fmtTat(k.medTAT) + '<span class="sup">days</span>'}</div><div class="kpi-sub">90% within ${fmtTat(k.p90TAT)} days · avg ${k.avgTAT == null ? '—' : k.avgTAT.toFixed(1)} · entry → invoiced${tatExclHolds() ? ', hold days excluded' : ''}<br>${tatToggleHTML()} <span title="Build identifier — use this to confirm you are running the latest file.">${BUILD_ID}</span></div></div>
+      <div class="kpi"><div class="kpi-label">Avg Turnaround</div><div class="kpi-value">${k.avgTAT == null ? '—' : k.avgTAT.toFixed(1) + '<span class="sup">days</span>'}</div><div class="kpi-sub">entry → invoiced · 90% within ${fmtTat(k.p90TAT)} days${tatExclHolds() ? ' · hold days excluded' : ''}<br>${tatToggleHTML()} <span title="Build identifier — use this to confirm you are running the latest file.">${BUILD_ID}</span></div></div>
     </div>
 
     <div class="card mb20">
@@ -4321,7 +4320,7 @@ function renderOverview() {
         <div class="chart-wrap short"><canvas id="c0b"></canvas></div>
       </div>
       <div class="card flex-1">
-        <div class="chart-title">Turnaround (days) — Month over Month · median</div>
+        <div class="chart-title">Avg Turnaround (days) — Month over Month</div>
         <div class="chart-wrap short"><canvas id="c0c"></canvas></div>
       </div>
     </div>
@@ -4387,7 +4386,7 @@ function renderOverview() {
 
   makeChart('c0c', {
     type: 'line',
-    data: { labels: tatByMonth.map(m => fmtMonthKey(m.key)), datasets: [{ label: 'Median', spanGaps: true, data: tatByMonth.map(m => m.median == null ? null : +m.median.toFixed(1)), borderColor: '#7c3aed', backgroundColor: 'rgba(124,58,237,.1)', borderWidth: 2.5, tension: .3, fill: true, pointRadius: 2 },
+    data: { labels: tatByMonth.map(m => fmtMonthKey(m.key)), datasets: [{ label: 'Average', spanGaps: true, data: tatByMonth.map(m => m.avg == null ? null : +m.avg.toFixed(1)), borderColor: '#7c3aed', backgroundColor: 'rgba(124,58,237,.1)', borderWidth: 2.5, tension: .3, fill: true, pointRadius: 2 },
                  { label: '90% of cases within', spanGaps: true, data: tatByMonth.map(m => m.p90), borderColor: '#a78bfa', borderDash: [5, 4], borderWidth: 1.5, tension: .3, fill: false, pointRadius: 0 }] },
     options: { ...co, plugins: { ...co.plugins, legend: { display: true, position: 'bottom' } } }
   });
@@ -8275,8 +8274,8 @@ const CX_M = {   // the measures
   holdRate:    { label: 'On-hold rate', fmt: 'pct', rate: true, def: 'Held cases ÷ cases' },
   holdCases:   { label: 'Held cases', fmt: 'int', add: true, def: 'Distinct cases that went on hold' },
   holdDays:    { label: 'Avg days on hold', fmt: 'd1', def: 'Average days on hold, per held case' },
-  tatMedian:   { label: 'Median turnaround', fmt: 'days', def: 'Middle turnaround, one per case, received → invoiced (the Overview\'s headline)' },
-  tatAvg:      { label: 'Avg turnaround', fmt: 'days', def: 'Mean turnaround, one per case, received → invoiced' },
+  tatMedian:   { label: 'Median turnaround', fmt: 'days', def: 'Middle turnaround, one per case, received → invoiced' },
+  tatAvg:      { label: 'Avg turnaround', fmt: 'days', def: 'Mean turnaround, one per case, received → invoiced (the Overview\'s headline)' },
   tatP90:      { label: 'Slowest 10% at', fmt: 'days', def: '90% of cases were invoiced within this many days' },
   onTimePct:   { label: 'Early or on time', fmt: 'pct', rate: true, def: 'Lines finished on or before their product\'s normal turnaround' },
   latePct:     { label: 'Late', fmt: 'pct', rate: true, def: 'Lines finished after their product\'s normal turnaround' }
