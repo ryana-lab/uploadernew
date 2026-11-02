@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.10.30-DL27</title>
+<title>Lab Sales Dashboard v2026.10.30-DL28</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -1805,7 +1805,7 @@ const APP = {
 
 /* Bump when normalization logic changes, so it's possible to tell at a glance
    (bottom of the Avg Turnaround card) which build a browser is running. */
-const BUILD_ID = 'DL27 · 2026-10-30';
+const BUILD_ID = 'DL28 · 2026-10-30';
 
 const DB_NAME = 'LabOpsCache';
 const DB_STORE = 'datasets';
@@ -5380,8 +5380,8 @@ const DGRID_COLS = [
   { k: 'units', l: 'Units', num: 1, f: d => fmtN(d.units) },
   { k: 'avgCase', l: 'Avg case', num: 1, f: d => fmtUSDFull(d.avgCase) },
   { k: 'remakeRate', l: 'Remake', num: 1, f: d => fmtPct(d.remakeRate) },
-  { k: 'medTat', l: 'Median TAT', num: 1, f: d => d.medTat == null ? '—' : fmtTat(d.medTat) + 'd' },
   { k: 'avgTat', l: 'Avg TAT', num: 1, f: d => d.avgTat == null ? '—' : d.avgTat.toFixed(1) + 'd' },
+  { k: 'medTat', l: 'Median TAT', num: 1, f: d => d.medTat == null ? '—' : fmtTat(d.medTat) + 'd' },
   { k: 'firstDate', l: 'First case', num: 1, v: d => d.firstDate ? +d.firstDate : null, f: d => gridDay(d.firstDate) },
   { k: 'lastDate', l: 'Last case', num: 1, v: d => d.lastDate ? +d.lastDate : null, f: d => gridDay(d.lastDate) },
   { k: 'email', l: 'Email' }, { k: 'phone', l: 'Phone' }
@@ -5394,8 +5394,8 @@ const PGRID_COLS = [
   { k: 'avgPrice', l: 'Avg unit $', num: 1, f: p => fmtUSDFull(p.avgPrice) },
   { k: 'doctors', l: 'Doctors', num: 1, f: p => fmtN(p.doctors) },
   { k: 'remakeRate', l: 'Remake', num: 1, f: p => fmtPct(p.remakeRate) },
-  { k: 'medTat', l: 'Median TAT', num: 1, f: p => p.medTat == null ? '—' : fmtTat(p.medTat) + 'd' },
-  { k: 'avgTat', l: 'Avg TAT', num: 1, f: p => p.avgTat == null ? '—' : p.avgTat.toFixed(1) + 'd' }
+  { k: 'avgTat', l: 'Avg TAT', num: 1, f: p => p.avgTat == null ? '—' : p.avgTat.toFixed(1) + 'd' },
+  { k: 'medTat', l: 'Median TAT', num: 1, f: p => p.medTat == null ? '—' : fmtTat(p.medTat) + 'd' }
 ];
 
 const DGRID = { query: '', sort: 'revenue', limit: 60 };
@@ -5422,7 +5422,7 @@ function renderDoctorGrid() {
         <button class="pill" data-sort="cases">Cases</button>
         <button class="pill" data-sort="avgCase">Avg Case</button>
         <button class="pill" data-sort="remakeRate">Remake %</button>
-        <button class="pill" data-sort="medTat">Turnaround</button>
+        <button class="pill" data-sort="avgTat">Turnaround</button>
         <button class="pill" data-sort="name">A → Z</button>
       </div>
       <div class="text-mut" style="font-size:12px;margin-left:auto" id="dgCount"></div>
@@ -5516,7 +5516,7 @@ function drawDGrid() {
           <div><label>Revenue</label><div class="val">${fmtUSD(d.revenue)}</div></div>
           <div><label>Cases</label><div class="val">${fmtN(d.cases)}</div></div>
           <div><label>Avg Case</label><div class="val">${fmtUSDFull(d.avgCase)}</div></div>
-          <div><label>Turnaround · median</label><div class="val">${d.medTat == null ? '—' : fmtTat(d.medTat) + '<span style="font-size:11px;font-weight:600;color:var(--mut)"> days</span>'}</div></div>
+          <div><label>Avg Turnaround</label><div class="val">${d.avgTat == null ? '—' : d.avgTat.toFixed(1) + '<span style="font-size:11px;font-weight:600;color:var(--mut)"> days</span>'}</div></div>
         </div>
         ${onTimeMiniHTML(d)}
         <div class="dr-prods"><b>Top:</b> ${esc(d.topProducts.slice(0, 3).join(', ')) || '—'}</div>
@@ -5721,7 +5721,7 @@ function renderDoctorDetail() {
       <div class="kpi"><div class="kpi-label">Cases</div><div class="kpi-value">${fmtN(caseCount)}</div><div class="kpi-sub">${fmtN(totalUnits)} units</div></div>
       <div class="kpi"><div class="kpi-label">Avg Case</div><div class="kpi-value">${fmtUSDFull(caseCount ? totalRev/caseCount : 0)}</div></div>
       <div class="kpi"><div class="kpi-label">Remake Rate</div><div class="kpi-value">${fmtPct(allUnitsK ? remakeUnitsK/allUnitsK : 0)}</div><div class="kpi-sub">${fmtN(remakeUnitsK)} of ${fmtN(allUnitsK)} units</div></div>
-      <div class="kpi"><div class="kpi-label">Turnaround · median</div><div class="kpi-value">${ddTatMed == null ? '—' : fmtTat(ddTatMed) + '<span class="sup">days</span>'}</div><div class="kpi-sub">90% within ${fmtTat(tatP90(tatValues(cases)))} days · avg ${ddTat == null ? '—' : ddTat.toFixed(1)}${tatExclHolds() ? ' · hold days excluded' : ''}<br>${tatToggleHTML()}</div></div>
+      <div class="kpi"><div class="kpi-label">Avg Turnaround</div><div class="kpi-value">${ddTat == null ? '—' : ddTat.toFixed(1) + '<span class="sup">days</span>'}</div><div class="kpi-sub">entry → invoiced · 90% within ${fmtTat(tatP90(tatValues(cases)))} days${tatExclHolds() ? ' · hold days excluded' : ''}<br>${tatToggleHTML()}</div></div>
       ${onTimeKpiHTML(ddOnTime)}
       <div class="kpi"><div class="kpi-label">On Hold</div><div class="kpi-value">${onHold}</div><div class="kpi-sub">cases delayed</div></div>
       <div class="kpi"><div class="kpi-label">First → Last</div><div class="kpi-value" style="font-size:15px">${fmtDateShort(first)} – ${fmtDateShort(last)}</div></div>
@@ -5763,7 +5763,7 @@ function renderDoctorDetail() {
         <div class="chart-wrap short"><canvas id="ddRemake"></canvas></div>
       </div>
       <div class="card flex-1">
-        <div class="chart-title">Turnaround (days) — Month over Month · median</div>
+        <div class="chart-title">Avg Turnaround — Month over Month</div>
         <div class="chart-wrap short"><canvas id="ddTat"></canvas></div>
       </div>
     </div>
@@ -5777,9 +5777,9 @@ function renderDoctorDetail() {
       <div class="chart-title">Avg Turnaround by Product</div>
       <div style="overflow-x:auto">
         <table class="dtable">
-          <thead><tr><th>Product</th><th class="num">Cases</th><th class="num">Revenue</th><th class="num">Median TAT (days)</th></tr></thead>
+          <thead><tr><th>Product</th><th class="num">Cases</th><th class="num">Revenue</th><th class="num">Avg TAT (days)</th></tr></thead>
           <tbody>${products.map(p => `
-            <tr><td>${esc(p.name)}</td><td class="num">${fmtN(p.count)}</td><td class="num">${fmtUSDFull(p.revenue)}</td><td class="num">${p.tatList && p.tatList.length ? fmtTat(medianOf(p.tatList)) : '—'}</td></tr>
+            <tr><td>${esc(p.name)}</td><td class="num">${fmtN(p.count)}</td><td class="num">${fmtUSDFull(p.revenue)}</td><td class="num">${p.tatN ? (p.tatSum/p.tatN).toFixed(1) : '—'}</td></tr>
           `).join('')}</tbody>
         </table>
       </div>
@@ -5908,7 +5908,7 @@ function renderDoctorDetail() {
   ddCrmLoad(s.drName, ddPracticeInfo.primary || s.practice || '', APP.selectedDoctorId);
   makeChart('ddTat', {
     type: 'line',
-    data: { labels: ddLabels, datasets: [{ label: 'Median TAT', spanGaps: true, data: months.map(m => m.tatList && m.tatList.length ? +medianOf(m.tatList).toFixed(1) : null), borderColor: '#7c3aed', backgroundColor: 'rgba(124,58,237,.1)', borderWidth: 2.5, tension: .3, fill: true, pointRadius: 2 }] },
+    data: { labels: ddLabels, datasets: [{ label: 'Avg TAT', spanGaps: true, data: months.map(m => m.tatN ? +(m.tatSum / m.tatN).toFixed(1) : null), borderColor: '#7c3aed', backgroundColor: 'rgba(124,58,237,.1)', borderWidth: 2.5, tension: .3, fill: true, pointRadius: 2 }] },
     options: { ...co, plugins: { ...co.plugins, legend: { display: false } } }
   });
   makeChart('ddTopProd', {
@@ -6737,7 +6737,7 @@ function drawStatusBody(docs, segs) {
     { key: 'firstCase',    label: 'First Case',        cls: '',     get: d => d.firstDate ? d.firstDate.getTime() : -Infinity },
     { key: 'lastCase',     label: 'Last Case',         cls: '',     get: d => d.lastDate ? d.lastDate.getTime() : -Infinity },
     { key: 'daysSince',    label: 'Days Since Last',   cls: 'num',  get: d => d.daysSinceLast == null ? Infinity : d.daysSinceLast },
-    { key: 'medTat',       label: 'Median TAT',        cls: 'num',  get: d => d.medTAT == null ? -Infinity : d.medTAT }
+    { key: 'avgTat',       label: 'Avg TAT',           cls: 'num',  get: d => d.avgTAT == null ? -Infinity : d.avgTAT }
   ];
   if (isWb) {
     cols.push({ key: 'gap',      label: 'Gap Before Return', cls: 'num',  get: d => d.gapBeforeReturn || 0 });
@@ -6843,7 +6843,7 @@ function drawStatusBody(docs, segs) {
         <td>${fmtDateShort(d.firstDate)}</td>
         <td>${fmtDateShort(d.lastDate)}</td>
         <td class="num"><span class="st-pill">${d.daysSinceLast} days</span></td>
-        <td class="num">${d.medTAT != null ? fmtTat(d.medTAT) + ' days' : '—'}</td>
+        <td class="num">${d.avgTAT != null ? d.avgTAT.toFixed(1) + ' days' : '—'}</td>
         ${isWb ? `<td class="num"><span class="st-pill">${d.gapBeforeReturn} days</span></td>` : ''}
         ${isWb ? `<td>${d.returnedDate ? fmtDateShort(d.returnedDate) : '—'}</td>` : ''}
       </tr>
@@ -10204,7 +10204,7 @@ function renderProductGrid() {
         <button class="pill" data-sort="cases">Cases</button>
         <button class="pill" data-sort="avgPrice">Avg Price</button>
         <button class="pill" data-sort="remakeRate">Remake %</button>
-        <button class="pill" data-sort="medTat">Turnaround</button>
+        <button class="pill" data-sort="avgTat">Turnaround</button>
       </div>
       <div class="text-mut" style="font-size:12px;margin-left:auto" id="pgCount"></div>
       ${gridToggleHTML('products')}
@@ -10276,7 +10276,7 @@ function drawPGrid(all) {
           <div><label>Cases</label><div class="val">${fmtN(p.cases)}</div></div>
           <div><label>Units</label><div class="val">${fmtN(p.units)}</div></div>
           <div><label>Avg Unit $</label><div class="val">${fmtUSDFull(p.avgPrice)}</div></div>
-          <div><label>Turnaround · median</label><div class="val">${p.medTat == null ? '—' : fmtTat(p.medTat) + '<span style="font-size:11px;font-weight:600;color:var(--mut)"> days</span>'}</div></div>
+          <div><label>Avg Turnaround</label><div class="val">${p.avgTat == null ? '—' : p.avgTat.toFixed(1) + '<span style="font-size:11px;font-weight:600;color:var(--mut)"> days</span>'}</div></div>
           <div><label>Doctors</label><div class="val">${fmtN(p.doctors)}</div></div>
         </div>
         ${onTimeMiniHTML(p)}
@@ -10418,7 +10418,7 @@ function renderProductDetail() {
       <div class="card flex-1"><div class="chart-title">Remake % — Month over Month</div><div class="chart-wrap short"><canvas id="pdRemake"></canvas></div></div>
     </div>
 
-    <div class="card mb20"><div class="chart-title">Turnaround (days) — Month over Month · median</div><div class="chart-wrap short"><canvas id="pdTat"></canvas></div></div>
+    <div class="card mb20"><div class="chart-title">Avg Turnaround (days) — Month over Month</div><div class="chart-wrap short"><canvas id="pdTat"></canvas></div></div>
 
     <div class="flex-row">
       <div class="card flex-1">
@@ -10463,7 +10463,7 @@ function renderProductDetail() {
   makeChart('pdRemake', { type: 'line', data: { labels, datasets: [{ label: 'Remake %', data: months.map(m => m.uAll ? (m.remakeUnits || 0)/m.uAll*100 : 0), borderColor: '#dc2626', backgroundColor: 'rgba(220,38,38,.1)', borderWidth: 2.5, tension: .3, fill: true, pointRadius: 2 }] },
     options: { ...co, plugins: { ...co.plugins, legend: { display: false } }, scales: { ...co.scales, y: { ...co.scales.y, ticks: { ...co.scales.y.ticks, callback: v => v.toFixed(1)+'%' } } } } });
 
-  makeChart('pdTat', { type: 'line', data: { labels, datasets: [{ label: 'Median TAT', spanGaps: true, data: months.map(m => m.tatList && m.tatList.length ? +medianOf(m.tatList).toFixed(1) : null), borderColor: '#7c3aed', backgroundColor: 'rgba(124,58,237,.1)', borderWidth: 2.5, tension: .3, fill: true, pointRadius: 2 }] },
+  makeChart('pdTat', { type: 'line', data: { labels, datasets: [{ label: 'Avg TAT', spanGaps: true, data: months.map(m => m.tatN ? +(m.tatSum / m.tatN).toFixed(1) : null), borderColor: '#7c3aed', backgroundColor: 'rgba(124,58,237,.1)', borderWidth: 2.5, tension: .3, fill: true, pointRadius: 2 }] },
     options: { ...co, plugins: { ...co.plugins, legend: { display: false } } } });
 
   // On-time stacked bars: each month, show share early/ontime/late as 100%-stacked
@@ -12325,9 +12325,8 @@ function sbStatusLine(docRow, label) {
   const extra = [];
   if (docRow.remakeRate != null && isFinite(docRow.remakeRate))
     extra.push((Math.round(docRow.remakeRate * 1000) / 10) + '% remakes');
-  const tTyp = docRow.medTat != null ? docRow.medTat : docRow.avgTat;
-  if (tTyp != null && isFinite(tTyp))
-    extra.push((Math.round(tTyp * 10) / 10) + 'd typical turnaround');
+  if (docRow.avgTat != null && isFinite(docRow.avgTat))
+    extra.push((Math.round(docRow.avgTat * 10) / 10) + 'd avg turnaround');
   return SB_LAB_MARK + ' ' + lbl + ' · Dr. ' + docRow.name + ' · last case ' + sbUS(docRow.last) + ' · ' + docRow.cases + ' cases · ' + sbMoney(docRow.rev90) + ' last 90d · ' + sbMoney(docRow.rev) + ' lifetime' +
          (extra.length ? ' · ' + extra.join(' · ') : '');
 }
