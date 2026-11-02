@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.10.31-DL31</title>
+<title>Lab Sales Dashboard v2026.10.31-DL32</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -1820,7 +1820,7 @@ const APP = {
 
 /* Bump when normalization logic changes, so it's possible to tell at a glance
    (bottom of the Avg Turnaround card) which build a browser is running. */
-const BUILD_ID = 'DL31 · 2026-10-31';
+const BUILD_ID = 'DL32 · 2026-10-31';
 
 const DB_NAME = 'LabOpsCache';
 const DB_STORE = 'datasets';
@@ -5407,6 +5407,10 @@ const DGRID_COLS = [
 const PGRID_COLS = [
   { k: 'name', l: 'Product', f: p => `<b>${esc(p.name)}</b>` }, { k: 'category', l: 'Category' },
   { k: 'revenue', l: 'Revenue', num: 1, f: p => fmtUSD(p.revenue) },
+  { k: 'trend12', l: 'Last 12 months', v: p => prodTrendOf(p.name).m.reduce((a, b) => a + b, 0), f: p => sparkSVG(prodTrendOf(p.name).m) },
+  { k: 'chg30', l: '30 business days', num: 1, v: p => { const x = prodTrendOf(p.name); return x.prev ? x.pct : (x.last ? Infinity : null); }, f: p => chgBadge(prodTrendOf(p.name)) },
+  { k: 'last30', l: 'Last 30 bus. days', num: 1, v: p => prodTrendOf(p.name).last, f: p => fmtUSD(prodTrendOf(p.name).last) },
+  { k: 'prev30', l: 'Prior 30 bus. days', num: 1, v: p => prodTrendOf(p.name).prev, f: p => fmtUSD(prodTrendOf(p.name).prev) },
   { k: 'cases', l: 'Cases', num: 1, f: p => fmtN(p.cases) },
   { k: 'units', l: 'Units', num: 1, f: p => fmtN(p.units) },
   { k: 'avgPrice', l: 'Avg unit $', num: 1, f: p => fmtUSDFull(p.avgPrice) },
@@ -5431,23 +5435,27 @@ function bizWindows(end, n) {
   }
   return { lastStart, prevStart, end: new Date(end.getFullYear(), end.getMonth(), end.getDate(), 23, 59, 59) };
 }
-function drTrends() {
-  if (APP.derived && APP.derived.drTrends) return APP.derived.drTrends;
-  const out = { byDr: new Map(), months: [], win: null }, md = getMaxDate(); if (!md) return out;
+function seriesTrends(cacheKey, keyOf) {
+  if (APP.derived && APP.derived[cacheKey]) return APP.derived[cacheKey];
+  const out = { by: new Map(), months: [], win: null }, md = getMaxDate(); if (!md) return out;
   const w = bizWindows(md, 30), monthEnd = new Date(md.getFullYear(), md.getMonth() + 1, 0).getDate() === md.getDate();
   for (let i = 12; i >= 1; i--) out.months.push(monthKey(new Date(md.getFullYear(), md.getMonth() - i + (monthEnd ? 1 : 0), 1)));
   const mIdx = new Map(out.months.map((k, i) => [k, i]));
   for (const r of rawByGroupState()) {
-    if (!r || !r.drId || !r.anchorDate || r.anchorDate > w.end) continue;
-    let x = out.byDr.get(r.drId); if (!x) { x = { m: new Array(12).fill(0), last: 0, prev: 0 }; out.byDr.set(r.drId, x); }
+    const key = r ? keyOf(r) : null; if (!key || !r.anchorDate || r.anchorDate > w.end) continue;
+    let x = out.by.get(key); if (!x) { x = { m: new Array(12).fill(0), last: 0, prev: 0 }; out.by.set(key, x); }
     const i = mIdx.get(monthKey(r.anchorDate)); if (i != null) x.m[i] += r.netCost || 0;
     if (r.anchorDate >= w.lastStart) x.last += r.netCost || 0; else if (r.anchorDate >= w.prevStart) x.prev += r.netCost || 0;
   }
-  out.byDr.forEach(x => { x.pct = x.prev > 0 ? (x.last - x.prev) / x.prev : null; x.delta = x.last - x.prev; });
+  out.by.forEach(x => { x.pct = x.prev > 0 ? (x.last - x.prev) / x.prev : null; x.delta = x.last - x.prev; });
   out.win = w;
-  if (APP.derived) APP.derived.drTrends = out;
+  if (APP.derived) APP.derived[cacheKey] = out;
   return out;
 }
+const drTrends = () => { const t = seriesTrends('drTrends', r => r.drId); t.byDr = t.by; return t; };
+const prodTrends = () => seriesTrends('prodTrends', r => r.product);
+const EMPTY_TREND = () => ({ m: new Array(12).fill(0), last: 0, prev: 0, pct: null, delta: 0 });
+const prodTrendOf = name => prodTrends().by.get(name) || EMPTY_TREND();
 const trendOf = id => drTrends().byDr.get(id) || { m: new Array(12).fill(0), last: 0, prev: 0, pct: null, delta: 0 };
 function trendWindowText() {
   const w = drTrends().win; if (!w) return '';
@@ -10445,6 +10453,8 @@ function renderProductGrid() {
       </select>
       <div class="pill-group" id="pgSort">
         <button class="pill active" data-sort="revenue">Revenue</button>
+        <button class="pill" data-sort="grow" title="Biggest dollar increase, last 30 business days vs the 30 before">▲ Growing</button>
+        <button class="pill" data-sort="slip" title="Biggest dollar drop, last 30 business days vs the 30 before">▼ Slipping</button>
         <button class="pill" data-sort="cases">Cases</button>
         <button class="pill" data-sort="avgPrice">Avg Price</button>
         <button class="pill" data-sort="remakeRate">Remake %</button>
@@ -10468,6 +10478,8 @@ function renderProductGrid() {
   document.getElementById('pgExport').addEventListener('click', () => {
     downloadCSV('products.csv', pgFiltered(all).map(p => ({
       product: p.name, category: p.category, cases: p.cases, units: p.units, revenue: p.revenue,
+      revenue_last_30_business_days: Math.round(prodTrendOf(p.name).last), revenue_prior_30_business_days: Math.round(prodTrendOf(p.name).prev),
+      change_30_business_days_pct: prodTrendOf(p.name).pct == null ? '' : Math.round(prodTrendOf(p.name).pct * 1000) / 10,
       avg_unit_price: p.avgPrice, doctors: p.doctors, remake_rate: p.remakeRate, median_turnaround_days: p.medTat, avg_turnaround_days: p.avgTat
     })));
   });
@@ -10480,7 +10492,10 @@ function pgFiltered(all) {
   let prods = all.slice();
   if (PGRID.query) prods = prods.filter(p => p.name.toLowerCase().includes(PGRID.query));
   if (PGRID.category !== 'all') prods = prods.filter(p => p.category === PGRID.category);
-  prods.sort((a,b) => (b[PGRID.sort] || 0) - (a[PGRID.sort] || 0));
+  if (PGRID.sort === 'grow' || PGRID.sort === 'slip') {
+    const dir = PGRID.sort === 'grow' ? -1 : 1;   // by the dollar change, so size counts
+    prods.sort((a, b) => dir * (prodTrendOf(a.name).delta - prodTrendOf(b.name).delta));
+  } else prods.sort((a,b) => (b[PGRID.sort] || 0) - (a[PGRID.sort] || 0));
   return prods;
 }
 
@@ -10523,6 +10538,7 @@ function drawPGrid(all) {
           <div><label>Avg Turnaround</label><div class="val">${p.avgTat == null ? '—' : p.avgTat.toFixed(1) + '<span style="font-size:11px;font-weight:600;color:var(--mut)"> days</span>'}</div></div>
           <div><label>Doctors</label><div class="val">${fmtN(p.doctors)}</div></div>
         </div>
+        <div class="dr-trend">${sparkSVG(prodTrendOf(p.name).m)}<div class="dr-trend-r">${chgBadge(prodTrendOf(p.name))}<small>last 30 business days</small></div></div>
         ${onTimeMiniHTML(p)}
       </div>
     `;
@@ -10654,6 +10670,7 @@ function renderProductDetail() {
 
     <div class="card mb20">
       <div class="chart-title">Revenue — Month over Month</div>
+      ${(() => { const x = prodTrendOf(APP.selectedProduct); return `<div class="dd-chg">Last 30 business days <b>${fmtUSD(x.last)}</b> vs <b>${fmtUSD(x.prev)}</b> the 30 before ${chgBadge(x)}<small>${esc(trendWindowText())} · dashed line = trend across complete months</small></div>`; })()}
       <div class="chart-wrap"><canvas id="pdRev"></canvas></div>
     </div>
 
@@ -10698,7 +10715,10 @@ function renderProductDetail() {
   const co = commonChartOpts();
   const labels = months.map(m => fmtMonthKey(m.key));
 
-  makeChart('pdRev', { type: 'bar', data: { labels, datasets: [{ label: 'Revenue', data: months.map(m => m.revenue), backgroundColor: '#24bfcd', borderRadius: 4 }] },
+  makeChart('pdRev', { type: 'bar', data: { labels, datasets: [{ label: 'Revenue', data: months.map(m => m.revenue), backgroundColor: '#24bfcd', borderRadius: 4, order: 2 },
+      { type: 'line', label: 'Trend', order: 1, borderColor: '#0f766e', borderDash: [6, 4], borderWidth: 2, pointRadius: 0, fill: false, tension: 0,
+        data: (() => { const md = getMaxDate(), done = md && new Date(md.getFullYear(), md.getMonth() + 1, 0).getDate() === md.getDate();
+          const cur = md ? monthKey(md) : ''; return trendLine(months.map(m => (m.key === cur && !done) ? null : m.revenue)).map(v => v == null ? null : Math.round(v)); })() }] },
     options: { ...co, plugins: { ...co.plugins, legend: { display: false } }, scales: { ...co.scales, y: { ...co.scales.y, ticks: { ...co.scales.y.ticks, callback: v => fmtUSD(v) } } } } });
 
   makeChart('pdUnits', { type: 'line', data: { labels, datasets: [{ label: 'Units', data: months.map(m => m.units), borderColor: '#059669', backgroundColor: 'rgba(5,150,105,.1)', borderWidth: 2.5, tension: .3, fill: true, pointRadius: 2 }] },
