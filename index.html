@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.10.31-DL33</title>
+<title>Lab Sales Dashboard v2026.10.31-DL34</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -189,7 +189,16 @@ html, body {
 .dr-trend-r { text-align: right; } .dr-trend-r small { display: block; font-size: 10.5px; color: var(--mut); }
 .spark { display: block; }
 .chg { font-size: 12.5px; font-weight: 800; white-space: nowrap; padding: 1px 7px; border-radius: 999px; }
-.chg.up { color: #047857; background: #ecfdf5; } .chg.down { color: #b91c1c; background: #fef2f2; } .chg.flat { color: var(--dim); background: var(--card-2); }
+.chg.up, .chg.good { color: #047857; background: #ecfdf5; } .chg.down, .chg.bad { color: #b91c1c; background: #fef2f2; } .chg.flat { color: var(--dim); background: var(--card-2); }
+.dr-trend2 { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; font-size: 11.5px; color: var(--dim); margin: 2px 0 6px; }
+.dr-trend2 b { color: var(--ink); } .dr-trend2 .chg { font-size: 11px; padding: 0 6px; }
+.c30-h { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; } .c30-h small { color: var(--mut); font-size: 11.5px; }
+.c30-g { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 800px) { .c30-g { grid-template-columns: 1fr; } }
+.c30-t { background: var(--card-2); border-radius: 10px; padding: 10px 14px; }
+.c30-l { font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; color: var(--mut); }
+.c30-v { font-size: 22px; font-weight: 800; color: var(--ink); margin: 2px 0; font-variant-numeric: tabular-nums; }
+.c30-b { font-size: 12.5px; color: var(--dim); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; } .c30-s { font-size: 11px; color: var(--mut); margin-top: 3px; }
 .dd-chg { font-size: 13px; color: var(--dim); margin: -4px 0 8px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .dd-chg small { flex-basis: 100%; font-size: 11px; color: var(--mut); }
 /* CRM: the log form and the Visits & calls card */
@@ -1836,7 +1845,7 @@ const APP = {
 
 /* Bump when normalization logic changes, so it's possible to tell at a glance
    (bottom of the Avg Turnaround card) which build a browser is running. */
-const BUILD_ID = 'DL33 · 2026-10-31';
+const BUILD_ID = 'DL34 · 2026-10-31';
 
 const DB_NAME = 'LabOpsCache';
 const DB_STORE = 'datasets';
@@ -5430,6 +5439,10 @@ const DGRID_COLS = [
   { k: 'chg30', l: '30 business days', num: 1, v: d => { const x = trendOf(d.drId); return x.prev ? x.pct : (x.last ? Infinity : null); }, f: d => chgBadge(trendOf(d.drId)) },
   { k: 'last30', l: 'Last 30 bus. days', num: 1, v: d => trendOf(d.drId).last, f: d => fmtUSD(trendOf(d.drId).last) },
   { k: 'prev30', l: 'Prior 30 bus. days', num: 1, v: d => trendOf(d.drId).prev, f: d => fmtUSD(trendOf(d.drId).prev) },
+  { k: 'rem30', l: 'Remake · last 30', num: 1, v: d => trendOf(d.drId).remL, f: d => pct1(trendOf(d.drId).remL) },
+  { k: 'remChg', l: 'Remake vs prior', num: 1, v: d => trendOf(d.drId).remD, f: d => remChg(trendOf(d.drId)) },
+  { k: 'tat30', l: 'Avg TAT · last 30', num: 1, v: d => trendOf(d.drId).tatL, f: d => days1(trendOf(d.drId).tatL) },
+  { k: 'tatChg', l: 'TAT vs prior', num: 1, v: d => trendOf(d.drId).tatD, f: d => tatChg(trendOf(d.drId)) },
   { k: 'cases', l: 'Cases', num: 1, f: d => fmtN(d.cases) },
   { k: 'units', l: 'Units', num: 1, f: d => fmtN(d.units) },
   { k: 'avgCase', l: 'Avg case', num: 1, f: d => fmtUSDFull(d.avgCase) },
@@ -5447,6 +5460,10 @@ const PGRID_COLS = [
   { k: 'chg30', l: '30 business days', num: 1, v: p => { const x = prodTrendOf(p.name); return x.prev ? x.pct : (x.last ? Infinity : null); }, f: p => chgBadge(prodTrendOf(p.name)) },
   { k: 'last30', l: 'Last 30 bus. days', num: 1, v: p => prodTrendOf(p.name).last, f: p => fmtUSD(prodTrendOf(p.name).last) },
   { k: 'prev30', l: 'Prior 30 bus. days', num: 1, v: p => prodTrendOf(p.name).prev, f: p => fmtUSD(prodTrendOf(p.name).prev) },
+  { k: 'rem30', l: 'Remake · last 30', num: 1, v: p => prodTrendOf(p.name).remL, f: p => pct1(prodTrendOf(p.name).remL) },
+  { k: 'remChg', l: 'Remake vs prior', num: 1, v: p => prodTrendOf(p.name).remD, f: p => remChg(prodTrendOf(p.name)) },
+  { k: 'tat30', l: 'Avg TAT · last 30', num: 1, v: p => prodTrendOf(p.name).tatL, f: p => days1(prodTrendOf(p.name).tatL) },
+  { k: 'tatChg', l: 'TAT vs prior', num: 1, v: p => prodTrendOf(p.name).tatD, f: p => tatChg(prodTrendOf(p.name)) },
   { k: 'cases', l: 'Cases', num: 1, f: p => fmtN(p.cases) },
   { k: 'units', l: 'Units', num: 1, f: p => fmtN(p.units) },
   { k: 'avgPrice', l: 'Avg unit $', num: 1, f: p => fmtUSDFull(p.avgPrice) },
@@ -5471,6 +5488,7 @@ function bizWindows(end, n) {
   }
   return { lastStart, prevStart, end: new Date(end.getFullYear(), end.getMonth(), end.getDate(), 23, 59, 59) };
 }
+const tw0 = () => ({ u: 0, r: 0, ts: 0, tn: 0, seen: new Set() });
 function seriesTrends(cacheKey, keyOf) {
   if (APP.derived && APP.derived[cacheKey]) return APP.derived[cacheKey];
   const out = { by: new Map(), months: [], win: null }, md = getMaxDate(); if (!md) return out;
@@ -5479,20 +5497,33 @@ function seriesTrends(cacheKey, keyOf) {
   const mIdx = new Map(out.months.map((k, i) => [k, i]));
   for (const r of rawByGroupState()) {
     const key = r ? keyOf(r) : null; if (!key || !r.anchorDate || r.anchorDate > w.end) continue;
-    let x = out.by.get(key); if (!x) { x = { m: new Array(12).fill(0), last: 0, prev: 0 }; out.by.set(key, x); }
+    let x = out.by.get(key); if (!x) { x = { m: new Array(12).fill(0), last: 0, prev: 0, L: tw0(), P: tw0() }; out.by.set(key, x); }
     const i = mIdx.get(monthKey(r.anchorDate)); if (i != null) x.m[i] += r.netCost || 0;
-    if (r.anchorDate >= w.lastStart) x.last += r.netCost || 0; else if (r.anchorDate >= w.prevStart) x.prev += r.netCost || 0;
+    const W = r.anchorDate >= w.lastStart ? x.L : r.anchorDate >= w.prevStart ? x.P : null;
+    if (W === x.L) x.last += r.netCost || 0; else if (W === x.P) x.prev += r.netCost || 0;
+    if (W) {   // the same rules as the grids: remakes by unit; turnaround once per case, 0–200 days
+      W.u += r.qty || 0; if (r.remake) W.r += r.qty || 0;
+      if (r.caseKey && r.tat != null && r.tat >= 0 && r.tat <= 200 && !W.seen.has(r.caseKey)) { W.seen.add(r.caseKey); W.ts += r.tat; W.tn++; }
+    }
   }
-  out.by.forEach(x => { x.pct = x.prev > 0 ? (x.last - x.prev) / x.prev : null; x.delta = x.last - x.prev; });
+  out.by.forEach(x => {
+    x.pct = x.prev > 0 ? (x.last - x.prev) / x.prev : null; x.delta = x.last - x.prev;
+    x.remL = x.L.u ? x.L.r / x.L.u : null; x.remP = x.P.u ? x.P.r / x.P.u : null;
+    x.remD = x.remL != null && x.remP != null ? x.remL - x.remP : null;
+    x.tatL = x.L.tn ? x.L.ts / x.L.tn : null; x.tatP = x.P.tn ? x.P.ts / x.P.tn : null;
+    x.tatD = x.tatL != null && x.tatP != null ? x.tatL - x.tatP : null;
+    delete x.L.seen; delete x.P.seen;
+  });
   out.win = w;
   if (APP.derived) APP.derived[cacheKey] = out;
   return out;
 }
 const drTrends = () => { const t = seriesTrends('drTrends', r => r.drId); t.byDr = t.by; return t; };
 const prodTrends = () => seriesTrends('prodTrends', r => r.product);
-const EMPTY_TREND = () => ({ m: new Array(12).fill(0), last: 0, prev: 0, pct: null, delta: 0 });
+const EMPTY_TREND = () => ({ m: new Array(12).fill(0), last: 0, prev: 0, pct: null, delta: 0, L: { u: 0, r: 0, ts: 0, tn: 0 }, P: { u: 0, r: 0, ts: 0, tn: 0 },
+                             remL: null, remP: null, remD: null, tatL: null, tatP: null, tatD: null });
 const prodTrendOf = name => prodTrends().by.get(name) || EMPTY_TREND();
-const trendOf = id => drTrends().byDr.get(id) || { m: new Array(12).fill(0), last: 0, prev: 0, pct: null, delta: 0 };
+const trendOf = id => drTrends().byDr.get(id) || EMPTY_TREND();
 function trendWindowText() {
   const w = drTrends().win; if (!w) return '';
   const f = d => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), pe = new Date(w.lastStart); pe.setDate(pe.getDate() - 1);
@@ -5512,6 +5543,30 @@ function chgBadge(x) {
   if (!x.prev) return `<span class="chg up" title="${esc(tip)}">new</span>`;
   const p = x.pct, cls = p > 0.05 ? 'up' : p < -0.05 ? 'down' : 'flat';
   return `<span class="chg ${cls}" title="${esc(tip)}">${p > 0.005 ? '▲' : p < -0.005 ? '▼' : ''} ${Math.abs(Math.round(p * 100))}%</span>`;
+}
+const pct1 = v => v == null ? '—' : (v * 100).toFixed(1) + '%';
+const days1 = v => v == null ? '—' : v.toFixed(1) + 'd';
+function remChg(x) {
+  const tip = `Remake rate, last 30 business days ${pct1(x.remL)} (${fmtN(x.L.r)} of ${fmtN(x.L.u)} units) vs ${pct1(x.remP)} (${fmtN(x.P.r)} of ${fmtN(x.P.u)}) the 30 before (${trendWindowText()})`;
+  if (x.remD == null) return `<span class="chg flat" title="${esc(tip)}">—</span>`;
+  const d = x.remD * 100, cls = d > 0.5 ? 'bad' : d < -0.5 ? 'good' : 'flat';
+  return `<span class="chg ${cls}" title="${esc(tip)}">${d > 0.05 ? '▲' : d < -0.05 ? '▼' : ''} ${Math.abs(d).toFixed(1)} pts</span>`;
+}
+function tatChg(x) {
+  const tip = `Avg turnaround, last 30 business days ${days1(x.tatL)} (${fmtN(x.L.tn)} cases) vs ${days1(x.tatP)} (${fmtN(x.P.tn)} cases) the 30 before (${trendWindowText()})`;
+  if (x.tatD == null) return `<span class="chg flat" title="${esc(tip)}">—</span>`;
+  const d = x.tatD, cls = d > 0.25 ? 'bad' : d < -0.25 ? 'good' : 'flat';
+  return `<span class="chg ${cls}" title="${esc(tip)}">${d > 0.05 ? '▲' : d < -0.05 ? '▼' : ''} ${Math.abs(d).toFixed(1)} days</span>`;
+}
+// the second line on a grid card: remake and turnaround, last 30 business days
+const trend2HTML = x => `<div class="dr-trend2"><span>Remake <b>${pct1(x.remL)}</b> ${remChg(x)}</span><span>Turnaround <b>${days1(x.tatL)}</b> ${tatChg(x)}</span></div>`;
+// Doctor / Product Detail: the three measures side by side
+function cmp30HTML(x) {
+  const tile = (label, now, before, badge, sub) => `<div class="c30-t"><div class="c30-l">${label}</div><div class="c30-v">${now}</div><div class="c30-b">vs ${before} ${badge}</div>${sub ? `<div class="c30-s">${sub}</div>` : ''}</div>`;
+  return `<div class="card mb20 c30"><div class="c30-h"><div class="chart-title" style="margin:0">Last 30 business days vs the 30 before</div><small>${esc(trendWindowText())}</small></div>
+    <div class="c30-g">${tile('Revenue', fmtUSD(x.last), fmtUSD(x.prev), chgBadge(x), '')}
+      ${tile('Remake rate', pct1(x.remL), pct1(x.remP), remChg(x), `${fmtN(x.L.r)} of ${fmtN(x.L.u)} units vs ${fmtN(x.P.r)} of ${fmtN(x.P.u)}`)}
+      ${tile('Avg turnaround', days1(x.tatL), days1(x.tatP), tatChg(x), `${fmtN(x.L.tn)} cases vs ${fmtN(x.P.tn)}${tatExclHolds() ? ' · hold days excluded' : ''}`)}</div></div>`;
 }
 // least-squares straight line through a series (nulls skipped) → value at each index
 function trendLine(vals) {
@@ -5577,6 +5632,8 @@ function renderDoctorGrid() {
       median_turnaround_days: d.medTat, avg_turnaround_days: d.avgTat,
       revenue_last_30_business_days: Math.round(trendOf(d.drId).last), revenue_prior_30_business_days: Math.round(trendOf(d.drId).prev),
       change_30_business_days_pct: trendOf(d.drId).pct == null ? '' : Math.round(trendOf(d.drId).pct * 1000) / 10,
+      remake_rate_last_30_bd: trendOf(d.drId).remL == null ? '' : +(trendOf(d.drId).remL * 100).toFixed(2), remake_rate_prior_30_bd: trendOf(d.drId).remP == null ? '' : +(trendOf(d.drId).remP * 100).toFixed(2),
+      avg_tat_last_30_bd: trendOf(d.drId).tatL == null ? '' : +trendOf(d.drId).tatL.toFixed(1), avg_tat_prior_30_bd: trendOf(d.drId).tatP == null ? '' : +trendOf(d.drId).tatP.toFixed(1),
       top_products: d.topProducts.join('; ')
     })));
   });
@@ -5653,6 +5710,7 @@ function drawDGrid() {
           <div><label>Avg Turnaround</label><div class="val">${d.avgTat == null ? '—' : d.avgTat.toFixed(1) + '<span style="font-size:11px;font-weight:600;color:var(--mut)"> days</span>'}</div></div>
         </div>
         <div class="dr-trend">${sparkSVG(trendOf(d.drId).m)}<div class="dr-trend-r">${chgBadge(trendOf(d.drId))}<small>last 30 business days</small></div></div>
+        ${trend2HTML(trendOf(d.drId))}
         ${onTimeMiniHTML(d)}
         <div class="dr-prods"><b>Top:</b> ${esc(d.topProducts.slice(0, 3).join(', ')) || '—'}</div>
       </div>
@@ -5862,6 +5920,7 @@ function renderDoctorDetail() {
       <div class="kpi"><div class="kpi-label">First → Last</div><div class="kpi-value" style="font-size:15px">${fmtDateShort(first)} – ${fmtDateShort(last)}</div></div>
     </div>
 
+    ${cmp30HTML(trendOf(APP.selectedDoctorId))}
     <div class="card mb20 dd-crm" id="ddCrm">${ddCrmHead(0, false)}<div class="crm-nil">Loading visits and calls from Salesly…</div></div>
 
     <div class="flex-row">
@@ -10516,6 +10575,8 @@ function renderProductGrid() {
       product: p.name, category: p.category, cases: p.cases, units: p.units, revenue: p.revenue,
       revenue_last_30_business_days: Math.round(prodTrendOf(p.name).last), revenue_prior_30_business_days: Math.round(prodTrendOf(p.name).prev),
       change_30_business_days_pct: prodTrendOf(p.name).pct == null ? '' : Math.round(prodTrendOf(p.name).pct * 1000) / 10,
+      remake_rate_last_30_bd: prodTrendOf(p.name).remL == null ? '' : +(prodTrendOf(p.name).remL * 100).toFixed(2), remake_rate_prior_30_bd: prodTrendOf(p.name).remP == null ? '' : +(prodTrendOf(p.name).remP * 100).toFixed(2),
+      avg_tat_last_30_bd: prodTrendOf(p.name).tatL == null ? '' : +prodTrendOf(p.name).tatL.toFixed(1), avg_tat_prior_30_bd: prodTrendOf(p.name).tatP == null ? '' : +prodTrendOf(p.name).tatP.toFixed(1),
       avg_unit_price: p.avgPrice, doctors: p.doctors, remake_rate: p.remakeRate, median_turnaround_days: p.medTat, avg_turnaround_days: p.avgTat
     })));
   });
@@ -10575,6 +10636,7 @@ function drawPGrid(all) {
           <div><label>Doctors</label><div class="val">${fmtN(p.doctors)}</div></div>
         </div>
         <div class="dr-trend">${sparkSVG(prodTrendOf(p.name).m)}<div class="dr-trend-r">${chgBadge(prodTrendOf(p.name))}<small>last 30 business days</small></div></div>
+        ${trend2HTML(prodTrendOf(p.name))}
         ${onTimeMiniHTML(p)}
       </div>
     `;
@@ -10704,6 +10766,7 @@ function renderProductDetail() {
       </div>
     </div>
 
+    ${cmp30HTML(prodTrendOf(product))}
     <div class="card mb20">
       <div class="chart-title">Revenue — Month over Month</div>
       ${(() => { const x = prodTrendOf(APP.selectedProduct); return `<div class="dd-chg">Last 30 business days <b>${fmtUSD(x.last)}</b> vs <b>${fmtUSD(x.prev)}</b> the 30 before ${chgBadge(x)}<small>${esc(trendWindowText())} · dashed line = trend across complete months</small></div>`; })()}
