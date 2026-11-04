@@ -40,7 +40,9 @@ concurrency:
 
 jobs:
   reports:
-    runs-on: ubuntu-latest
+    # Pinned: GitHub's newest image (Ubuntu 26.04, "ubuntu-latest") isn't supported
+    # by Playwright's browser installer yet. 24.04 is.
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -64,7 +66,9 @@ jobs:
       - name: Install a headless browser
         run: |
           npm install --no-save --no-audit --no-fund playwright@1.56.0
-          npx playwright install --with-deps chromium
+          # if Playwright's own browser can't be installed, the script falls back to
+          # the Google Chrome that comes with GitHub's runners
+          npx playwright install --with-deps chromium || echo "::warning::Playwright's browser could not be installed, so the runner's Google Chrome will be used"
 
       - name: Build and send the reports
         env:
