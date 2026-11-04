@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.11.04-DL37</title>
+<title>Lab Sales Dashboard v2026.11.04-DL38</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -1881,7 +1881,7 @@ const APP = {
 
 /* Bump when normalization logic changes, so it's possible to tell at a glance
    (bottom of the Avg Turnaround card) which build a browser is running. */
-const BUILD_ID = 'DL37 · 2026-11-04';
+const BUILD_ID = 'DL38 · 2026-11-04';
 
 const DB_NAME = 'LabOpsCache';
 const DB_STORE = 'datasets';
@@ -2039,9 +2039,12 @@ function finishIngest(rawRows, fileName, freshUpload) {
     APP.rawRows = rawRows;
     APP.meta = {
       fileName: fileName,
-      uploadedAt: new Date().toISOString(),
+      // a saved copy keeps the time it was really loaded — reports use it to
+      // tell which days had finished when the data was taken
+      uploadedAt: APP._restoredAt || new Date().toISOString(),
       rowCount: records.length
     };
+    APP._restoredAt = null;
     // Cache to IndexedDB (store CSV text for max compatibility — we re-normalize on load)
     // For very large files we cache only if reasonable
     if (records.length <= 200000) {
@@ -3681,6 +3684,7 @@ async function checkCache() {
     document.getElementById('cbLoad').addEventListener('click', async () => {
       banner.style.display = 'none';
       showProgress('Loading cached data', 20, 'preparing…', '20%');
+      APP._restoredAt = meta.uploadedAt || null;   // keep the time this copy was really loaded
       // Normalize cached raw rows
       setTimeout(() => finishIngest(cached.rows, meta.fileName || 'cached.csv'), 30);
     });
@@ -13741,6 +13745,30 @@ function rpHead(title, sub, maxDate) {
     '<div style="font-size:12px;color:#cbd5e1">' + sub + ' · Data through <b style="color:#fff">' + esc(fmtDate(maxDate)) + '</b>' +
     (scope ? ' · ' + esc(scope) : '') + ' · <b style="color:#fff">Invoiced business days only (Mon–Fri)</b> · Generated ' + esc(new Date().toLocaleString()) + '</div></div>';
 }
+/* A safety net: if the report day's revenue is far below a normal day (under 40%
+   of the median of the 10 business days before it), the data probably hadn't
+   finished syncing. Say so at the top of the report rather than send numbers that
+   look like a collapse. */
+function rpIncompleteCheck() {
+  const biz = rpBizContext(), byOff = new Map();
+  for (const r of rawByGroupState()) {
+    if (!r.anchorDate) continue;
+    const off = biz.map[rpBizFoldDay(r.anchorDate)]; if (off == null || off > 10) continue;
+    byOff.set(off, (byOff.get(off) || 0) + (r.netCost || 0));
+  }
+  const day = byOff.get(0) || 0, prior = [];
+  for (let i = 1; i <= 10; i++) if (byOff.has(i)) prior.push(byOff.get(i));
+  if (prior.length < 5) return null;
+  prior.sort((a, b) => a - b);
+  const typical = prior.length % 2 ? prior[prior.length >> 1] : (prior[prior.length / 2 - 1] + prior[prior.length / 2]) / 2;
+  return typical > 0 && day < 0.4 * typical ? { day, typical, label: rpDayLabel(biz.maxBiz) } : null;
+}
+function rpIncompleteNote() {
+  const x = rpIncompleteCheck(); if (!x) return '';
+  return '<div style="' + RP_F + 'background:#fef3c7;border:1px solid #f59e0b;color:#78350f;border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:13px">' +
+    '<b>⚠ ' + esc(x.label) + ' looks incomplete:</b> ' + fmtUSD(x.day) + ' invoiced vs about ' + fmtUSD(Math.round(x.typical)) +
+    ' on a typical day. The data probably hadn\'t finished syncing when this report was built — treat the Daily figures with caution.</div>';
+}
 function rpWindowNote(p) {
   if (p.key === 'daily') return 'latest invoiced business day vs the one before';
   return 'last ' + p.n + ' invoiced business days vs prior ' + p.n;
@@ -13806,7 +13834,7 @@ function rpEntitySection(p, entities, entityNoun) {
 
 function rpBuildDoctorReport() {
   const agg = rpAggregate(r => r.drId ? { key: r.drId, label: r.drName || '(unnamed)', sub: r.practice || '' } : null);
-  let h = rpHead('📋 Daily Customer Report', 'Doctor-level trends — revenue, units, remake %, turnaround', agg.maxDate);
+  let h = rpHead('📋 Daily Customer Report', 'Doctor-level trends — revenue, units, remake %, turnaround', agg.maxDate) + rpIncompleteNote();
   h += rpSummaryTable(agg.overall);
   RP_PERIODS.forEach(p => { h += rpEntitySection(p, agg.entities, 'Client'); });
   return h;
@@ -13814,7 +13842,7 @@ function rpBuildDoctorReport() {
 
 function rpBuildProductReport() {
   const agg = rpAggregate(r => r.product ? { key: r.product, label: r.product, sub: r.productCat || '' } : null);
-  let h = rpHead('📦 Daily Product Report', 'Product-level trends — revenue, units, remake %, turnaround', agg.maxDate);
+  let h = rpHead('📦 Daily Product Report', 'Product-level trends — revenue, units, remake %, turnaround', agg.maxDate) + rpIncompleteNote();
   h += rpSummaryTable(agg.overall);
   RP_PERIODS.forEach(p => { h += rpEntitySection(p, agg.entities, 'Product'); });
   return h;
@@ -13921,7 +13949,7 @@ function rpBuildStatusReport() {
   const baseAsOf = asOfDay;
   const baseline = false;
 
-  let h = rpHead('🔔 Status Changes Report', 'Daily additions + full rosters — New / Winback / Falloff / Inactive / Current', maxDate);
+  let h = rpHead('🔔 Status Changes Report', 'Daily additions + full rosters — New / Winback / Falloff / Inactive / Current', maxDate) + rpIncompleteNote();
   const _headEnd = h.length;     // the 💎 Diamond section is spliced in here, above everything else
 
   /* Day-by-day movement across the last two weeks. The single-day view above
@@ -14602,8 +14630,13 @@ function rpReportDay() {
    loads the day as it happens — is never reported: reports always cover the
    last COMPLETE business day (yesterday; Friday on a Monday). */
 function rpTodayStart() {
-  const t = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' }).split('-').map(Number);
-  return new Date(t[0], t[1] - 1, t[2]);
+  const day = d => { const t = d.toLocaleDateString('en-CA', { timeZone: 'America/Chicago' }).split('-').map(Number); return new Date(t[0], t[1] - 1, t[2]); };
+  const today = day(new Date());
+  // …and never a day that hadn't ended when the data was LOADED: a copy taken on
+  // Nov 3 at 3 pm only has part of Nov 3, whatever today's date
+  const loaded = APP.meta && APP.meta.uploadedAt ? new Date(APP.meta.uploadedAt) : null;
+  const loadDay = loaded && !isNaN(loaded) ? day(loaded) : null;
+  return loadDay && loadDay < today ? loadDay : today;
 }
 function rpDayLabel(d) { return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }); }
 
