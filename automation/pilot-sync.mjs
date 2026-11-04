@@ -70,6 +70,8 @@ try {
   const expected = previousBusinessDay(now);
   log(`Loaded ${info.lines.toLocaleString()} invoice lines · latest date in the data ${info.latest} · reporting on ${info.day}`);
   if (info.day !== expected) log(`  ⚠ The last complete day in the data is ${info.day}, not ${expected} — the reports will say so in their subject lines.`);
+  const thin = await page.evaluate(() => { const x = rpIncompleteCheck(); return x ? { day: Math.round(x.day), typical: Math.round(x.typical) } : null; });
+  if (thin) log(`  ⚠ ${info.day} looks incomplete: $${thin.day.toLocaleString()} invoiced vs about $${thin.typical.toLocaleString()} on a typical day — the reports carry a warning. Check the Pilot pull.`);
 
   // already sent today?
   const prev = await page.evaluate(async () => { const { data, error } = await pgClient().from('reports').select('key,as_of,saved_at,recipients'); return { rows: data || [], error: error && error.message }; });
