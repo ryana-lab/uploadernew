@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.11.04-DL36</title>
+<title>Lab Sales Dashboard v2026.11.04-DL37</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -184,6 +184,16 @@ html, body {
 .sv-daylist { display: flex; flex-direction: column; gap: 10px; min-width: 0; margin-top: 14px; }
 .sv-dupe-note { color: #a16207; }
 /* ── COACH ── */
+/* gone quiet: the ! mark */
+.qm { display: inline-flex; align-items: center; justify-content: center; width: 17px; height: 17px; border-radius: 50%; font-size: 11px; font-weight: 900; line-height: 1; vertical-align: 2px; cursor: help; }
+.qm-teal { background: #e0f5f6; color: #18818b; } .qm-yellow { background: #fde68a; color: #92400e; } .qm-orange { background: #fed7aa; color: #c2410c; } .qm-red { background: #fecaca; color: #b91c1c; }
+.qm-tag { font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px; } .qm-tag b { font-weight: 900; margin-right: 2px; }
+/* retention: added / left */
+.ret-d { display: inline-flex; gap: 4px; margin-left: 6px; font-size: 10.5px; font-weight: 800; }
+.ret-up { color: #047857; } .ret-dn { color: #b91c1c; } .ret-net { color: var(--dim); } .ret-net.pos { color: #047857; } .ret-net.neg { color: #b91c1c; }
+.ret-moves { font-size: 12.5px; color: var(--dim); background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; margin: 10px 0; }
+.ret-moves b { color: var(--ink); } .ret-row { margin-top: 5px; line-height: 1.6; } .ret-row .ret-up, .ret-row .ret-dn { font-weight: 800; margin-right: 6px; }
+.ret-dr { color: var(--ink); text-decoration: none; font-weight: 600; } .ret-dr:hover { text-decoration: underline; color: var(--accent-ink); } .ret-moves small { color: var(--mut); }
 /* revenue trends: sparklines and the 30-business-day change */
 .dr-trend { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 8px 0 2px; padding-top: 8px; border-top: 1px dashed var(--border); }
 .dr-trend-r { text-align: right; } .dr-trend-r small { display: block; font-size: 10.5px; color: var(--mut); }
@@ -1871,7 +1881,7 @@ const APP = {
 
 /* Bump when normalization logic changes, so it's possible to tell at a glance
    (bottom of the Avg Turnaround card) which build a browser is running. */
-const BUILD_ID = 'DL36 · 2026-11-04';
+const BUILD_ID = 'DL37 · 2026-11-04';
 
 const DB_NAME = 'LabOpsCache';
 const DB_STORE = 'datasets';
@@ -5474,6 +5484,8 @@ const DGRID_COLS = [
   { k: 'remChg', l: 'Remake vs prior', num: 1, v: d => trendOf(d.drId).remD, f: d => remChg(trendOf(d.drId)) },
   { k: 'tat30', l: 'Avg TAT · last 30', num: 1, v: d => trendOf(d.drId).tatL, f: d => days1(trendOf(d.drId).tatL) },
   { k: 'tatChg', l: 'TAT vs prior', num: 1, v: d => trendOf(d.drId).tatD, f: d => tatChg(trendOf(d.drId)) },
+  { k: 'quiet', l: 'Since last case', num: 1, v: d => { const q = quietInfo().get(d.drId); return q ? q.bd : null; },
+    f: d => { const q = quietInfo().get(d.drId); return q ? `${quietMark(q)} ${bdWord(q.bd)}${q.usual ? ` <small class="text-mut">· usually ${q.usual}</small>` : ''}` : '—'; } },
   { k: 'cases', l: 'Cases', num: 1, f: d => fmtN(d.cases) },
   { k: 'units', l: 'Units', num: 1, f: d => fmtN(d.units) },
   { k: 'avgCase', l: 'Avg case', num: 1, f: d => fmtUSDFull(d.avgCase) },
@@ -5609,6 +5621,89 @@ function trendLine(vals) {
   return vals.map((_, i) => Math.max(0, a + b * i));
 }
 
+/* ══ GONE QUIET: business days (Mon–Fri) since a doctor's last case ══════════
+   5–9 faint teal · 10–14 yellow · 15–19 orange · 20+ red. Each doctor's usual
+   RHYTHM — the typical number of business days between the days they send, over
+   the last 180 days (5+ send days) — is shown alongside, so a weekly sender a few
+   days late reads differently from a daily sender gone silent. Counted to the
+   latest day in the data (reports: the report day), within the state/group
+   filters but ignoring the date range. */
+const QUIET_LEVELS = [[20, 'red', '#fecaca', '#b91c1c'], [15, 'orange', '#fed7aa', '#c2410c'], [10, 'yellow', '#fde68a', '#92400e'], [5, 'teal', '#e0f5f6', '#18818b']];
+function bizDaysAfter(a, b) {
+  if (!a || !b) return null;
+  const d = new Date(a.getFullYear(), a.getMonth(), a.getDate()), e = new Date(b.getFullYear(), b.getMonth(), b.getDate()); let n = 0;
+  while (d < e) { d.setDate(d.getDate() + 1); const w = d.getDay(); if (w !== 0 && w !== 6) n++; }
+  return n;
+}
+const quietLevel = bd => bd == null ? null : (QUIET_LEVELS.find(l => bd >= l[0]) || null);
+function quietInfo(ref) {
+  // the everyday call (no ref) returns straight from the cache — finding the
+  // latest date scans every line, too slow to repeat for each doctor on screen
+  if (!ref && APP.derived && APP.derived.quietNow) return APP.derived.quietNow;
+  const md = ref || getMaxDate(), out = new Map(); if (!md) return out;
+  const ck = 'quiet:' + isoDate(md); if (APP.derived && APP.derived[ck]) { if (!ref) APP.derived.quietNow = APP.derived[ck]; return APP.derived[ck]; }
+  const end = new Date(md.getFullYear(), md.getMonth(), md.getDate(), 23, 59, 59), from = +end - 180 * 864e5, days = new Map();
+  for (const r of rawByGroupState()) {
+    if (!r || !r.drId || !r.caseKey || !r.anchorDate || r.anchorDate > end) continue;
+    const k = new Date(r.anchorDate.getFullYear(), r.anchorDate.getMonth(), r.anchorDate.getDate()).getTime();
+    (days.get(r.drId) || days.set(r.drId, new Set()).get(r.drId)).add(k);
+  }
+  days.forEach((set, id) => {
+    const ds = [...set].sort((a, b) => a - b), last = new Date(ds[ds.length - 1]), recent = ds.filter(t => t >= from), g = [];
+    for (let i = 1; i < recent.length; i++) { const x = bizDaysAfter(new Date(recent[i - 1]), new Date(recent[i])); if (x > 0) g.push(x); }
+    g.sort((a, b) => a - b);
+    const usual = recent.length >= 5 && g.length ? Math.max(1, Math.round(g.length % 2 ? g[g.length >> 1] : (g[g.length / 2 - 1] + g[g.length / 2]) / 2)) : null;
+    out.set(id, { last, bd: bizDaysAfter(last, md), usual });
+  });
+  if (APP.derived) { APP.derived[ck] = out; if (!ref) APP.derived.quietNow = out; }
+  return out;
+}
+const bdWord = n => n + ' business day' + (n === 1 ? '' : 's');
+function quietTip(q) {
+  if (!q) return '';
+  return `No case in ${bdWord(q.bd)} — last case ${fmtDateShort(q.last)}` +
+    (q.usual ? ` · usually sends every ~${bdWord(q.usual)}${q.bd >= 2 * q.usual ? ` (${Math.round(q.bd / q.usual)}× their usual gap)` : ''}` : '');
+}
+function quietMark(q) {
+  const L = q && quietLevel(q.bd); if (!L) return '';
+  const t = esc(quietTip(q)); return `<span class="qm qm-${L[1]}" title="${t}" role="img" aria-label="${t}">!</span>`;
+}
+// for emails: inline styles only, and the words — there's no hover in an email
+function quietMarkEmail(q) {
+  const L = q && quietLevel(q.bd); if (!L) return '';
+  return ` <span style="display:inline-block;min-width:16px;height:16px;line-height:16px;border-radius:8px;background:${L[2]};color:${L[3]};font-weight:800;font-size:11px;text-align:center;vertical-align:1px">!</span>` +
+    ` <span style="font-size:11px;color:${L[3]};font-weight:700">quiet ${q.bd} bus. days${q.usual ? ' (usually every ' + q.usual + ')' : ''}</span>`;
+}
+
+/* ══ RETENTION: what changed since the business day before ══════════════════
+   The same status engine is run as of the business day before the latest one,
+   and each doctor-at-practice's categories compared — so "added" and "left"
+   always match the counts on the tabs. */
+function retPrevBizDay(md) {
+  const d = new Date(md.getFullYear(), md.getMonth(), md.getDate());
+  while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() - 1);   // a weekend day counts with its Friday
+  do d.setDate(d.getDate() - 1); while (d.getDay() === 0 || d.getDay() === 6);
+  return d;
+}
+const RET_TESTS = {
+  current: d => d.status === 'current' || (d.status === 'winback' && !d.isWinbackSegment),
+  new: d => d.status === 'new', winback: d => d.isWinbackSegment, falloff: d => d.status === 'falloff', inactive: d => d.status === 'inactive' };
+function retentionDelta() {
+  const md = getMaxDate(); if (!md) return null;
+  const ck = 'retDelta:' + isoDate(md) + ':' + ((STATUS && STATUS.winbackWindow) || 30); if (APP.derived && APP.derived[ck]) return APP.derived[ck];
+  const prevDay = retPrevBizDay(md);
+  const keyed = docs => { const m = {}; Object.keys(RET_TESTS).forEach(k => m[k] = new Map());
+    statusEntries(docs).forEach(e => Object.entries(RET_TESTS).forEach(([k, t]) => { if (t(e)) m[k].set(e.drId + '|' + e.practice, e); })); return m; };
+  const now = keyed(computeDoctorStatus()), before = keyed(computeDoctorStatus(prevDay)), out = { prevDay, cats: {} };
+  Object.keys(RET_TESTS).forEach(k => {
+    const added = [...now[k].entries()].filter(([key]) => !before[k].has(key)).map(([, e]) => e);
+    const left = [...before[k].entries()].filter(([key]) => !now[k].has(key)).map(([, e]) => e);
+    out.cats[k] = { added, left, before: before[k].size, now: now[k].size };
+  });
+  if (APP.derived) APP.derived[ck] = out;
+  return out;
+}
+
 const DGRID = { query: '', sort: 'revenue', limit: 60 };
 
 function renderDoctorGrid() {
@@ -5665,6 +5760,7 @@ function renderDoctorGrid() {
       change_30_business_days_pct: trendOf(d.drId).pct == null ? '' : Math.round(trendOf(d.drId).pct * 1000) / 10,
       remake_rate_last_30_bd: trendOf(d.drId).remL == null ? '' : +(trendOf(d.drId).remL * 100).toFixed(2), remake_rate_prior_30_bd: trendOf(d.drId).remP == null ? '' : +(trendOf(d.drId).remP * 100).toFixed(2),
       avg_tat_last_30_bd: trendOf(d.drId).tatL == null ? '' : +trendOf(d.drId).tatL.toFixed(1), avg_tat_prior_30_bd: trendOf(d.drId).tatP == null ? '' : +trendOf(d.drId).tatP.toFixed(1),
+      business_days_since_last_case: (quietInfo().get(d.drId) || {}).bd ?? '', usual_gap_business_days: (quietInfo().get(d.drId) || {}).usual ?? '',
       top_products: d.topProducts.join('; ')
     })));
   });
@@ -5727,7 +5823,7 @@ function drawDGrid() {
       <div class="dr-card" data-id="${esc(d.drId)}">
         <div class="dr-card-head">
           <div style="min-width:0">
-            <div class="dr-name">${esc(d.name)}</div>
+            <div class="dr-name">${esc(d.name)} ${quietMark(quietInfo().get(d.drId))}</div>
             ${practiceDisplayHTML(d.practiceInfo, 'dr-practice')}
             <div class="dr-loc">${esc(d.city || '—')}${d.state ? ', ' + esc(d.state) : ''}</div>
             ${statusBadgeHTML(d.drId, 'sm')}
@@ -5915,6 +6011,7 @@ function renderDoctorDetail() {
         <div class="detail-name" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
           <span>${esc(s.drName)}</span>
           ${statusBadgeHTML(APP.selectedDoctorId, 'lg')}
+          ${(() => { const q = quietInfo().get(APP.selectedDoctorId), L = q && quietLevel(q.bd); return L ? `<span class="qm-tag qm-${L[1]}" title="${esc(quietTip(q))}"><b>!</b> ${bdWord(q.bd)} since the last case${q.usual ? ` · usually every ${q.usual}` : ''}</span>` : ''; })()}
         </div>
         ${ddPracticeTabs.length === 1
             ? `<div class="detail-practice">${esc(ddPracticeTabs[0].name)}</div>`
@@ -6197,11 +6294,13 @@ function statusFromTimeline(dates, maxDate, winbackWindowMs, winbackGapMs) {
     returnedDate: gapEndDate
   };
 }
-function computeDoctorStatus() {
+function computeDoctorStatus(asOf) {
   // Engagement status respects the Group and State filters but uses FULL history
   // (it ignores the date range), because recency — "days since last case" — only
   // makes sense measured against the complete timeline as of the latest data.
-  const maxDate = getMaxDate() || new Date();
+  // asOf (optional): work it out as of that day instead — lines after it ignored.
+  const maxDate = asOf || getMaxDate() || new Date();
+  const asOfEnd = asOf ? new Date(asOf.getFullYear(), asOf.getMonth(), asOf.getDate(), 23, 59, 59) : null;
   // New thresholds (locked):
   //   new      → first case within last 15 days
   //   current  → last case 1–20 days ago (and not "new")
@@ -6220,6 +6319,7 @@ function computeDoctorStatus() {
 
   const map = new Map();
   for (const r of rawByGroupState()) {
+    if (asOfEnd && r.anchorDate && r.anchorDate > asOfEnd) continue;
     let d = map.get(r.drId);
     if (!d) {
       d = {
@@ -6721,6 +6821,7 @@ function renderStatus() {
 
   const maxDate = getMaxDate();
   const asOfStr = maxDate ? maxDate.toLocaleDateString('en-US', {month:'numeric', day:'numeric', year:'numeric'}) : '—';
+  const RD = retentionDelta();   // added / left per category since the business day before
 
   const el = document.getElementById('panel-status');
   el.innerHTML = `
@@ -6784,9 +6885,16 @@ function renderStatus() {
         <button class="sub-tab ${STATUS.seg === seg.key ? seg.cls : ''}" data-seg="${seg.key}">
           ${seg.key==='winback' ? '🔄 ' : ''}${seg.label}
           <span class="sub-tab-count">${counts[seg.key].toLocaleString()}</span>
+          ${(() => { const c = RD && RD.cats[seg.key]; if (!c) return ''; const net = c.added.length - c.left.length;
+            return `<span class="ret-d" title="Since ${esc(fmtDateShort(RD.prevDay))}: ${c.added.length} added, ${c.left.length} left"><span class="ret-up">▲${c.added.length}</span><span class="ret-dn">▼${c.left.length}</span><span class="ret-net ${net > 0 ? 'pos' : net < 0 ? 'neg' : ''}">${net > 0 ? '+' : ''}${net}</span></span>`; })()}
         </button>
       `).join('')}
     </div>
+    ${(() => { const c = RD && RD.cats[STATUS.seg]; if (!c) return '';
+      const seg = segs.find(x => x.key === STATUS.seg), who = list => list.slice(0, 12).map(e => `<a href="#" class="ret-dr" data-dr="${esc(e.drId)}">${esc(e.name || '')}</a>${e.practice ? ` <small>${esc(e.practice)}</small>` : ''}`).join(' · ') + (list.length > 12 ? ` <small>+${list.length - 12} more</small>` : '');
+      return `<div class="ret-moves"><b>${esc(seg.label)} since ${esc(fmtDateShort(RD.prevDay))}:</b> ${c.before.toLocaleString()} → ${c.now.toLocaleString()}
+        <div class="ret-row"><span class="ret-up">▲ ${c.added.length} added</span> ${c.added.length ? who(c.added) : '<small>nobody</small>'}</div>
+        <div class="ret-row"><span class="ret-dn">▼ ${c.left.length} left</span> ${c.left.length ? who(c.left) : '<small>nobody</small>'}</div></div>`; })()}
 
     <div class="info-bar ${segs.find(x => x.key === STATUS.seg).info}" id="stInfo"></div>
 
@@ -6816,6 +6924,7 @@ function renderStatus() {
     </div>
   `;
 
+  document.querySelectorAll('.ret-dr').forEach(a => a.addEventListener('click', e => { e.preventDefault(); APP.selectedDoctorId = a.dataset.dr; switchTab('docdetail'); }));
   document.querySelectorAll('#stSegBar .sub-tab').forEach(b => {
     b.addEventListener('click', () => {
       // (No checkbox snapshot here — the change handlers already persist them.
@@ -12721,6 +12830,8 @@ function sbStatusLine(docRow, label) {
     extra.push((Math.round(docRow.remakeRate * 1000) / 10) + '% remakes');
   if (docRow.avgTat != null && isFinite(docRow.avgTat))
     extra.push((Math.round(docRow.avgTat * 10) / 10) + 'd avg turnaround');
+  { const q = docRow.drId ? quietInfo().get(docRow.drId) : null;   // Salesly reads this for its gone-quiet mark
+    if (q && q.usual) extra.push('sends every ~' + q.usual + ' business day' + (q.usual === 1 ? '' : 's')); }
   return SB_LAB_MARK + ' ' + lbl + ' · Dr. ' + docRow.name + ' · last case ' + sbUS(docRow.last) + ' · ' + docRow.cases + ' cases · ' + sbMoney(docRow.rev90) + ' last 90d · ' + sbMoney(docRow.rev) + ' lifetime' +
          (extra.length ? ' · ' + extra.join(' · ') : '');
 }
@@ -13651,11 +13762,12 @@ function rpSummaryTable(overall) {
   return h + '</table>';
 }
 function rpEntitySection(p, entities, entityNoun) {
+  const RPQ = entityNoun === 'Client' ? quietInfo(rpReportDay()) : null;   // gone-quiet marks on client rows
   const list = [];
   entities.forEach((ent, key) => {
     const cur = ent.periods[p.key].cur, prev = ent.periods[p.key].prev;
     if (!cur.rows && !prev.rows) return;
-    list.push({ ent, curM: rpMetrics(cur), prevM: rpMetrics(prev), dRev: rpMetrics(cur).rev - rpMetrics(prev).rev });
+    list.push({ ent, key, curM: rpMetrics(cur), prevM: rpMetrics(prev), dRev: rpMetrics(cur).rev - rpMetrics(prev).rev });
   });
   list.sort((a, b) => Math.abs(b.dRev) - Math.abs(a.dRev));
   const shown = list.slice(0, p.cap);
@@ -13664,7 +13776,7 @@ function rpEntitySection(p, entities, entityNoun) {
   const headRow = '<tr>' + [entityNoun, 'Revenue', 'Units', 'Remake %', 'Avg TAT'].map(lbl =>
     '<th style="text-align:left;padding:8px 12px;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:#64748b;border-bottom:1px solid #e2e8f0">' + lbl + '</th>').join('') + '</tr>';
   const bodyRow = x =>
-    '<tr><td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;font-size:12.5px"><b style="color:#0f172a">' + esc(x.ent.label) + '</b>' +
+    '<tr><td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;font-size:12.5px"><b style="color:#0f172a">' + esc(x.ent.label) + '</b>' + (RPQ ? quietMarkEmail(RPQ.get(x.key)) : '') +
     (x.ent.sub ? '<div style="font-size:11px;color:#64748b">' + esc(x.ent.sub) + '</div>' : '') + '</td>' +
     ['rev', 'units', 'remake', 'tat'].map(m => '<td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;font-size:12.5px">' + rpCell(x.curM, x.prevM, m) + '</td>').join('') + '</tr>';
   const tableOf = rows => '<table cellpadding="0" cellspacing="0" style="' + RP_F +
@@ -13951,6 +14063,22 @@ function rpBuildStatusReport() {
         (inCat.length > ROSTER_CAP ? ' <span style="font-weight:500;color:#64748b">(top ' + ROSTER_CAP + ' of ' + inCat.length + ' by 90-day revenue — the full list is in the dashboard\'s Bridge master CSV)</span>' : '') + '</div>' + rpRosterTable(roster);
     }
   });
+
+  // GONE QUIET: crossed 10, 15 or 20 business days without a case on the report day
+  const RQ = quietInfo(maxDate), crossed = [];
+  docs.forEach(d => { const q = RQ.get(d.drId); if (q && (q.bd === 10 || q.bd === 15 || q.bd === 20)) crossed.push({ d, q }); });
+  crossed.sort((a, b) => b.q.bd - a.q.bd || (rev90[b.d.drId] || 0) - (rev90[a.d.drId] || 0));
+  const cnt = n => crossed.filter(x => x.q.bd === n).length;
+  h += '<div style="' + RP_F + 'font-size:15px;font-weight:800;color:#0f172a;margin:22px 0 8px">⏱ Gone quiet <span style="color:#0f172a">— <b>' + crossed.length + ' crossed a line ' + dayLbl + '</b> · ' +
+    cnt(20) + ' at 20 · ' + cnt(15) + ' at 15 · ' + cnt(10) + ' at 10 business days without a case</span></div>';
+  if (!crossed.length) h += '<div style="' + RP_F + 'font-size:12px;color:#64748b;font-style:italic;margin-bottom:6px">Nobody crossed 10, 15 or 20 business days ' + dayLbl + '.</div>';
+  else h += '<table cellpadding="0" cellspacing="0" style="' + RP_F + 'width:100%;border-collapse:collapse;background:#fff;border:1px solid #e2e8f0;border-radius:10px">' +
+    '<tr>' + ['Doctor', 'Last case', 'Usual rhythm', '90-day revenue'].map(l => '<th style="text-align:left;padding:8px 12px;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:#64748b;border-bottom:1px solid #e2e8f0">' + l + '</th>').join('') + '</tr>' +
+    crossed.map(({ d, q }) => '<tr><td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;font-size:12.5px"><b style="color:#0f172a">' + esc(d.name || '') + '</b>' + quietMarkEmail(q) +
+      (d.practice ? '<div style="font-size:11px;color:#64748b">' + esc(d.practice) + '</div>' : '') + '</td>' +
+      '<td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;font-size:12.5px">' + esc(fmtDateShort(q.last)) + '</td>' +
+      '<td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;font-size:12.5px">' + (q.usual ? 'every ~' + bdWord(q.usual) : '—') + '</td>' +
+      '<td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;font-size:12.5px">' + fmtUSD(rev90[d.drId] || 0) + '</td></tr>').join('') + '</table>';
   return h;
 }
 
@@ -15614,12 +15742,26 @@ function pmMakeMap() {
   PMAP.map.on('moveend', pmPaintInView);
 }
 
+/* A customer office's gone-quiet mark, from the lab lines the Salesly Bridge
+   writes ("… · last case 10/14/2026 · … · sends every ~2 business days"): the
+   most recent case among its doctors, counted in business days to today. */
+function pmQuiet(o) {
+  let last = null, usual = null;
+  String(o.notes || '').split('\n').forEach(l => {
+    if (!/LAB:/i.test(l)) return;
+    const m = l.match(/last case (\d{1,2})\/(\d{1,2})\/(\d{4})/i);
+    if (m) { const d = new Date(+m[3], +m[1] - 1, +m[2]); if (!last || d > last) { last = d; const u = l.match(/sends every ~(\d+) business day/i); usual = u ? +u[1] : null; } }
+  });
+  if (!last) return null;
+  const t = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' }).split('-').map(Number);
+  return { last, bd: bizDaysAfter(last, new Date(t[0], t[1] - 1, t[2])), usual };
+}
 function pmPopupHTML(o, compact) {
   const addr = [o.addr, [o.city, [pmAbbr(o.state), o.zip].filter(Boolean).join(' ')].filter(Boolean).join(', ')].filter(Boolean).join(', ');
   const labs = SLF.statuses(o).map(s => { const x = PM_LAB.find(l => l[0] === s); return x ? `<span class="pm-lab" style="--c:${x[2]}">${x[1]}</span>` : ''; }).join('');
   const lv = SLF.lastVisit(o), heat = PM_HEAT.find(h => h[0] === SLF.heatOf(o));
   return `<div class="pm-pop-o${compact ? ' compact' : ''}">
-    <div class="pm-pop-n"><span class="pm-dot" style="background:${pmColor(o)}"></span>${esc(o.name || 'Unnamed office')} <span class="pm-pop-t">${esc(pmTierOf(o))}</span>${labs}</div>
+    <div class="pm-pop-n"><span class="pm-dot" style="background:${pmColor(o)}"></span>${esc(o.name || 'Unnamed office')} ${quietMark(pmQuiet(o))} <span class="pm-pop-t">${esc(pmTierOf(o))}</span>${labs}</div>
     <div class="pm-pop-a">${esc(addr || 'No address')}</div>
     <div class="pm-pop-x">${[lv ? `Last visit ${esc(lv)}${heat ? ' · ' + heat[1] : ''}` : 'Not visited', SLF.isClaimed(o) ? `☆ ${esc(o.claimedByName || 'Claimed')}` : '',
       o.phone ? `<a href="tel:${esc(String(o.phone).replace(/[^0-9+]/g, ''))}">${esc(o.phone)}</a>` : '', o.scanner && o.scanner !== 'None' ? esc(o.scanner) : '',
@@ -15984,7 +16126,7 @@ function pmLvRow(o, same) {
   return `<div class="pm-lvrow${same ? ' same' : ''}${open ? ' open' : ''}">
     <button type="button" class="pm-lvmain" data-lvx="${esc(o.id)}" aria-expanded="${open}">
       <span class="pm-dot" style="background:${pmColor(o)}"></span>
-      <span class="pm-lvtxt"><b>${same ? '↳ ' : ''}${esc(o.name || 'Unnamed office')}</b><small>${esc(o.addr || 'No address')}${o.zip ? ' · ' + esc(o.zip) : ''}</small></span>
+      <span class="pm-lvtxt"><b>${same ? '↳ ' : ''}${esc(o.name || 'Unnamed office')} ${quietMark(pmQuiet(o))}</b><small>${esc(o.addr || 'No address')}${o.zip ? ' · ' + esc(o.zip) : ''}</small></span>
       <span class="pm-lvlab">${lab}</span>
       <span class="pm-lvlast">${heat === 'closed' ? '<b class="pm-closed">★ Closed</b>' : lv ? (h ? `<i style="background:${h[2]}"></i>` : '') + esc(pmDay(lv)) : '<span class="text-mut">Not visited</span>'}</span>
       <span class="pm-lvtier pm-t${tier}">${tier === 'S' ? 'Customer' : esc(tier)}</span>
