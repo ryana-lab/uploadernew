@@ -44,7 +44,15 @@ const hhmm = now.getHours() + ':' + String(now.getMinutes()).padStart(2, '0');
 if (!FORCE && (now.getHours() < 11 || now.getHours() >= 15)) { log(`It is ${hhmm} in Chicago — not report time (11 am). Nothing to do.`); process.exit(0); }
 for (const k of ['DASHBOARD_URL', 'AUTOMATION_EMAIL', 'AUTOMATION_PASSWORD']) if (!env[k]) fail(`${k} is not set`);
 
-const browser = await chromium.launch(env.CHROMIUM_PATH ? { executablePath: env.CHROMIUM_PATH } : {});
+// Playwright's own Chromium; if it isn't installed, the Google Chrome GitHub's runners come with
+let browser;
+try { browser = await chromium.launch(env.CHROMIUM_PATH ? { executablePath: env.CHROMIUM_PATH } : {}); }
+catch (e) {
+  if (env.CHROMIUM_PATH) throw e;
+  log("Playwright's browser is not available, so using the runner's Google Chrome.");
+  try { browser = await chromium.launch({ channel: 'chrome' }); }
+  catch (e2) { fail("no browser could be started: neither Playwright's Chromium nor Google Chrome is available"); }
+}
 try {
   const ctx = await browser.newContext({ timezoneId: 'America/Chicago', viewport: { width: 1400, height: 900 } });
   if (env.TEST_INIT) await ctx.addInitScript({ path: env.TEST_INIT });       // tests only
