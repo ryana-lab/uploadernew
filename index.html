@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.11.04-DL38</title>
+<title>Lab Sales Dashboard v2026.11.04-DL39</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -185,6 +185,7 @@ html, body {
 .sv-dupe-note { color: #a16207; }
 /* ── COACH ── */
 /* gone quiet: the ! mark */
+.dg-quietf { width: auto; min-width: 150px; }
 .qm { display: inline-flex; align-items: center; justify-content: center; width: 17px; height: 17px; border-radius: 50%; font-size: 11px; font-weight: 900; line-height: 1; vertical-align: 2px; cursor: help; }
 .qm-teal { background: #e0f5f6; color: #18818b; } .qm-yellow { background: #fde68a; color: #92400e; } .qm-orange { background: #fed7aa; color: #c2410c; } .qm-red { background: #fecaca; color: #b91c1c; }
 .qm-tag { font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px; } .qm-tag b { font-weight: 900; margin-right: 2px; }
@@ -1881,7 +1882,7 @@ const APP = {
 
 /* Bump when normalization logic changes, so it's possible to tell at a glance
    (bottom of the Avg Turnaround card) which build a browser is running. */
-const BUILD_ID = 'DL38 · 2026-11-04';
+const BUILD_ID = 'DL39 · 2026-11-04';
 
 const DB_NAME = 'LabOpsCache';
 const DB_STORE = 'datasets';
@@ -5663,6 +5664,14 @@ function quietInfo(ref) {
   return out;
 }
 const bdWord = n => n + ' business day' + (n === 1 ? '' : 's');
+const QUIET_RANK = { red: 4, orange: 3, yellow: 2, teal: 1 };
+const quietRank = q => { const L = q && quietLevel(q.bd); return L ? QUIET_RANK[L[1]] : 0; };
+// the key, for the top of an emailed report
+function quietKeyEmail() {
+  return '<div style="' + RP_F + 'font-size:11.5px;color:#475569;margin:-6px 0 14px">' + QUIET_LEVELS.slice().reverse().map(L =>
+    '<span style="display:inline-block;min-width:16px;height:16px;line-height:16px;border-radius:8px;background:' + L[2] + ';color:' + L[3] + ';font-weight:800;font-size:11px;text-align:center;margin-right:4px">!</span>' +
+    L[0] + (L[0] === 20 ? '+' : '–' + (L[0] + 4))).join(' &nbsp; ') + ' &nbsp;= business days since the client’s last case</div>';
+}
 function quietTip(q) {
   if (!q) return '';
   return `No case in ${bdWord(q.bd)} — last case ${fmtDateShort(q.last)}` +
@@ -5708,7 +5717,8 @@ function retentionDelta() {
   return out;
 }
 
-const DGRID = { query: '', sort: 'revenue', limit: 60 };
+const DGRID = { query: '', sort: 'revenue', limit: 60, quiet: '' };
+let stQuiet = () => null;   // Retention's per-row gone-quiet info (set when its table draws)
 
 function renderDoctorGrid() {
   const el = document.getElementById('panel-docgrid');
@@ -5736,7 +5746,12 @@ function renderDoctorGrid() {
         <button class="pill" data-sort="remakeRate">Remake %</button>
         <button class="pill" data-sort="avgTat">Turnaround</button>
         <button class="pill" data-sort="name">A → Z</button>
+        <button class="pill" data-sort="quiet" title="Red first, then orange, yellow, teal — within each, the most recent to cross the line first">! Quiet</button>
       </div>
+      <select class="gf-select dg-quietf" id="dgQuiet" title="Show only doctors with a gone-quiet mark" aria-label="Gone-quiet filter">
+        <option value="">All doctors</option><option value="any">! Any mark (5+ days)</option><option value="red">! Red (20+)</option>
+        <option value="orange">! Orange (15–19)</option><option value="yellow">! Yellow (10–14)</option><option value="teal">! Teal (5–9)</option>
+      </select>
       <div class="text-mut" style="font-size:12px;margin-left:auto" id="dgCount"></div>
       ${gridToggleHTML('doctors')}
     </div>
@@ -5748,6 +5763,8 @@ function renderDoctorGrid() {
   gridBindToggle('doctors', () => drawDGrid());
   const q = document.getElementById('dgQuery');
   q.addEventListener('input', () => { DGRID.query = q.value.toLowerCase().trim(); DGRID.limit = 60; drawDGrid(); });
+  const qf = document.getElementById('dgQuiet'); qf.value = DGRID.quiet || '';
+  qf.addEventListener('change', () => { DGRID.quiet = qf.value; DGRID.limit = 60; drawDGrid(); });
   document.querySelectorAll('#dgSort .pill').forEach(b => {
     b.addEventListener('click', () => {
       document.querySelectorAll('#dgSort .pill').forEach(x => x.classList.remove('active'));
@@ -5784,7 +5801,17 @@ function dgFilteredDocs() {
       (d.state    && d.state.toLowerCase().includes(qq))
     );
   }
-  if (DGRID.sort === 'name') docs.sort((a,b) => a.name.localeCompare(b.name));
+  if (DGRID.quiet) {
+    const Q = quietInfo();
+    docs = docs.filter(d => { const L = quietLevel((Q.get(d.drId) || {}).bd); return DGRID.quiet === 'any' ? !!L : !!L && L[1] === DGRID.quiet; });
+  }
+  if (DGRID.sort === 'quiet') {
+    // red → orange → yellow → teal; within a level, the most recent to cross first
+    const Q = quietInfo();
+    docs.sort((a, b) => { const qa = Q.get(a.drId), qb = Q.get(b.drId);
+      return quietRank(qb) - quietRank(qa) || ((qa ? qa.bd : 1e9) - (qb ? qb.bd : 1e9)) || (b.revenue || 0) - (a.revenue || 0); });
+  }
+  else if (DGRID.sort === 'name') docs.sort((a,b) => a.name.localeCompare(b.name));
   else if (DGRID.sort === 'grow' || DGRID.sort === 'slip') {
     // by the dollar change (last 30 business days vs the 30 before), so size counts
     const dir = DGRID.sort === 'grow' ? -1 : 1;
@@ -7080,6 +7107,7 @@ function drawStatusBody(docs, segs) {
     { key: 'firstCase',    label: 'First Case',        cls: '',     get: d => d.firstDate ? d.firstDate.getTime() : -Infinity },
     { key: 'lastCase',     label: 'Last Case',         cls: '',     get: d => d.lastDate ? d.lastDate.getTime() : -Infinity },
     { key: 'daysSince',    label: 'Days Since Last',   cls: 'num',  get: d => d.daysSinceLast == null ? Infinity : d.daysSinceLast },
+    { key: 'quiet',        label: 'Quiet (bus. days)', cls: 'num',  get: d => { const q = stQuiet(d); return q ? quietRank(q) * 1e4 + q.bd : -1; } },
     { key: 'avgTat',       label: 'Avg TAT',           cls: 'num',  get: d => d.avgTAT == null ? -Infinity : d.avgTAT }
   ];
   if (isWb) {
@@ -7162,6 +7190,10 @@ function drawStatusBody(docs, segs) {
     return;
   }
 
+  // gone quiet, per row: business days from THIS practice's last case to the
+  // latest day in the data; the doctor's usual rhythm from their whole history
+  const stMd = getMaxDate(), stQ = quietInfo();
+  stQuiet = d => d.lastDate && stMd ? { last: d.lastDate, bd: bizDaysAfter(d.lastDate, stMd), usual: (stQ.get(d.drId) || {}).usual || null } : null;
   body.innerHTML = segDocs.slice(0, 500).map(d => {
     const remakeCls = d.remakeRate >= 0.08 ? 'st-remake-bad'
                     : d.remakeRate >= 0.04 ? 'st-remake-warn'
@@ -7172,7 +7204,7 @@ function drawStatusBody(docs, segs) {
     const phoneLink = d.phone ? `<a href="tel:${esc(d.phone)}" style="color:var(--accent-ink);text-decoration:none">${esc(d.phone)}</a>` : '<span class="text-mut">—</span>';
     return `
       <tr class="clk" data-id="${esc(d.drId)}">
-        <td><b>${esc(d.name)}</b>${isWb ? '<span class="st-wb-icon" title="Winback">🔄</span>' : ''}</td>
+        <td><b>${esc(d.name)}</b> ${quietMark(stQuiet(d))}${isWb ? '<span class="st-wb-icon" title="Winback">🔄</span>' : ''}</td>
         <td>${d.practiceInfo && d.practiceInfo.primary ? esc(d.practiceInfo.primary) + (d.practiceInfo.count > 1 ? ` <span class="practice-more" title="${esc(d.practiceInfo.list.map(p => p.name + ' (' + p.count + ')').join(' · '))}">+${d.practiceInfo.count - 1}</span>` : '') : '<span class="text-mut">—</span>'}</td>
         <td>${emailLink}</td>
         <td>${phoneLink}</td>
@@ -7186,6 +7218,7 @@ function drawStatusBody(docs, segs) {
         <td>${fmtDateShort(d.firstDate)}</td>
         <td>${fmtDateShort(d.lastDate)}</td>
         <td class="num"><span class="st-pill">${d.daysSinceLast} days</span></td>
+        <td class="num">${(() => { const q = stQuiet(d); return q ? `${quietMark(q)} ${q.bd}` : '—'; })()}</td>
         <td class="num">${d.avgTAT != null ? d.avgTAT.toFixed(1) + ' days' : '—'}</td>
         ${isWb ? `<td class="num"><span class="st-pill">${d.gapBeforeReturn} days</span></td>` : ''}
         ${isWb ? `<td>${d.returnedDate ? fmtDateShort(d.returnedDate) : '—'}</td>` : ''}
@@ -13763,6 +13796,30 @@ function rpIncompleteCheck() {
   const typical = prior.length % 2 ? prior[prior.length >> 1] : (prior[prior.length / 2 - 1] + prior[prior.length / 2]) / 2;
   return typical > 0 && day < 0.4 * typical ? { day, typical, label: rpDayLabel(biz.maxBiz) } : null;
 }
+/* The Customer report's "Gone quiet" list: clients who sent in the last 90 days
+   but have now gone 10+ business days without a case — red first, then orange,
+   then yellow; within each, the biggest 90-day accounts first. */
+function rpQuietSection() {
+  const day = rpReportDay(), Q = quietInfo(day), end = new Date(day.getFullYear(), day.getMonth(), day.getDate(), 23, 59, 59), from = new Date(+end - 90 * 864e5);
+  const rev = new Map(), who = new Map();
+  for (const r of rawByGroupState()) {
+    if (!r.drId || !r.anchorDate || r.anchorDate > end) continue;
+    if (!who.has(r.drId) || r.anchorDate > who.get(r.drId).t) who.set(r.drId, { t: r.anchorDate, name: r.drName, practice: r.practice || '' });
+    if (r.anchorDate >= from) rev.set(r.drId, (rev.get(r.drId) || 0) + (r.netCost || 0));
+  }
+  const list = [];
+  Q.forEach((q, id) => { if (q.bd >= 10 && q.last >= from && (rev.get(id) || 0) > 0) list.push({ id, q, rev: rev.get(id) || 0, w: who.get(id) || {} }); });
+  list.sort((a, b) => quietRank(b.q) - quietRank(a.q) || b.rev - a.rev);
+  const th = l => '<th style="text-align:left;padding:8px 12px;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:#64748b;border-bottom:1px solid #e2e8f0">' + l + '</th>';
+  const td = v => '<td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;font-size:12.5px">' + v + '</td>';
+  let h = '<div style="' + RP_F + 'font-size:15px;font-weight:800;color:#0f172a;margin:20px 0 8px">⏱ Gone quiet — ' + list.length + ' client' + (list.length === 1 ? '' : 's') +
+    ' <span style="font-weight:500;font-size:11px;color:#64748b">(sent in the last 90 days, now 10+ business days without a case' + (list.length > 25 ? ' · top 25 shown' : '') + ')</span></div>';
+  if (!list.length) return h + '<div style="' + RP_F + 'font-size:12px;color:#64748b;font-style:italic;margin-bottom:6px">Nobody — every recent client has sent in the last 10 business days.</div>';
+  return h + '<table cellpadding="0" cellspacing="0" style="' + RP_F + 'width:100%;border-collapse:collapse;background:#fff;border:1px solid #e2e8f0;border-radius:10px">' +
+    '<tr>' + ['Client', 'Last case', 'Usual rhythm', '90-day revenue'].map(th).join('') + '</tr>' +
+    list.slice(0, 25).map(x => '<tr>' + td('<b style="color:#0f172a">' + esc(x.w.name || '') + '</b>' + quietMarkEmail(x.q) + (x.w.practice ? '<div style="font-size:11px;color:#64748b">' + esc(x.w.practice) + '</div>' : '')) +
+      td(esc(fmtDateShort(x.q.last))) + td(x.q.usual ? 'every ~' + bdWord(x.q.usual) : '—') + td(fmtUSD(x.rev)) + '</tr>').join('') + '</table>';
+}
 function rpIncompleteNote() {
   const x = rpIncompleteCheck(); if (!x) return '';
   return '<div style="' + RP_F + 'background:#fef3c7;border:1px solid #f59e0b;color:#78350f;border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:13px">' +
@@ -13834,8 +13891,9 @@ function rpEntitySection(p, entities, entityNoun) {
 
 function rpBuildDoctorReport() {
   const agg = rpAggregate(r => r.drId ? { key: r.drId, label: r.drName || '(unnamed)', sub: r.practice || '' } : null);
-  let h = rpHead('📋 Daily Customer Report', 'Doctor-level trends — revenue, units, remake %, turnaround', agg.maxDate) + rpIncompleteNote();
+  let h = rpHead('📋 Daily Customer Report', 'Doctor-level trends — revenue, units, remake %, turnaround', agg.maxDate) + rpIncompleteNote() + quietKeyEmail();
   h += rpSummaryTable(agg.overall);
+  h += rpQuietSection();
   RP_PERIODS.forEach(p => { h += rpEntitySection(p, agg.entities, 'Client'); });
   return h;
 }
@@ -13949,7 +14007,8 @@ function rpBuildStatusReport() {
   const baseAsOf = asOfDay;
   const baseline = false;
 
-  let h = rpHead('🔔 Status Changes Report', 'Daily additions + full rosters — New / Winback / Falloff / Inactive / Current', maxDate) + rpIncompleteNote();
+  const RQ0 = quietInfo(maxDate);   // gone-quiet marks by every doctor below
+  let h = rpHead('🔔 Status Changes Report', 'Daily additions + full rosters — New / Winback / Falloff / Inactive / Current', maxDate) + rpIncompleteNote() + quietKeyEmail();
   const _headEnd = h.length;     // the 💎 Diamond section is spliced in here, above everything else
 
   /* Day-by-day movement across the last two weeks. The single-day view above
@@ -13998,7 +14057,7 @@ function rpBuildStatusReport() {
   const dia = d => KA.byDoc.has(d.drId) ? '💎 ' : '';
   const rpDocRow = d =>
     '<tr>' +
-    '<td style="padding:7px 12px;border-bottom:1px solid #f1f5f9;font-size:12.5px;font-weight:700;color:#0f172a">' + dia(d) + esc(d.name) + '</td>' +
+    '<td style="padding:7px 12px;border-bottom:1px solid #f1f5f9;font-size:12.5px;font-weight:700;color:#0f172a">' + dia(d) + esc(d.name) + quietMarkEmail(RQ0.get(d.drId)) + '</td>' +
     '<td style="padding:7px 12px;border-bottom:1px solid #f1f5f9;font-size:12.5px">' + esc(d.practice || '—') + '</td>' +
     '<td style="padding:7px 12px;border-bottom:1px solid #f1f5f9;font-size:12.5px">' + esc([d.city, d.stateAbbr || d.state].filter(Boolean).join(', ') || '—') + '</td>' +
     '<td style="padding:7px 12px;border-bottom:1px solid #f1f5f9;font-size:12.5px">' + esc(fmtDate(d.lastDate)) + '</td>' +
@@ -14011,7 +14070,7 @@ function rpBuildStatusReport() {
     list.map(rpDocRow).join('') + '</table>';
   const ROSTER_CAP = 100;
   const rpRosterRow = d =>
-    '<tr><td style="padding:5px 10px;border-bottom:1px solid #f1f5f9;font-size:12px"><b style="color:#0f172a">' + dia(d) + esc(d.name) + '</b></td>' +
+    '<tr><td style="padding:5px 10px;border-bottom:1px solid #f1f5f9;font-size:12px"><b style="color:#0f172a">' + dia(d) + esc(d.name) + '</b>' + quietMarkEmail(RQ0.get(d.drId)) + '</td>' +
     '<td style="padding:5px 10px;border-bottom:1px solid #f1f5f9;font-size:12px">' + esc(d.practice || '—') + '</td>' +
     '<td style="padding:5px 10px;border-bottom:1px solid #f1f5f9;font-size:12px">' + esc(fmtDate(d.lastDate)) + '</td>' +
     '<td style="padding:5px 10px;border-bottom:1px solid #f1f5f9;font-size:12px;font-weight:700;color:#18818b">' + rpMoneyF(rev90[d.drId] || 0) + '</td></tr>';
