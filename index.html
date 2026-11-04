@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.10.31-DL34</title>
+<title>Lab Sales Dashboard v2026.11.04-DL36</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -1776,6 +1776,32 @@ const SCANNER_DISPLAY = {
   'CARESTREAM': 'Carestream', 'PLANSCAN': 'Planscan', 'IOS': 'IOS', 'EMERALD': 'Emerald'
 };
 
+/* BRIDGES FROM THE NEW SOFTWARE (from 7/24/2026). The old software had bridge
+   products — "Digital Vitality Solid Zirconia - Bridge", "PFM Non-Precious -
+   Bridge". The new one names a bridge after its crown and marks the teeth
+   instead: "3A, 4P, 5A" (A = abutment, P = pontic). A line with that notation is
+   relabelled "<crown product> - Bridge", continuing the old product lines. The
+   solid zirconias had Digital and Analog bridge products, so for them the scanner
+   source decides: a scanner (iTero, 3Shape, Medit, Cerec, DSCore, Dexis,
+   "Digital") = Digital, an impression = Analog, blank / not applicable = the
+   product name's own word. Lines already named as bridges (Maryland) are left
+   alone. Only the dashboard's label changes; the stored data keeps the original. */
+const BRIDGE_TEETH = /\d+\s*[AP]\b/i;
+function bridgeLabel(product, tooth, scannerShown) {
+  const p = String(product || '').trim();
+  if (!p || /bridge/i.test(p) || !BRIDGE_TEETH.test(String(tooth || ''))) return null;
+  const base = p.replace(/\s*-\s*(lab|posterior|anterior)$/i, '').trim();
+  const fam = base.match(/^(?:digital\s+|analog\s+)?vitality\s+(esthetic\s+)?solid\s+zirconia$/i);
+  if (fam) {
+    const sc = String(scannerShown || '');
+    const digital = sc === 'Physical Impression' ? false
+                  : (sc === 'Not Applicable' || sc === 'Unknown' || !sc) ? /^digital\b/i.test(base)
+                  : true;
+    return `${digital ? 'Digital' : 'Analog'} Vitality ${fam[1] ? 'Esthetic ' : ''}Solid Zirconia - Bridge`;
+  }
+  return base.replace(/^analog\s+/i, '') + ' - Bridge';
+}
+
 function normalizeScanner(raw) {
   if (!raw) return 'Unknown';
   const s = String(raw).toUpperCase().trim();
@@ -1845,7 +1871,7 @@ const APP = {
 
 /* Bump when normalization logic changes, so it's possible to tell at a glance
    (bottom of the Avg Turnaround card) which build a browser is running. */
-const BUILD_ID = 'DL34 · 2026-10-31';
+const BUILD_ID = 'DL36 · 2026-11-04';
 
 const DB_NAME = 'LabOpsCache';
 const DB_STORE = 'datasets';
@@ -2500,7 +2526,11 @@ function normalizeRecords(rows) {
     const stKey = (stateA || stateName || '').toLowerCase();
     const nameParts = [fnLow, lnLow].filter(Boolean).sort();
     const doctorId = nameParts.join('|') + '|' + stKey;
-    const product = canonLabel(productRaw);
+    let product = canonLabel(productRaw);
+    // the new software marks a bridge in the teeth ("3A, 4P, 5A"), not the product name
+    const bridgeAs = bridgeLabel(product, fv(r, F.tooth), normalizeScanner(fv(r, F.scanner)));
+    const productOrig = bridgeAs ? product : '';
+    if (bridgeAs) product = canonLabel(bridgeAs);
     const netCost = parseFloat(fv(r, F.netCost)) || 0;
     /* UNITS SHIPPED.
        Two things were inflating this. First, `|| 1` turned a legitimate
@@ -2602,6 +2632,7 @@ function normalizeRecords(rows) {
       state: stateName,
       stateAbbr: stateA,
       product,
+      productOrig,                       // the name the software gave it, when relabelled as a bridge
       productCat: productCategory(product),
       productId: fv(r, F.productId) || '',
       qty,
@@ -13512,11 +13543,15 @@ function rpBizFoldDay(d) {
   return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate() - shift);
 }
 function rpBizContext() {
-  const maxDate = getMaxDate() || new Date();
+  const cut = rpTodayStart();        // today is still in progress — leave it out
+  let maxDate = null;
   const daySet = new Set();
   for (const r of rawByGroupState()) {
-    if (r.anchorDate) daySet.add(rpBizFoldDay(r.anchorDate));
+    if (!r.anchorDate || r.anchorDate >= cut) continue;
+    daySet.add(rpBizFoldDay(r.anchorDate));
+    if (!maxDate || r.anchorDate > maxDate) maxDate = r.anchorDate;
   }
+  maxDate = maxDate || getMaxDate() || new Date();
   const days = Array.from(daySet).sort((a, b) => b - a);   // newest first
   const map = {};
   days.forEach((day, i) => { if (i <= 181) map[day] = i; });
@@ -13691,7 +13726,7 @@ rpClearOldSnap();
 
 function rpBuildStatusReport() {
   const docs = computeDoctorStatus();
-  const maxDate = getMaxDate() || new Date();
+  const maxDate = rpReportDay();        // the same complete day as the other reports
   // "today" in this report means the latest day in the data — named, not assumed
   const dayLbl = rpDayLabel(maxDate), dayShort = maxDate.toLocaleDateString('en-US', { weekday: 'short' });
   const asOf = isoDate(maxDate);
@@ -14432,15 +14467,21 @@ function keyAcctMatchAll(rows) {
    If the morning upload is ever missed, the reports (and their dated subject
    lines) show the older day, which makes the gap obvious instead of hiding it. */
 function rpReportDay() {
-  const md = getMaxDate();
-  if (md) return new Date(md.getFullYear(), md.getMonth(), md.getDate());
+  if (getMaxDate()) return rpBizContext().maxBiz;                    // the last COMPLETE business day
   const y = new Date(); y.setDate(y.getDate() - 1); return y;        // nothing loaded: yesterday
+}
+/* The start of today, Chicago time. A day still in progress — the 11 pm pull
+   loads the day as it happens — is never reported: reports always cover the
+   last COMPLETE business day (yesterday; Friday on a Monday). */
+function rpTodayStart() {
+  const t = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' }).split('-').map(Number);
+  return new Date(t[0], t[1] - 1, t[2]);
 }
 function rpDayLabel(d) { return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }); }
 
 async function rpBuildAll() {
   await keyAcctLoad(true);           // the diamond list, fresh, for the status report
-  const asOf = isoDate(getMaxDate() || new Date());
+  const asOf = isoDate(rpReportDay());   // the day the reports describe
   return {
     asOf,
     reports: [
@@ -14599,8 +14640,8 @@ function renderReports() {
       Weekend-dated cases are counted with the preceding Friday, and days with no invoicing (weekends, holidays) are skipped entirely. The <b>Customer</b> and <b>Product</b> reports show those trends for revenue,
       units, remake % and turnaround — total change and % change, overall and per client / per product — and the
       <b>Status Changes report</b> lists doctors added that day to New, Winback, Falloff and Inactive (same rules as the
-      Status tab and the Bridge). Each morning after the upload, click <b>Push today's reports</b>. Reports cover the <b>latest day in the data</b> — Wednesday's upload carries Tuesday, so Wednesday's email reports on Tuesday;
-      <b>Send now</b> emails immediately.</div>
+      Status tab and the Bridge). <b>Sent automatically at 11 am (Chicago) every day</b>, right after a fresh Pilot pull. Reports always cover the <b>last complete business day</b> — yesterday, or Friday on a Monday; a day still in progress is never reported. <b>Push today's reports</b> and
+      <b>Send now</b> still work any time — Send now emails immediately.</div>
 
     <div class="card">
       <div class="sb-card-title"><span class="sb-stepnum">1</span> Delivery setup</div>
