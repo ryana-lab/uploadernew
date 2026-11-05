@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.11.04-DL41</title>
+<title>Lab Sales Dashboard v2026.11.04-DL42</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -184,6 +184,12 @@ html, body {
 .sv-daylist { display: flex; flex-direction: column; gap: 10px; min-width: 0; margin-top: 14px; }
 .sv-dupe-note { color: #a16207; }
 /* ── COACH ── */
+/* ⭐ Golden List */
+.gm { margin-right: 4px; font-size: 13px; vertical-align: 1px; cursor: help; }
+.gm-tag { font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 999px; background: #fef3c7; color: #92400e; }
+.pm-gold.on { background: #fef3c7; border-color: #f59e0b; color: #92400e; }
+.sh-gq-red { background: #fecaca; color: #b91c1c; } .sh-gq-orange { background: #fed7aa; color: #c2410c; } .sh-gq-yellow { background: #fde68a; color: #92400e; }
+.sh-gq-teal { background: #e0f5f6; color: #18818b; } .sh-gq-ok { background: #dcfce7; color: #166534; }
 /* gone quiet: the ! mark */
 .dg-quietf { width: auto; min-width: 150px; }
 .gl-miss { margin-top: 6px; font-size: 12px; color: var(--dim); } .gl-miss summary { cursor: pointer; color: var(--accent-ink); font-weight: 600; }
@@ -1891,7 +1897,7 @@ const APP = {
 
 /* Bump when normalization logic changes, so it's possible to tell at a glance
    (bottom of the Avg Turnaround card) which build a browser is running. */
-const BUILD_ID = 'DL41 · 2026-11-04';
+const BUILD_ID = 'DL42 · 2026-11-04';
 
 const DB_NAME = 'LabOpsCache';
 const DB_STORE = 'datasets';
@@ -5006,6 +5012,18 @@ function renderSalesHub() {
       <div class="sh-monthly-note">Note: The most recent 1–2 months may show artificially low churn because not enough time has elapsed for doctors to cross the ${SILENT_DAYS}-day silent threshold. The dataset's earliest month often shows inflated acquisitions because every doctor's first-ever case lands there.</div>
     </div>
 
+    <!-- GOLDEN LIST -->
+    <div class="sh-section">
+      <div class="sh-section-head">
+        <div>
+          <div class="sh-section-title"><span class="sh-section-title-icon">⭐</span>Golden List — who needs a call</div>
+          <div class="sh-section-sub">Your Diamond-list doctors, quietest first (red → orange → yellow → teal), then the biggest 30-day slips</div>
+        </div>
+        <button class="btn-text" id="shGoldOpen">Open the Golden List ↗</button>
+      </div>
+      <div class="sh-list" id="shGoldList"></div>
+    </div>
+
     <!-- AT-RISK -->
     <div class="sh-section">
       <div class="sh-section-head">
@@ -5198,7 +5216,7 @@ function renderSalesHub() {
     node.innerHTML = items.slice(0, opts.limit || 15).map(it => `
       <div class="sh-list-row" data-id="${esc(it.id)}">
         <div>
-          <div class="sh-list-name">${esc(it.name)}</div>
+          <div class="sh-list-name">${goldMark(it.id)}${esc(it.name)} ${quietMark(quietInfo().get(it.id))}</div>
           ${it.practice ? `<div class="sh-list-practice">${esc(it.practice)}</div>` : ''}
           <div class="sh-list-meta">${esc(it.meta)}</div>
         </div>
@@ -5211,6 +5229,16 @@ function renderSalesHub() {
     });
   }
 
+  { // ⭐ Golden List: quietest first, then the biggest 30-day slips
+    const G = goldenIds(), Q = quietInfo(), seen = new Map();
+    (APP.raw || []).forEach(r => { if (r && G.has(r.drId) && !seen.has(r.drId)) seen.set(r.drId, { id: r.drId, name: r.drName, practice: r.practice || '' }); });
+    const items = [...seen.values()].map(x => ({ ...x, q: Q.get(x.id), t: trendOf(x.id) }))
+      .sort((a, b) => quietRank(b.q) - quietRank(a.q) || (a.q && b.q ? a.q.bd - b.q.bd : 0) || (a.t.delta - b.t.delta));
+    shList('shGoldList', items.map(x => ({ id: x.id, name: x.name, practice: x.practice,
+      meta: (x.q ? 'Last case ' + fmtDateShort(x.q.last) + (x.q.bd ? ' · ' + bdWord(x.q.bd) + ' ago' : ' · today') : 'No cases') + ' · last 30 business days ' + fmtUSD(x.t.last) + (x.t.prev ? ' (' + (x.t.pct >= 0 ? '▲' : '▼') + Math.abs(Math.round(x.t.pct * 100)) + '%)' : ''),
+      pill: x.q && quietLevel(x.q.bd) ? quietLevel(x.q.bd)[1] : 'active', pillClass: x.q && quietLevel(x.q.bd) ? 'sh-gq-' + quietLevel(x.q.bd)[1] : 'sh-gq-ok', val: fmtUSD(x.t.last) })), { limit: 15, empty: 'No Golden List doctors in this view.' });
+    const go = document.getElementById('shGoldOpen'); if (go) go.onclick = () => switchTab('golden');
+  }
   shList('shRiskList', atRiskHV.slice(0, 15).map(d => ({
     id: d.drId, name: d.name, practice: d.practice || '',
     meta: `${d.city || '—'}, ${d.state || ''} · ${d.cases} cases`,
@@ -5487,7 +5515,7 @@ function gridBindHeaders(which, cols, redraw) {
 }
 const gridDay = d => d ? d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
 const DGRID_COLS = [
-  { k: 'name', l: 'Doctor', f: d => `<b>${esc(d.name)}</b>` },
+  { k: 'name', l: 'Doctor', f: d => `${goldMark(d.drId)}<b>${esc(d.name)}</b> ${quietMark(quietInfo().get(d.drId))}` },
   { k: 'practice', l: 'Practice' }, { k: 'city', l: 'City' }, { k: 'state', l: 'State' },
   { k: 'status', l: 'Status', v: d => (statusBadgeHTML(d.drId, 'sm') || '').replace(/<[^>]+>/g, '').trim(), f: d => statusBadgeHTML(d.drId, 'sm') || '' },
   { k: 'revenue', l: 'Revenue', num: 1, f: d => fmtUSD(d.revenue) },
@@ -5769,6 +5797,26 @@ function goldenMatch() {
   return out;
 }
 
+/* ⭐ + ! beside a doctor's name, the same everywhere a doctor appears */
+function goldenIds() {
+  if (APP.derived && APP.derived.goldenIds) return APP.derived.goldenIds;
+  const ids = (APP.raw && APP.raw.length) ? goldenMatch().ids : new Set();
+  if (APP.derived && APP.raw && APP.raw.length) APP.derived.goldenIds = ids;
+  return ids;
+}
+const isGolden = id => !!id && goldenIds().has(id);
+const goldMark = id => isGolden(id) ? '<span class="gm" title="Golden List" aria-label="Golden List">⭐</span>' : '';
+const drBadges = id => goldMark(id) + ' ' + quietMark(quietInfo().get(id));
+const goldMarkEmail = id => isGolden(id) ? '<span title="Golden List" style="margin-right:3px">⭐</span>' : '';
+// the Golden doctors' names, for matching Salesly offices by the doctors on their lab lines
+function goldenNameKeys() {
+  if (APP.derived && APP.derived.goldenNames) return APP.derived.goldenNames;
+  const ids = goldenIds(), out = new Set();
+  (APP.raw || []).forEach(r => { if (r && ids.has(r.drId)) out.add(gNameKey(r.drName)); });
+  if (APP.derived && APP.raw && APP.raw.length) APP.derived.goldenNames = out;
+  return out;
+}
+
 // the Doctor Grid and the Golden List share one view, each with its own search / sort / filter
 const DG_MAIN = { query: '', sort: 'revenue', limit: 60, quiet: '' };
 const DG_GOLD = { query: '', sort: 'revenue', limit: 60, quiet: '', only: null };
@@ -5939,7 +5987,7 @@ function drawDGrid() {
       <div class="dr-card" data-id="${esc(d.drId)}">
         <div class="dr-card-head">
           <div style="min-width:0">
-            <div class="dr-name">${esc(d.name)} ${quietMark(quietInfo().get(d.drId))}</div>
+            <div class="dr-name">${goldMark(d.drId)}${esc(d.name)} ${quietMark(quietInfo().get(d.drId))}</div>
             ${practiceDisplayHTML(d.practiceInfo, 'dr-practice')}
             <div class="dr-loc">${esc(d.city || '—')}${d.state ? ', ' + esc(d.state) : ''}</div>
             ${statusBadgeHTML(d.drId, 'sm')}
@@ -6127,6 +6175,7 @@ function renderDoctorDetail() {
         <div class="detail-name" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
           <span>${esc(s.drName)}</span>
           ${statusBadgeHTML(APP.selectedDoctorId, 'lg')}
+          ${isGolden(APP.selectedDoctorId) ? '<span class="gm-tag">⭐ Golden List</span>' : ''}
           ${(() => { const q = quietInfo().get(APP.selectedDoctorId), L = q && quietLevel(q.bd); return L ? `<span class="qm-tag qm-${L[1]}" title="${esc(quietTip(q))}"><b>!</b> ${bdWord(q.bd)} since the last case${q.usual ? ` · usually every ${q.usual}` : ''}</span>` : ''; })()}
         </div>
         ${ddPracticeTabs.length === 1
@@ -7289,7 +7338,7 @@ function drawStatusBody(docs, segs) {
     const phoneLink = d.phone ? `<a href="tel:${esc(d.phone)}" style="color:var(--accent-ink);text-decoration:none">${esc(d.phone)}</a>` : '<span class="text-mut">—</span>';
     return `
       <tr class="clk" data-id="${esc(d.drId)}">
-        <td><b>${esc(d.name)}</b> ${quietMark(stQuiet(d))}${isWb ? '<span class="st-wb-icon" title="Winback">🔄</span>' : ''}</td>
+        <td>${goldMark(d.drId)}<b>${esc(d.name)}</b> ${quietMark(stQuiet(d))}${isWb ? '<span class="st-wb-icon" title="Winback">🔄</span>' : ''}</td>
         <td>${d.practiceInfo && d.practiceInfo.primary ? esc(d.practiceInfo.primary) + (d.practiceInfo.count > 1 ? ` <span class="practice-more" title="${esc(d.practiceInfo.list.map(p => p.name + ' (' + p.count + ')').join(' · '))}">+${d.practiceInfo.count - 1}</span>` : '') : '<span class="text-mut">—</span>'}</td>
         <td>${emailLink}</td>
         <td>${phoneLink}</td>
@@ -10185,7 +10234,7 @@ function csDoctorRow(x, i) {
   const open = CSV2.open.doctor === x.d.id, top = x.list.slice().sort((a, b) => b.value - a.value);
   return `<div class="cs-row2${open ? ' open' : ''}">${csRowMain('doctor', x.d.id, open, `
     <span class="cs-rank">${i + 1}</span>
-    <span class="cs-name"><b>${esc(csDr(x.d.name))}</b><small>${esc(x.d.main)} · ${esc(csWhere(x.d))}</small><em class="cs-act">→ ${esc(csActDoctor(x))}</em></span>
+    <span class="cs-name"><b>${goldMark(x.d.id)}${esc(csDr(x.d.name))} ${quietMark(quietInfo().get(x.d.id))}</b><small>${esc(x.d.main)} · ${esc(csWhere(x.d))}</small><em class="cs-act">→ ${esc(csActDoctor(x))}</em></span>
     <span class="cs-sugg">${top.slice(0, 2).map(o => `${csTypeTag(o.type)} ${esc(o.cat)}`).join('<br>')}${top.length > 2 ? `<small class="text-mut"> +${top.length - 2} more</small>` : ''}</span>
     <span class="cs-metric"><b>${csK(x.d.rev)}</b><small>sent in ${CS.months} mo</small></span>
     <span class="cs-metric cs-val"><b>${csUSD(x.value)}</b><small>est. a year</small></span>`)}
@@ -11216,6 +11265,7 @@ function renderTimeline() {
       <input type="text" id="tlSearch" placeholder="Search by dentist name, practice, city, state, or product…">
       <select id="tlStatusFilter">
         <option value="all">All Clients</option>
+        <option value="golden">⭐ Golden List only</option>
         <option value="active">Active</option>
         <option value="inactive">Inactive</option>
         <option value="has-gaps">Has Gaps</option>
@@ -11237,6 +11287,7 @@ function renderTimeline() {
       <button class="tl-sort-btn" data-key="gapCount">Gaps</button>
       <button class="tl-sort-btn" data-key="status">Status</button>
       <button class="tl-sort-btn" data-key="state">State</button>
+      <button class="tl-sort-btn" data-key="quiet" title="Red → orange → yellow → teal; within each, the most recent to cross the line first">! Quietest first</button>
     </div>
 
     <div class="tl-card-grid" id="tlCardGrid"></div>
@@ -11277,6 +11328,7 @@ function tlApplyFilters() {
   const stateVal = document.getElementById('tlStateFilter')?.value || 'all';
 
   TL.filtered = TL.all.filter(c => {
+    if (status === 'golden' && !isGolden(c.drId)) return false;
     if (status === 'active' && c.status !== 'active') return false;
     if (status === 'inactive' && c.status !== 'inactive') return false;
     if (status === 'has-gaps' && c.gapCount === 0) return false;
@@ -11297,6 +11349,12 @@ function tlApplyFilters() {
 function tlSortClients() {
   const { key, dir } = TL.sort;
   const mul = dir === 'asc' ? 1 : -1;
+  if (key === 'quiet') {   // red → orange → yellow → teal; within each, the most recent to cross first
+    const Q = quietInfo();
+    TL.filtered.sort((a, b) => { const qa = Q.get(a.drId), qb = Q.get(b.drId);
+      const r = quietRank(qb) - quietRank(qa) || ((qa ? qa.bd : 1e9) - (qb ? qb.bd : 1e9)); return dir === 'asc' ? -r : r; });
+    return;
+  }
   TL.filtered.sort((a, b) => {
     let av = a[key], bv = b[key];
     if (key === 'firstDate' || key === 'lastDate') { av = av ? av.getTime() : 0; bv = bv ? bv.getTime() : 0; }
@@ -11361,7 +11419,7 @@ function tlRenderCards() {
       <div class="tl-client-card">
         <div class="tl-card-header">
           <div class="tl-cinfo">
-            <div class="tl-cname"><a href="#" class="tl-dr-link" data-dr="${esc(c.drId)}" title="Open Doctor Detail">${esc(c.name)} <span aria-hidden="true">↗</span></a></div>
+            <div class="tl-cname">${goldMark(c.drId)}<a href="#" class="tl-dr-link" data-dr="${esc(c.drId)}" title="Open Doctor Detail">${esc(c.name)} <span aria-hidden="true">↗</span></a> ${quietMark(quietInfo().get(c.drId))}</div>
             ${practiceDisplayHTML(c.practiceInfo, 'tl-cpractice')}
             <div class="tl-cloc">${esc(c.city)}${c.city && c.state ? ', ' : ''}${c.state ? `<a class="tl-state-link" href="#" data-state="${esc(c.state)}">${esc(c.state)}</a>` : ''}</div>
           </div>
@@ -12953,7 +13011,8 @@ function sbStatusLine(docRow, label) {
   if (docRow.avgTat != null && isFinite(docRow.avgTat))
     extra.push((Math.round(docRow.avgTat * 10) / 10) + 'd avg turnaround');
   { const q = docRow.drId ? quietInfo().get(docRow.drId) : null;   // Salesly reads this for its gone-quiet mark
-    if (q && q.usual) extra.push('sends every ~' + q.usual + ' business day' + (q.usual === 1 ? '' : 's')); }
+    if (q && q.usual) extra.push('sends every ~' + q.usual + ' business day' + (q.usual === 1 ? '' : 's'));
+    if (docRow.drId && isGolden(docRow.drId)) extra.push('⭐ Golden List'); }
   return SB_LAB_MARK + ' ' + lbl + ' · Dr. ' + docRow.name + ' · last case ' + sbUS(docRow.last) + ' · ' + docRow.cases + ' cases · ' + sbMoney(docRow.rev90) + ' last 90d · ' + sbMoney(docRow.rev) + ' lifetime' +
          (extra.length ? ' · ' + extra.join(' · ') : '');
 }
@@ -13884,6 +13943,25 @@ function rpIncompleteCheck() {
 /* The Customer report's "Gone quiet" list: clients who sent in the last 90 days
    but have now gone 10+ business days without a case — red first, then orange,
    then yellow; within each, the biggest 90-day accounts first. */
+/* The Customer report's ⭐ Golden List: every Golden doctor, the ones needing a
+   call first (quietest, then the biggest 30-day slips). */
+function rpGoldenSection() {
+  const G = goldenIds(); if (!G.size) return '';
+  const day = rpReportDay(), Q = quietInfo(day), seen = new Map();
+  (APP.raw || []).forEach(r => { if (r && G.has(r.drId) && !seen.has(r.drId)) seen.set(r.drId, { id: r.drId, name: r.drName, practice: r.practice || '' }); });
+  const list = [...seen.values()].map(x => ({ ...x, q: Q.get(x.id), t: trendOf(x.id) }))
+    .sort((a, b) => quietRank(b.q) - quietRank(a.q) || (a.q && b.q ? a.q.bd - b.q.bd : 0) || (a.t.delta - b.t.delta));
+  const th = l => '<th style="text-align:left;padding:7px 12px;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:#64748b;border-bottom:1px solid #e2e8f0">' + l + '</th>';
+  const td = v => '<td style="padding:6px 12px;border-bottom:1px solid #f1f5f9;font-size:12px">' + v + '</td>';
+  const chg = t => !t.prev ? (t.last ? '<span style="color:#047857;font-weight:700">new</span>' : '—') :
+    '<span style="color:' + (t.pct >= 0 ? '#047857' : '#b91c1c') + ';font-weight:700">' + (t.pct >= 0 ? '▲ ' : '▼ ') + Math.abs(Math.round(t.pct * 100)) + '%</span>';
+  return '<div style="' + RP_F + 'font-size:15px;font-weight:800;color:#0f172a;margin:20px 0 8px">⭐ Golden List — ' + list.length + ' doctors' +
+    ' <span style="font-weight:500;font-size:11px;color:#64748b">(the ones needing a call first: quietest, then the biggest 30-day slips)</span></div>' +
+    '<table cellpadding="0" cellspacing="0" style="' + RP_F + 'width:100%;border-collapse:collapse;background:#fff;border:1px solid #e2e8f0;border-radius:10px">' +
+    '<tr>' + ['Doctor', 'Last case', 'Last 30 business days', 'vs the 30 before'].map(th).join('') + '</tr>' +
+    list.map(x => '<tr>' + td('<b style="color:#0f172a">⭐ ' + esc(x.name || '') + '</b>' + quietMarkEmail(x.q) + (x.practice ? '<div style="font-size:11px;color:#64748b">' + esc(x.practice) + '</div>' : '')) +
+      td(x.q ? esc(fmtDateShort(x.q.last)) : '—') + td(fmtUSD(x.t.last)) + td(chg(x.t)) + '</tr>').join('') + '</table>';
+}
 function rpQuietSection() {
   const day = rpReportDay(), Q = quietInfo(day), end = new Date(day.getFullYear(), day.getMonth(), day.getDate(), 23, 59, 59), from = new Date(+end - 90 * 864e5);
   const rev = new Map(), who = new Map();
@@ -13902,7 +13980,7 @@ function rpQuietSection() {
   if (!list.length) return h + '<div style="' + RP_F + 'font-size:12px;color:#64748b;font-style:italic;margin-bottom:6px">Nobody — every recent client has sent in the last 10 business days.</div>';
   return h + '<table cellpadding="0" cellspacing="0" style="' + RP_F + 'width:100%;border-collapse:collapse;background:#fff;border:1px solid #e2e8f0;border-radius:10px">' +
     '<tr>' + ['Client', 'Last case', 'Usual rhythm', '90-day revenue'].map(th).join('') + '</tr>' +
-    list.slice(0, 25).map(x => '<tr>' + td('<b style="color:#0f172a">' + esc(x.w.name || '') + '</b>' + quietMarkEmail(x.q) + (x.w.practice ? '<div style="font-size:11px;color:#64748b">' + esc(x.w.practice) + '</div>' : '')) +
+    list.slice(0, 25).map(x => '<tr>' + td('<b style="color:#0f172a">' + goldMarkEmail(x.id) + esc(x.w.name || '') + '</b>' + quietMarkEmail(x.q) + (x.w.practice ? '<div style="font-size:11px;color:#64748b">' + esc(x.w.practice) + '</div>' : '')) +
       td(esc(fmtDateShort(x.q.last))) + td(x.q.usual ? 'every ~' + bdWord(x.q.usual) : '—') + td(fmtUSD(x.rev)) + '</tr>').join('') + '</table>';
 }
 function rpIncompleteNote() {
@@ -13946,7 +14024,7 @@ function rpEntitySection(p, entities, entityNoun) {
   const headRow = '<tr>' + [entityNoun, 'Revenue', 'Units', 'Remake %', 'Avg TAT'].map(lbl =>
     '<th style="text-align:left;padding:8px 12px;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:#64748b;border-bottom:1px solid #e2e8f0">' + lbl + '</th>').join('') + '</tr>';
   const bodyRow = x =>
-    '<tr><td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;font-size:12.5px"><b style="color:#0f172a">' + esc(x.ent.label) + '</b>' + (RPQ ? quietMarkEmail(RPQ.get(x.key)) : '') +
+    '<tr><td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;font-size:12.5px"><b style="color:#0f172a">' + (RPQ ? goldMarkEmail(x.key) : '') + esc(x.ent.label) + '</b>' + (RPQ ? quietMarkEmail(RPQ.get(x.key)) : '') +
     (x.ent.sub ? '<div style="font-size:11px;color:#64748b">' + esc(x.ent.sub) + '</div>' : '') + '</td>' +
     ['rev', 'units', 'remake', 'tat'].map(m => '<td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;font-size:12.5px">' + rpCell(x.curM, x.prevM, m) + '</td>').join('') + '</tr>';
   const tableOf = rows => '<table cellpadding="0" cellspacing="0" style="' + RP_F +
@@ -13978,6 +14056,7 @@ function rpBuildDoctorReport() {
   const agg = rpAggregate(r => r.drId ? { key: r.drId, label: r.drName || '(unnamed)', sub: r.practice || '' } : null);
   let h = rpHead('📋 Daily Customer Report', 'Doctor-level trends — revenue, units, remake %, turnaround', agg.maxDate) + rpIncompleteNote() + quietKeyEmail();
   h += rpSummaryTable(agg.overall);
+  h += rpGoldenSection();
   h += rpQuietSection();
   RP_PERIODS.forEach(p => { h += rpEntitySection(p, agg.entities, 'Client'); });
   return h;
@@ -14139,7 +14218,7 @@ function rpBuildStatusReport() {
   }
 
   const KA = keyAcctResolve(docs);
-  const dia = d => KA.byDoc.has(d.drId) ? '💎 ' : '';
+  const dia = d => isGolden(d.drId) ? '⭐ ' : KA.byDoc.has(d.drId) ? '💎 ' : '';   // ⭐ = the Golden (Diamond) List
   const rpDocRow = d =>
     '<tr>' +
     '<td style="padding:7px 12px;border-bottom:1px solid #f1f5f9;font-size:12.5px;font-weight:700;color:#0f172a">' + dia(d) + esc(d.name) + quietMarkEmail(RQ0.get(d.drId)) + '</td>' +
@@ -14246,7 +14325,7 @@ function rpBuildStatusReport() {
   if (!crossed.length) h += '<div style="' + RP_F + 'font-size:12px;color:#64748b;font-style:italic;margin-bottom:6px">Nobody crossed 10, 15 or 20 business days ' + dayLbl + '.</div>';
   else h += '<table cellpadding="0" cellspacing="0" style="' + RP_F + 'width:100%;border-collapse:collapse;background:#fff;border:1px solid #e2e8f0;border-radius:10px">' +
     '<tr>' + ['Doctor', 'Last case', 'Usual rhythm', '90-day revenue'].map(l => '<th style="text-align:left;padding:8px 12px;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:#64748b;border-bottom:1px solid #e2e8f0">' + l + '</th>').join('') + '</tr>' +
-    crossed.map(({ d, q }) => '<tr><td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;font-size:12.5px"><b style="color:#0f172a">' + esc(d.name || '') + '</b>' + quietMarkEmail(q) +
+    crossed.map(({ d, q }) => '<tr><td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;font-size:12.5px"><b style="color:#0f172a">' + goldMarkEmail(d.drId) + esc(d.name || '') + '</b>' + quietMarkEmail(q) +
       (d.practice ? '<div style="font-size:11px;color:#64748b">' + esc(d.practice) + '</div>' : '') + '</td>' +
       '<td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;font-size:12.5px">' + esc(fmtDateShort(q.last)) + '</td>' +
       '<td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;font-size:12.5px">' + (q.usual ? 'every ~' + bdWord(q.usual) : '—') + '</td>' +
@@ -15793,7 +15872,8 @@ function pmBuildControls() {
       <div class="pm-row1">
         <label class="coach-f"><span>State</span><select class="gf-select" id="pmState"><option value="">Loading states…</option></select></label>
         <label class="coach-f pm-q"><span>Search — name, city, address, doctor, lab or zip</span><input class="gf-select" id="pmQ" placeholder="Search offices"></label>
-        <div class="pm-tiers" role="group" aria-label="Show">${PM_TIERS.map(([t, l]) => `<button type="button" class="pm-tier" data-t="${t}">${l}</button>`).join('')}</div>
+        <div class="pm-tiers" role="group" aria-label="Show">${PM_TIERS.map(([t, l]) => `<button type="button" class="pm-tier" data-t="${t}">${l}</button>`).join('')}
+          <button type="button" class="pm-tier pm-gold" id="pmGoldOnly" aria-pressed="false" title="Only offices where a Golden List doctor works">⭐ Golden only</button></div>
       </div>
       <div class="pm-filters" id="pmFilters"></div>
       <div class="pm-more" id="pmMore"></div>
@@ -15802,7 +15882,8 @@ function pmBuildControls() {
     <div class="pm-fill card" id="pmFill" style="display:none"></div>`;
   host.querySelector('#pmState').addEventListener('change', e => pmShowState(e.target.value));
   let qt = null; host.querySelector('#pmQ').addEventListener('input', e => { clearTimeout(qt); qt = setTimeout(() => { PMAP.f.q = e.target.value.trim(); pmApply(false); }, 200); });
-  host.querySelectorAll('.pm-tier').forEach(b => b.addEventListener('click', () => { PMAP.tiers[b.dataset.t] = !PMAP.tiers[b.dataset.t]; pmPaintFilters(); pmApply(false); }));
+  host.querySelectorAll('.pm-tier[data-t]').forEach(b => b.addEventListener('click', () => { PMAP.tiers[b.dataset.t] = !PMAP.tiers[b.dataset.t]; pmPaintFilters(); pmApply(false); }));
+  host.querySelector('#pmGoldOnly').addEventListener('click', e => { PMAP.goldenOnly = !PMAP.goldenOnly; e.currentTarget.classList.toggle('on', PMAP.goldenOnly); e.currentTarget.setAttribute('aria-pressed', PMAP.goldenOnly); pmApply(false); });
 }
 
 /* signed in? who is it, the reps, and the state list — needed by both views */
@@ -15933,12 +16014,20 @@ function pmQuiet(o) {
   const t = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' }).split('-').map(Number);
   return { last, bd: bizDaysAfter(last, new Date(t[0], t[1] - 1, t[2])), usual };
 }
+// an office is Golden when a Golden doctor is on one of its lab lines
+function pmGolden(o) {
+  const n = String(o.notes || ''); if (!/LAB:/i.test(n)) return false;
+  if (/Golden List/i.test(n)) return true;
+  const keys = goldenNameKeys(); if (!keys.size) return false;
+  return n.split('\n').some(l => { const m = /LAB:/i.test(l) && l.match(/Dr\.\s+([^·]+?)\s+·/); return !!m && keys.has(gNameKey(m[1])); });
+}
+const pmGoldMark = o => pmGolden(o) ? '<span class="gm" title="Golden List">⭐</span>' : '';
 function pmPopupHTML(o, compact) {
   const addr = [o.addr, [o.city, [pmAbbr(o.state), o.zip].filter(Boolean).join(' ')].filter(Boolean).join(', ')].filter(Boolean).join(', ');
   const labs = SLF.statuses(o).map(s => { const x = PM_LAB.find(l => l[0] === s); return x ? `<span class="pm-lab" style="--c:${x[2]}">${x[1]}</span>` : ''; }).join('');
   const lv = SLF.lastVisit(o), heat = PM_HEAT.find(h => h[0] === SLF.heatOf(o));
   return `<div class="pm-pop-o${compact ? ' compact' : ''}">
-    <div class="pm-pop-n"><span class="pm-dot" style="background:${pmColor(o)}"></span>${esc(o.name || 'Unnamed office')} ${quietMark(pmQuiet(o))} <span class="pm-pop-t">${esc(pmTierOf(o))}</span>${labs}</div>
+    <div class="pm-pop-n"><span class="pm-dot" style="background:${pmColor(o)}"></span>${pmGoldMark(o)}${esc(o.name || 'Unnamed office')} ${quietMark(pmQuiet(o))} <span class="pm-pop-t">${esc(pmTierOf(o))}</span>${labs}</div>
     <div class="pm-pop-a">${esc(addr || 'No address')}</div>
     <div class="pm-pop-x">${[lv ? `Last visit ${esc(lv)}${heat ? ' · ' + heat[1] : ''}` : 'Not visited', SLF.isClaimed(o) ? `☆ ${esc(o.claimedByName || 'Claimed')}` : '',
       o.phone ? `<a href="tel:${esc(String(o.phone).replace(/[^0-9+]/g, ''))}">${esc(o.phone)}</a>` : '', o.scanner && o.scanner !== 'None' ? esc(o.scanner) : '',
@@ -16153,7 +16242,7 @@ async function pmShowState(st) {
 /* apply Salesly's filters + the tier chips, then repaint the map, cities and list */
 function pmApply(fit) {
   const f = PMAP.f, q = String(f.q || '').toLowerCase(), S = v => (v == null ? '' : String(v)).toLowerCase();
-  PMAP.shown = PMAP.offices.filter(o => PMAP.tiers[pmTierOf(o)] && SLF.pass(o, f)
+  PMAP.shown = PMAP.offices.filter(o => PMAP.tiers[pmTierOf(o)] && SLF.pass(o, f) && (!PMAP.goldenOnly || pmGolden(o))
     && (!q || S(o.name).includes(q) || S(o.city).includes(q) || S(o.addr).includes(q) || S(o.drs).includes(q) || S(o.lab).includes(q) || S(o.zip).includes(q)));
   if (PMAP.cluster) {
   PMAP.markers = new Map(); PMAP.cluster.clearLayers();
@@ -16303,7 +16392,7 @@ function pmLvRow(o, same) {
   return `<div class="pm-lvrow${same ? ' same' : ''}${open ? ' open' : ''}">
     <button type="button" class="pm-lvmain" data-lvx="${esc(o.id)}" aria-expanded="${open}">
       <span class="pm-dot" style="background:${pmColor(o)}"></span>
-      <span class="pm-lvtxt"><b>${same ? '↳ ' : ''}${esc(o.name || 'Unnamed office')} ${quietMark(pmQuiet(o))}</b><small>${esc(o.addr || 'No address')}${o.zip ? ' · ' + esc(o.zip) : ''}</small></span>
+      <span class="pm-lvtxt"><b>${same ? '↳ ' : ''}${pmGoldMark(o)}${esc(o.name || 'Unnamed office')} ${quietMark(pmQuiet(o))}</b><small>${esc(o.addr || 'No address')}${o.zip ? ' · ' + esc(o.zip) : ''}</small></span>
       <span class="pm-lvlab">${lab}</span>
       <span class="pm-lvlast">${heat === 'closed' ? '<b class="pm-closed">★ Closed</b>' : lv ? (h ? `<i style="background:${h[2]}"></i>` : '') + esc(pmDay(lv)) : '<span class="text-mut">Not visited</span>'}</span>
       <span class="pm-lvtier pm-t${tier}">${tier === 'S' ? 'Customer' : esc(tier)}</span>
