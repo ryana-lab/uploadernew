@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.11.05-DL44</title>
+<title>Lab Sales Dashboard v2026.11.05-DL45</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -1909,7 +1909,7 @@ const APP = {
 
 /* Bump when normalization logic changes, so it's possible to tell at a glance
    (bottom of the Avg Turnaround card) which build a browser is running. */
-const BUILD_ID = 'DL44 · 2026-11-05';
+const BUILD_ID = 'DL45 · 2026-11-05';
 
 const DB_NAME = 'LabOpsCache';
 const DB_STORE = 'datasets';
@@ -10589,6 +10589,7 @@ async function renderEmployeeGrid() {
       </div>
       <div class="section-actions">
         <button class="btn-text" id="egReload">↻ Reload</button>
+        <button class="btn-text" id="egXlsx" title="One workbook: a summary, products by employee, and a day-by-day sheet for each person">⬇ Excel report</button>
         <button class="btn-text" id="egExport">⬇ Export Visible</button>
       </div>
     </div>
@@ -10618,6 +10619,8 @@ async function renderEmployeeGrid() {
     b.classList.add('active'); PROD.sort = b.dataset.sort; drawEGrid();
   }));
   document.getElementById('egReload').addEventListener('click', async () => { await prodLoadAll(true); renderEmployeeGrid(); });
+  document.getElementById('egXlsx').addEventListener('click', ev =>
+    xlDownload(() => xlTeamWorkbook(egFiltered()), 'employee-production.xlsx', ev.currentTarget));
   document.getElementById('egExport').addEventListener('click', () => {
     downloadCSV('employee-production.csv', egFiltered().map(e => ({
       employee: e.employee, department: e.dept, main_workstation: e.station,
@@ -10697,6 +10700,210 @@ function drawEGrid() {
   grid.querySelectorAll('.clk').forEach(c => c.addEventListener('click', () => {
     PROD.employee = c.dataset.emp; switchTab('empdetail');
   }));
+}
+
+/* ══ EMPLOYEE PRODUCTION → EXCEL ════════════════════════════════════════════
+   A workbook laid out like the dashboard: each day a bold row with its products
+   grouped underneath (Excel's ＋/－ opens and closes a day, as the dashboard
+   does), plus the weekly view, a products × days grid, workstations and the raw
+   rows in proper columns. ExcelJS is fetched only when someone exports. */
+const EXCELJS_URL = 'https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js';
+let _excelJs = null;
+function loadExcelJS() {
+  if (window.ExcelJS) return Promise.resolve(window.ExcelJS);
+  return _excelJs || (_excelJs = new Promise((ok, no) => {
+    const sc = document.createElement('script'); sc.src = EXCELJS_URL;
+    sc.onload = () => window.ExcelJS ? ok(window.ExcelJS) : no(new Error('the Excel library did not load'));
+    sc.onerror = () => { _excelJs = null; no(new Error('could not load the Excel library — check the internet connection')); };
+    document.head.appendChild(sc);
+  }));
+}
+function saveBlob(name, blob) {
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+}
+const XLC = { teal: 'FF18818B', tealSoft: 'FFE0F5F6', ink: 'FF0F172A', dim: 'FF334155', mut: 'FF64748B', line: 'FFE2E8F0', day: 'FFF1F5F9', white: 'FFFFFFFF' };
+const xlFill = c => ({ type: 'pattern', pattern: 'solid', fgColor: { argb: c } });
+// a production date as an Excel date (built in UTC so Excel shows the same day)
+const xlDate = d => { const t = prodDate(d); return t ? new Date(Date.UTC(t.getFullYear(), t.getMonth(), t.getDate())) : String(d || ''); };
+// one employee's rows → days (newest first) with units, cases, tasks and products
+function prodDayRollup(rows) {
+  const byDay = {};
+  rows.forEach(r => { const d = r.scan_in_date || '—';
+    const o = byDay[d] || (byDay[d] = { units: 0, cases: 0, tasksIn: 0, tasksDone: 0, products: {} });
+    o.units += prodNum(r.total_units); o.cases += prodNum(r.cases_touched);
+    o.tasksIn += prodNum(r.tasks_scanned_in); o.tasksDone += prodNum(r.tasks_completed);
+    const pn = (r.product_name || '').trim() || '(No Product)'; o.products[pn] = (o.products[pn] || 0) + prodNum(r.total_units); });
+  return Object.entries(byDay).sort((a, b) => (prodDate(b[0]) || 0) - (prodDate(a[0]) || 0));
+}
+function prodWeekRollup(days) {
+  const weeks = {};
+  days.forEach(([d, o]) => { const dt = prodDate(d); if (!dt) return;
+    const mon = new Date(dt); mon.setDate(dt.getDate() - ((dt.getDay() + 6) % 7));
+    const k = mon.toDateString(), w = weeks[k] || (weeks[k] = { units: 0, cases: 0, tasksIn: 0, tasksDone: 0, products: {}, _d: mon, days: 0 });
+    w.units += o.units; w.cases += o.cases; w.tasksIn += o.tasksIn; w.tasksDone += o.tasksDone; w.days++;
+    Object.entries(o.products).forEach(([pn, u]) => { w.products[pn] = (w.products[pn] || 0) + u; }); });
+  return Object.values(weeks).sort((a, b) => b._d - a._d);
+}
+// the title block and the figures across the top, as on the dashboard
+function xlTitle(ws, title, sub, kpis) {
+  ws.getCell('A1').value = title; ws.getCell('A1').font = { bold: true, size: 16, color: { argb: XLC.teal } };
+  ws.getCell('A2').value = sub; ws.getCell('A2').font = { size: 10, color: { argb: XLC.mut } };
+  let r = 4;
+  if (kpis && kpis.length) {
+    kpis.forEach(([l, v, fmt], i) => {
+      const a = ws.getCell(4, i + 1), b = ws.getCell(5, i + 1);
+      a.value = l.toUpperCase(); a.font = { size: 8, bold: true, color: { argb: XLC.mut } };
+      b.value = v; b.font = { bold: true, size: 13, color: { argb: XLC.ink } }; if (fmt) b.numFmt = fmt;
+      [a, b].forEach(c => { c.fill = xlFill(XLC.tealSoft); c.alignment = { horizontal: i ? 'center' : 'left', vertical: 'bottom', wrapText: true }; });
+    });
+    ws.getRow(4).height = 24;   // long labels wrap onto two lines
+    r = 7;
+  }
+  return r;   // the row the table starts on
+}
+function xlHeader(ws, r, labels) {
+  const row = ws.getRow(r); row.values = labels; row.height = 20;
+  row.eachCell(c => { c.font = { bold: true, color: { argb: XLC.white } }; c.fill = xlFill(XLC.teal); c.alignment = { vertical: 'middle', horizontal: c.col === 1 ? 'left' : 'center' }; });
+  ws.views = [{ state: 'frozen', ySplit: r }];
+}
+/* Days (or weeks), each a bold row, its products grouped beneath — the
+   dashboard's Daily production panel as a sheet. */
+function xlDaysSheet(wb, name, title, sub, kpis, blocks, firstLabel, pctLabel) {
+  const ws = wb.addWorksheet(name, { properties: { outlineProperties: { summaryBelow: false, summaryRight: false } } });
+  ws.columns = [{ width: 62 }, { width: 11 }, { width: 11 }, { width: 11 }, { width: 12 }, { width: 13 }, { width: 13 }];
+  let r = xlTitle(ws, title, sub, kpis);
+  xlHeader(ws, r, [firstLabel, 'Units', pctLabel || '% of day', 'Cases', 'Scanned', 'Completed', 'Done %']);
+  const dayCells = [];
+  blocks.forEach(b => {
+    r++;
+    const row = ws.getRow(r);
+    row.values = [b.label, b.units, null, b.cases, b.tasksIn, b.tasksDone, b.tasksIn ? b.tasksDone / b.tasksIn : null];
+    if (b.date instanceof Date) { row.getCell(1).value = b.date; row.getCell(1).numFmt = 'ddd m/d/yyyy'; }
+    row.eachCell({ includeEmpty: true }, c => { if (c.col > 7) return; c.font = { bold: true, color: { argb: XLC.ink } }; c.fill = xlFill(XLC.day);
+      c.border = { top: { style: 'thin', color: { argb: XLC.line } } }; c.alignment = { horizontal: c.col === 1 ? 'left' : 'center' }; });
+    [2, 4, 5, 6].forEach(i => row.getCell(i).numFmt = '#,##0'); row.getCell(7).numFmt = '0%';
+    dayCells.push('B' + r);
+    Object.entries(b.products).sort((x, y) => y[1] - x[1]).forEach(([pn, u]) => {
+      r++;
+      const pr = ws.getRow(r); pr.values = [pn, u, b.units ? u / b.units : null];
+      pr.outlineLevel = 1;
+      pr.getCell(1).alignment = { indent: 2 }; pr.getCell(1).font = { color: { argb: XLC.dim } };
+      pr.getCell(2).numFmt = '#,##0'; pr.getCell(2).alignment = { horizontal: 'center' };
+      pr.getCell(3).numFmt = '0%'; pr.getCell(3).font = { color: { argb: XLC.mut } }; pr.getCell(3).alignment = { horizontal: 'center' };
+    });
+  });
+  if (dayCells.length) ws.addConditionalFormatting({ ref: dayCells.join(' '), rules: [{ type: 'dataBar', cfvo: [{ type: 'num', value: 0 }, { type: 'max' }], color: { argb: 'FF5BC0CC' } }] });
+  ws.properties.outlineLevelRow = 1;
+  ws.pageSetup = { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0 };
+  return ws;
+}
+const xlRange = dates => { const ds = dates.map(prodDate).filter(Boolean).sort((a, b) => a - b); return ds.length ? fmtDateShort(ds[0]) + ' – ' + fmtDateShort(ds[ds.length - 1]) : ''; };
+const xlKpis = e => [['Total units', e.units, '#,##0'], ['Total cases', e.cases, '#,##0'], ['Units / day', Math.round(e.unitsPerDay * 10) / 10, '#,##0.0'],
+  ['Units / case', Math.round(e.unitsPerCase * 100) / 100, '0.00'], ['Tasks scanned', e.tasksIn, '#,##0'], ['Tasks completed', e.tasksIn ? e.tasksDone / e.tasksIn : null, '0%'],
+  ['Planned min / unit', e.minutesPerUnit ? Math.round(e.minutesPerUnit * 10) / 10 : null, '0.0']];
+const xlSheetName = (n, used) => { let b = String(n || 'Sheet').replace(/[\\/?*\[\]:]/g, ' ').slice(0, 28).trim() || 'Sheet', k = b, i = 2; while (used.has(k.toLowerCase())) k = b.slice(0, 25) + ' ' + i++; used.add(k.toLowerCase()); return k; };
+function xlEmployeeDaily(wb, name, e, mine) {
+  const days = prodDayRollup(mine);
+  return xlDaysSheet(wb, name, e.employee, `${e.dept} · ${e.station} · ${e.dayCount} day${e.dayCount === 1 ? '' : 's'} of production · ${xlRange(days.map(d => d[0]))}`,
+    xlKpis(e), days.map(([d, o]) => ({ label: d, date: xlDate(d), ...o })), 'Date / product');
+}
+// one employee: daily, weekly, products × days, workstations, raw rows
+async function xlEmployeeWorkbook(e, mine) {
+  const ExcelJS = await loadExcelJS(), wb = new ExcelJS.Workbook(); wb.creator = 'Lab Sales Dashboard'; wb.created = new Date();
+  const days = prodDayRollup(mine), range = xlRange(days.map(d => d[0]));
+  xlEmployeeDaily(wb, 'Daily production', e, mine);
+  xlDaysSheet(wb, 'Weekly', e.employee + ' — by week', `Monday-starting weeks · ${range}`, null,
+    prodWeekRollup(days).map(w => ({ label: 'Week of ' + fmtDateShort(w._d) + ' (' + w.days + ' day' + (w.days === 1 ? '' : 's') + ')', ...w })), 'Week / product', '% of week');
+  { // products × days
+    const ws = wb.addWorksheet('Products × days'), cols = days.slice().reverse(), prods = {};
+    days.forEach(([, o]) => Object.entries(o.products).forEach(([pn, u]) => { prods[pn] = (prods[pn] || 0) + u; }));
+    ws.columns = [{ width: 58 }, { width: 10 }, ...cols.map(() => ({ width: 11 }))];
+    let r = xlTitle(ws, e.employee + ' — products by day', 'Units per product per day · ' + range, null);
+    xlHeader(ws, r, ['Product', 'Total', ...cols.map(([d]) => d)]);
+    cols.forEach(([d], i) => { const c = ws.getRow(r).getCell(3 + i); c.value = xlDate(d); c.numFmt = 'm/d'; });
+    Object.entries(prods).sort((a, b) => b[1] - a[1]).forEach(([pn, tot]) => {
+      r++; const row = ws.getRow(r); row.values = [pn, tot, ...cols.map(([, o]) => o.products[pn] || null)];
+      row.getCell(2).font = { bold: true }; row.eachCell(c => { if (c.col > 1) { c.numFmt = '#,##0'; c.alignment = { horizontal: 'center' }; } });
+    });
+    r++; const tr = ws.getRow(r); tr.values = ['Total', days.reduce((t, [, o]) => t + o.units, 0), ...cols.map(([, o]) => o.units)];
+    tr.eachCell(c => { c.font = { bold: true }; c.fill = xlFill(XLC.day); if (c.col > 1) { c.numFmt = '#,##0'; c.alignment = { horizontal: 'center' }; } });
+    ws.views = [{ state: 'frozen', xSplit: 2, ySplit: 4 }];
+  }
+  { // workstations
+    const ws = wb.addWorksheet('Workstations'), by = {};
+    mine.forEach(r => { const k = (r.workstation || '—') + '\u0001' + (r.department || '—'); by[k] = (by[k] || 0) + prodNum(r.total_units); });
+    const tot = Object.values(by).reduce((a, b) => a + b, 0) || 1;
+    ws.columns = [{ width: 34 }, { width: 26 }, { width: 10 }, { width: 11 }];
+    let r = xlTitle(ws, e.employee + ' — workstations', range, null);
+    xlHeader(ws, r, ['Workstation', 'Department', 'Units', '% of units']);
+    Object.entries(by).sort((a, b) => b[1] - a[1]).forEach(([k, u]) => { r++; const [w, d] = k.split('\u0001'); const row = ws.getRow(r); row.values = [w, d, u, u / tot];
+      row.getCell(3).numFmt = '#,##0'; row.getCell(4).numFmt = '0%'; });
+  }
+  xlRawSheet(wb, mine);
+  return wb;
+}
+function xlRawSheet(wb, rows) {
+  const ws = wb.addWorksheet('Raw data');
+  const cols = [['Date', 13], ['Employee', 24], ['Department', 20], ['Workstation', 22], ['Product', 58], ['Attribution', 14], ['Tasks scanned', 13], ['Tasks completed', 15], ['Units', 9], ['Cases', 9]];
+  ws.columns = cols.map(([, w]) => ({ width: w }));
+  xlHeader(ws, 1, cols.map(c => c[0]));
+  rows.slice().sort((a, b) => (prodDate(b.scan_in_date) || 0) - (prodDate(a.scan_in_date) || 0)).forEach((x, i) => {
+    const row = ws.getRow(i + 2);
+    row.values = [xlDate(x.scan_in_date), x.employee || '', x.department || '', x.workstation || '', x.product_name || '', x.attribution || '',
+      prodNum(x.tasks_scanned_in), prodNum(x.tasks_completed), prodNum(x.total_units), prodNum(x.cases_touched)];
+    row.getCell(1).numFmt = 'm/d/yyyy';
+  });
+  ws.autoFilter = { from: 'A1', to: 'J1' };
+}
+// every visible employee: a summary, products × employees, and a sheet each
+async function xlTeamWorkbook(list) {
+  const ExcelJS = await loadExcelJS(), wb = new ExcelJS.Workbook(); wb.creator = 'Lab Sales Dashboard'; wb.created = new Date();
+  const rowsOf = emp => PROD.rows.filter(r => String(r.employee || '').trim() === emp && prodInRange(r));
+  const allRows = list.flatMap(e => rowsOf(e.employee)), range = xlRange(allRows.map(r => r.scan_in_date));
+  const used = new Set(['summary', 'products × employees', 'raw data']);
+  const names = list.map(e => xlSheetName(e.employee, used));
+  { // summary
+    const ws = wb.addWorksheet('Summary');
+    const heads = [['Employee', 26], ['Department', 20], ['Main workstation', 22], ['Days', 7], ['Units', 9], ['Cases', 9], ['Units / day', 11], ['Units / case', 12], ['Tasks scanned', 13], ['Tasks completed', 15], ['Done %', 9], ['Planned min / unit', 16], ['Top product', 44]];
+    ws.columns = heads.map(([, w]) => ({ width: w }));
+    let r = xlTitle(ws, 'Employee production', list.length + ' employees · ' + range + ' · click a name for their sheet', null);
+    xlHeader(ws, r, heads.map(h => h[0]));
+    list.forEach((e, i) => { r++; const row = ws.getRow(r);
+      const top = Object.entries(e.products || {}).sort((a, b) => b[1] - a[1])[0];
+      row.values = [{ text: e.employee, hyperlink: "#'" + names[i] + "'!A1" }, e.dept, e.station, e.dayCount, e.units, e.cases, Math.round(e.unitsPerDay * 10) / 10,
+        Math.round(e.unitsPerCase * 100) / 100, e.tasksIn, e.tasksDone, e.tasksIn ? e.tasksDone / e.tasksIn : null, e.minutesPerUnit ? Math.round(e.minutesPerUnit * 10) / 10 : null, top ? top[0] : ''];
+      row.getCell(1).font = { color: { argb: XLC.teal }, underline: true };
+      [5, 6, 9, 10].forEach(c => row.getCell(c).numFmt = '#,##0'); row.getCell(7).numFmt = '#,##0.0'; row.getCell(8).numFmt = '0.00'; row.getCell(11).numFmt = '0%'; row.getCell(12).numFmt = '0.0';
+      if (i % 2) row.eachCell({ includeEmpty: true }, c => { if (c.col <= heads.length) c.fill = xlFill('FFF8FAFC'); }); });
+    ws.addConditionalFormatting({ ref: 'E5:E' + r, rules: [{ type: 'dataBar', cfvo: [{ type: 'num', value: 0 }, { type: 'max' }], color: { argb: 'FF5BC0CC' } }] });
+    ws.autoFilter = { from: { row: 4, column: 1 }, to: { row: 4, column: heads.length } };
+  }
+  { // products × employees
+    const ws = wb.addWorksheet('Products × employees'), prods = {};
+    list.forEach(e => Object.entries(e.products || {}).forEach(([pn, u]) => { (prods[pn] || (prods[pn] = {}))[e.employee] = u; }));
+    ws.columns = [{ width: 58 }, { width: 10 }, ...list.map(() => ({ width: 14 }))];
+    let r = xlTitle(ws, 'Products by employee', 'Units per product per person · ' + range, null);
+    xlHeader(ws, r, ['Product', 'Total', ...list.map(e => e.employee)]);
+    ws.getRow(r).eachCell(c => { if (c.col > 2) c.alignment = { wrapText: true, horizontal: 'center', vertical: 'middle' }; }); ws.getRow(r).height = 32;
+    Object.entries(prods).map(([pn, by]) => [pn, by, Object.values(by).reduce((a, b) => a + b, 0)]).sort((a, b) => b[2] - a[2]).forEach(([pn, by, tot]) => {
+      r++; const row = ws.getRow(r); row.values = [pn, tot, ...list.map(e => by[e.employee] || null)];
+      row.getCell(2).font = { bold: true }; row.eachCell(c => { if (c.col > 1) { c.numFmt = '#,##0'; c.alignment = { horizontal: 'center' }; } });
+    });
+    ws.views = [{ state: 'frozen', xSplit: 2, ySplit: 4 }];
+  }
+  list.forEach((e, i) => xlEmployeeDaily(wb, names[i], e, rowsOf(e.employee)));
+  xlRawSheet(wb, allRows);
+  return wb;
+}
+async function xlDownload(wbPromise, fileName, btn) {
+  const was = btn ? btn.textContent : '';
+  try {
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Building…'; }
+    const wb = await wbPromise(), buf = await wb.xlsx.writeBuffer();
+    saveBlob(fileName, new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+  } catch (err) { toast('Excel export failed: ' + (err && err.message || err)); console.error(err); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = was; } }
 }
 
 async function renderEmployeeDetail() {
@@ -10796,7 +11003,7 @@ async function renderEmployeeDetail() {
         <select class="gf-select" id="edPick">
           ${all.sort((a,b)=>b.units-a.units).map(x => `<option value="${esc(x.employee)}"${x.employee===e.employee?' selected':''}>${esc(x.employee)}</option>`).join('')}
         </select>
-        <button class="btn-text" id="edExport">⬇ Export</button>
+        <button class="btn-text" id="edExport" title="An Excel workbook laid out like this page: each day with its products underneath">⬇ Excel report</button>
       </div>
     </div>
 
@@ -10916,13 +11123,8 @@ async function renderEmployeeDetail() {
     PROD.dayWindow = b.dataset.win;          // remembered across people, so comparing two is consistent
     renderEmployeeDetail();
   }));
-  document.getElementById('edExport').addEventListener('click', () => {
-    downloadCSV((e.employee.replace(/[^a-z0-9]+/gi,'-').toLowerCase()) + '-production.csv',
-      mine.map(r => ({ date: r.scan_in_date, employee: r.employee, department: r.department,
-        workstation: r.workstation, product: r.product_name, attribution: r.attribution,
-        tasks_scanned_in: r.tasks_scanned_in, tasks_completed: r.tasks_completed,
-        units: r.total_units, cases: r.cases_touched })));
-  });
+  document.getElementById('edExport').addEventListener('click', ev =>
+    xlDownload(() => xlEmployeeWorkbook(e, mine), e.employee.replace(/[^a-z0-9]+/gi, '-').toLowerCase() + '-production.xlsx', ev.currentTarget));
 }
 
 /* ═══════════════════════════════════════════════════════════════
