@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.11.04-DL42</title>
+<title>Lab Sales Dashboard v2026.11.04-DL43</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -1897,7 +1897,7 @@ const APP = {
 
 /* Bump when normalization logic changes, so it's possible to tell at a glance
    (bottom of the Avg Turnaround card) which build a browser is running. */
-const BUILD_ID = 'DL42 · 2026-11-04';
+const BUILD_ID = 'DL43 · 2026-11-04';
 
 const DB_NAME = 'LabOpsCache';
 const DB_STORE = 'datasets';
@@ -14863,6 +14863,82 @@ function rpTodayStart() {
 }
 function rpDayLabel(d) { return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }); }
 
+/* ══ ⭐ GOLDEN LIST REPORT — like Status Changes, for the Golden doctors only ═══
+   For the report day (the last complete business day): where every Golden
+   doctor stands, who moved since the business day before (a status change, or
+   crossing 10 / 15 / 20 business days without a case), who needs a call (every
+   Golden doctor showing a !), and the full roster by status. */
+const GR_STATUS = [['current', 'Current', '#166534', '#dcfce7'], ['new', 'New', '#075985', '#e0f2fe'], ['winback', 'Winback', '#6b21a8', '#f3e8ff'],
+                   ['falloff', 'Falloff', '#92400e', '#fef3c7'], ['inactive', 'Inactive', '#b91c1c', '#fee2e2']];
+function rpBuildGoldenReport() {
+  const G = goldenIds(), day = rpReportDay(), prevDay = retPrevBizDay(day), F = RP_F;
+  const now = new Map(), before = new Map();
+  computeDoctorStatus(day).forEach(d => { if (G.has(d.drId)) now.set(d.drId, d); });
+  computeDoctorStatus(prevDay).forEach(d => { if (G.has(d.drId)) before.set(d.drId, d); });
+  const Q = quietInfo(day), end = new Date(day.getFullYear(), day.getMonth(), day.getDate(), 23, 59, 59), from = new Date(+end - 90 * 864e5), rev90 = new Map();
+  for (const r of rawByGroupState()) if (r.drId && G.has(r.drId) && r.anchorDate && r.anchorDate > from && r.anchorDate <= end) rev90.set(r.drId, (rev90.get(r.drId) || 0) + (r.netCost || 0));
+  const st = k => GR_STATUS.find(x => x[0] === k) || [k, k || '—', '#475569', '#f1f5f9'];
+  const chip = k => { const x = st(k); return '<span style="display:inline-block;padding:1px 8px;border-radius:999px;font-size:11px;font-weight:700;color:' + x[2] + ';background:' + x[3] + '">' + x[1] + '</span>'; };
+  const th = l => '<th style="text-align:left;padding:8px 12px;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:#64748b;border-bottom:1px solid #e2e8f0">' + l + '</th>';
+  const td = v => '<td style="padding:7px 12px;border-bottom:1px solid #f1f5f9;font-size:12.5px;vertical-align:top">' + v + '</td>';
+  const chg = t => !t.prev ? (t.last ? '<span style="color:#047857;font-weight:700">new</span>' : '—') :
+    fmtUSD(t.last) + ' <span style="color:' + (t.pct >= 0 ? '#047857' : '#b91c1c') + ';font-weight:700">' + (t.pct >= 0 ? '▲ ' : '▼ ') + Math.abs(Math.round(t.pct * 100)) + '%</span>';
+  const who = d => '<b style="color:#0f172a">⭐ ' + esc(d.name || '') + '</b>' + quietMarkEmail(Q.get(d.drId)) + (d.practice ? '<div style="font-size:11px;color:#64748b">' + esc(d.practice) + '</div>' : '');
+  const table = (heads, rows) => '<table cellpadding="0" cellspacing="0" style="' + F + 'width:100%;border-collapse:collapse;background:#fff;border:1px solid #e2e8f0;border-radius:10px;margin-bottom:6px">' +
+    '<tr>' + heads.map(th).join('') + '</tr>' + rows.join('') + '</table>';
+  const fullRow = d => { const q = Q.get(d.drId), t = trendOf(d.drId);
+    return '<tr>' + td(who(d)) + td(chip(d.status)) + td(q ? esc(fmtDateShort(q.last)) : '—') + td(q && q.usual ? 'every ~' + bdWord(q.usual) : '—') +
+      td(fmtUSD(rev90.get(d.drId) || 0)) + td(chg(t)) + '</tr>'; };
+  const heads = ['Doctor', 'Status', 'Last case', 'Usual rhythm', '90-day revenue', 'Last 30 bus. days vs before'];
+  const sec = (title, note) => '<div style="' + F + 'font-size:15px;font-weight:800;color:#0f172a;margin:22px 0 8px">' + title + (note ? ' <span style="font-weight:500;font-size:11px;color:#64748b">' + note + '</span>' : '') + '</div>';
+  const nil = t => '<div style="' + F + 'font-size:12px;color:#64748b;font-style:italic;margin-bottom:6px">' + t + '</div>';
+  const docs = [...now.values()], dayLbl = rpDayLabel(day), prevLbl = rpDayLabel(prevDay);
+
+  let h = rpHead('⭐ Golden List Report', 'Your Diamond-list doctors — where each one stands, who moved, and who needs a call', day) + rpIncompleteNote() + quietKeyEmail();
+
+  // 1. at a glance: status counts (with the change since the day before) and ! levels
+  const cnt = (m, k) => [...m.values()].filter(d => d.status === k).length;
+  const lv = { red: 0, orange: 0, yellow: 0, teal: 0, none: 0 };
+  docs.forEach(d => { const L = quietLevel((Q.get(d.drId) || {}).bd); lv[L ? L[1] : 'none']++; });
+  const tile = (label, n, sub, fg, bg) => '<td style="padding:10px 12px;background:' + bg + ';border-radius:10px;text-align:center;width:20%"><div style="font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:' + fg + '">' + label + '</div>' +
+    '<div style="font-size:22px;font-weight:800;color:#0f172a">' + n + '</div>' + (sub ? '<div style="font-size:11px;color:' + fg + ';font-weight:700">' + sub + '</div>' : '') + '</td>';
+  h += sec('At a glance — ' + docs.length + ' Golden doctors', 'status change vs ' + prevLbl);
+  h += '<table cellpadding="0" cellspacing="6" style="' + F + 'width:100%;border-collapse:separate"><tr>' + GR_STATUS.map(([k, l, fg, bg]) => {
+    const a = cnt(now, k), b = cnt(before, k), dlt = a - b; return tile(l, a, dlt ? (dlt > 0 ? '▲ +' : '▼ −') + Math.abs(dlt) : '±0', fg, bg); }).join('') + '</tr></table>';
+  h += '<table cellpadding="0" cellspacing="6" style="' + F + 'width:100%;border-collapse:separate"><tr>' +
+    QUIET_LEVELS.map(L => tile('! ' + L[1], lv[L[1]], L[0] + (L[0] === 20 ? '+' : '–' + (L[0] + 4)) + ' bus. days', L[3], L[2])).join('') +
+    tile('Sending', lv.none, 'under 5 bus. days', '#166534', '#dcfce7') + '</tr></table>';
+
+  // 2. moved since the business day before
+  const moved = docs.filter(d => before.has(d.drId) && before.get(d.drId).status !== d.status)
+    .map(d => ({ d, from: before.get(d.drId).status }));
+  const crossed = docs.filter(d => { const q = Q.get(d.drId); return q && (q.bd === 10 || q.bd === 15 || q.bd === 20); });
+  h += sec('Moved ' + dayLbl, 'since ' + prevLbl);
+  h += moved.length ? table(['Doctor', 'Status change', 'Last case', '90-day revenue'], moved.map(({ d, from: f }) =>
+      '<tr>' + td(who(d)) + td(chip(f) + ' → ' + chip(d.status)) + td(Q.get(d.drId) ? esc(fmtDateShort(Q.get(d.drId).last)) : '—') + td(fmtUSD(rev90.get(d.drId) || 0)) + '</tr>'))
+    : nil('No Golden doctor changed status.');
+  h += crossed.length ? table(['Doctor', 'Crossed', 'Last case', 'Usual rhythm'], crossed.sort((a, b) => Q.get(b.drId).bd - Q.get(a.drId).bd).map(d => { const q = Q.get(d.drId);
+      return '<tr>' + td(who(d)) + td('<b>' + q.bd + ' business days</b> without a case') + td(esc(fmtDateShort(q.last))) + td(q.usual ? 'every ~' + bdWord(q.usual) : '—') + '</tr>'; }))
+    : nil('No Golden doctor crossed 10, 15 or 20 business days ' + dayLbl + '.');
+
+  // 3. needs a call: every Golden doctor showing a !, red first
+  const call = docs.filter(d => quietRank(Q.get(d.drId)) > 0)
+    .sort((a, b) => quietRank(Q.get(b.drId)) - quietRank(Q.get(a.drId)) || Q.get(a.drId).bd - Q.get(b.drId).bd);
+  h += sec('Needs a call — ' + call.length, 'every Golden doctor showing a !, red first; within each colour, the most recent to cross the line first');
+  h += call.length ? table(heads, call.map(fullRow)) : nil('Every Golden doctor has sent a case in the last 5 business days.');
+
+  // 4. everyone, by status
+  h += sec('Everyone — by status');
+  GR_STATUS.forEach(([k, l]) => {
+    const list = docs.filter(d => d.status === k).sort((a, b) => (rev90.get(b.drId) || 0) - (rev90.get(a.drId) || 0));
+    if (!list.length) return;
+    h += '<div style="' + F + 'font-size:13px;font-weight:800;color:#0f172a;margin:12px 0 6px">' + chip(k) + ' ' + list.length + ' doctor' + (list.length === 1 ? '' : 's') + '</div>' + table(heads, list.map(fullRow));
+  });
+  const missing = G.size - docs.length;
+  if (missing > 0) h += nil(missing + ' Golden doctor' + (missing === 1 ? ' has' : 's have') + ' no cases in the current state/group filters.');
+  return h;
+}
+
 async function rpBuildAll() {
   await keyAcctLoad(true);           // the diamond list, fresh, for the status report
   const asOf = isoDate(rpReportDay());   // the day the reports describe
@@ -14872,6 +14948,7 @@ async function rpBuildAll() {
       { key: 'doctors',  subject: '📋 Daily Customer Report — ' + rpDayLabel(rpReportDay()), html: rpBuildDoctorReport() },
       { key: 'products', subject: '📦 Daily Product Report — ' + rpDayLabel(rpReportDay()),  html: rpBuildProductReport() },
       { key: 'status',   subject: '🔔 Status Changes Report — ' + rpDayLabel(rpReportDay()), html: rpBuildStatusReport() },
+      { key: 'golden',   subject: '⭐ Golden List Report — ' + rpDayLabel(rpReportDay()),    html: rpBuildGoldenReport() },
       { key: 'visits',   subject: '🚗 Daily Visit Report — ' + rpDayLabel(rpReportDay()),    html: (await rpBuildVisitReport(isoDate(rpReportDay()))).html },
       { key: 'employees', subject: '🧑‍🔧 Daily Employee Production', html: await rpBuildEmployeeReport() }
     ]
@@ -14889,7 +14966,7 @@ function rpLog(msg, cls) {
 async function rpPost(action) {
   const recipients = (document.getElementById('rpRcpt').value || '').trim();
   const perReport = {};
-  ['doctors', 'products', 'status', 'visits', 'employees'].forEach(k => {
+  ['doctors', 'products', 'status', 'golden', 'visits', 'employees'].forEach(k => {
     const el = document.getElementById('rpRcpt_' + k);
     const v = el ? el.value.trim() : '';
     if (v) perReport[k] = v;
@@ -14899,6 +14976,7 @@ async function rpPost(action) {
     rcptDoctors: (document.getElementById('rpRcpt_doctors') || {}).value || '',
     rcptProducts: (document.getElementById('rpRcpt_products') || {}).value || '',
     rcptStatus: (document.getElementById('rpRcpt_status') || {}).value || '',
+    rcptGolden: (document.getElementById('rpRcpt_golden') || {}).value || '',
     rcptVisits: (document.getElementById('rpRcpt_visits') || {}).value || '',
     rcptEmployees: (document.getElementById('rpRcpt_employees') || {}).value || ''
   });
@@ -14982,6 +15060,7 @@ async function rpPreview(which) {
   if (which === 'status') await keyAcctLoad();
   box.innerHTML = which === 'doctors' ? rpBuildDoctorReport()
                 : which === 'products' ? rpBuildProductReport()
+                : which === 'golden' ? rpBuildGoldenReport()
                 : rpBuildStatusReport();
   box.scrollTop = 0;
 }
@@ -15045,6 +15124,8 @@ function renderReports() {
       <input class="sync-input" id="rpRcpt_products" placeholder="e.g. production@lab.com" value="${esc(cfg.rcptProducts || '')}">
       <label class="sb-label">🔔 Status changes → </label>
       <input class="sync-input" id="rpRcpt_status" placeholder="e.g. owner@lab.com, reps@lab.com" value="${esc(cfg.rcptStatus || '')}">
+      <label class="sb-label">⭐ Golden List → </label>
+      <input class="sync-input" id="rpRcpt_golden" placeholder="e.g. owner@lab.com, reps@lab.com" value="${esc(cfg.rcptGolden || '')}">
       <label class="sb-label">🚗 Daily visits → </label>
       <input class="sync-input" id="rpRcpt_visits" placeholder="e.g. owner@lab.com" value="${esc(cfg.rcptVisits || '')}">
       <label class="sb-label">🧑‍🔧 Employee production → </label>
@@ -15067,6 +15148,7 @@ function renderReports() {
         <button class="btn-text" id="rpPrevDoc">📋 Customer report</button>
         <button class="btn-text" id="rpPrevProd">📦 Product report</button>
         <button class="btn-text" id="rpPrevStat">🔔 Status changes</button>
+        <button class="btn-text" id="rpPrevGold">⭐ Golden List</button>
         <button class="btn-text" id="rpPrevVisits">🚗 Daily visits</button>
         <button class="btn-text" id="rpPrevEmp">🧑‍🔧 Employee production</button>
       </div>
@@ -15084,6 +15166,7 @@ function renderReports() {
   document.getElementById('rpPrevDoc').onclick = () => rpPreview('doctors');
   document.getElementById('rpPrevProd').onclick = () => rpPreview('products');
   document.getElementById('rpPrevStat').onclick = () => rpPreview('status');
+  document.getElementById('rpPrevGold').onclick = () => rpPreview('golden');
   document.getElementById('rpPrevVisits').onclick = () => rpPreview('visits');
   document.getElementById('rpPrevEmp').onclick = () => rpPreview('employees');
   kaRenderCard();
@@ -15099,7 +15182,7 @@ function renderReports() {
   const rpSaveRecipients = () => {
     const patch = {};
     const map = { rpRcpt: 'rcpt', rpRcpt_doctors: 'rcptDoctors', rpRcpt_products: 'rcptProducts',
-                  rpRcpt_status: 'rcptStatus', rpRcpt_visits: 'rcptVisits', rpRcpt_employees: 'rcptEmployees' };
+                  rpRcpt_status: 'rcptStatus', rpRcpt_golden: 'rcptGolden', rpRcpt_visits: 'rcptVisits', rpRcpt_employees: 'rcptEmployees' };
     Object.keys(map).forEach(id => { const v = rpRead(id); if (v !== null) patch[map[id]] = v; });
     if (!Object.keys(patch).length) return;
     const res = sbSaveCfgObj(patch);
