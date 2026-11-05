@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.11.04-DL39</title>
+<title>Lab Sales Dashboard v2026.11.04-DL41</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -186,6 +186,13 @@ html, body {
 /* ── COACH ── */
 /* gone quiet: the ! mark */
 .dg-quietf { width: auto; min-width: 150px; }
+.gl-miss { margin-top: 6px; font-size: 12px; color: var(--dim); } .gl-miss summary { cursor: pointer; color: var(--accent-ink); font-weight: 600; }
+.gl-miss div { padding: 2px 0 2px 14px; } .gl-miss span { color: var(--mut); margin-left: 6px; }
+.qm-sort { display: inline-flex; gap: 4px; padding: 3px; border-radius: 10px; background: var(--card-2); }
+.qm-btn { display: inline-flex; align-items: center; gap: 5px; font: inherit; font-size: 12px; padding: 4px 9px; border-radius: 8px; border: 1px solid transparent; background: transparent; color: var(--dim); cursor: pointer; }
+.qm-btn:hover { background: var(--card); } .qm-btn b { font-weight: 800; font-variant-numeric: tabular-nums; }
+.qm-btn.on { background: var(--card); border-color: var(--accent); color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+.qm-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; } .qm-btn .qm { cursor: pointer; }
 .qm { display: inline-flex; align-items: center; justify-content: center; width: 17px; height: 17px; border-radius: 50%; font-size: 11px; font-weight: 900; line-height: 1; vertical-align: 2px; cursor: help; }
 .qm-teal { background: #e0f5f6; color: #18818b; } .qm-yellow { background: #fde68a; color: #92400e; } .qm-orange { background: #fed7aa; color: #c2410c; } .qm-red { background: #fecaca; color: #b91c1c; }
 .qm-tag { font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px; } .qm-tag b { font-weight: 900; margin-right: 2px; }
@@ -1413,6 +1420,7 @@ tr.cs-open td { background: var(--card-2); white-space: normal; cursor: default;
       <button class="tab-btn active" data-tab="overview">📊 Sales Overview</button>
       <button class="tab-btn" data-tab="sales">💼 Sales Hub</button>
       <button class="tab-btn" data-tab="docgrid">👨‍⚕️ Doctor Grid</button>
+      <button class="tab-btn" data-tab="golden">⭐ Golden List</button>
       <button class="tab-btn" data-tab="docdetail">🔍 Doctor Detail</button>
       <button class="tab-btn" data-tab="prodgrid">📦 Product Grid</button>
       <button class="tab-btn" data-tab="proddetail">📈 Product Detail</button>
@@ -1478,6 +1486,7 @@ tr.cs-open td { background: var(--card-2); white-space: normal; cursor: default;
     <div class="tab-panel active" id="panel-overview"></div>
     <div class="tab-panel" id="panel-sales"></div>
     <div class="tab-panel" id="panel-docgrid"></div>
+    <div class="tab-panel" id="panel-golden"></div>
     <div class="tab-panel" id="panel-docdetail"></div>
     <div class="tab-panel" id="panel-empgrid"></div>
     <div class="tab-panel" id="panel-empdetail"></div>
@@ -1882,7 +1891,7 @@ const APP = {
 
 /* Bump when normalization logic changes, so it's possible to tell at a glance
    (bottom of the Avg Turnaround card) which build a browser is running. */
-const BUILD_ID = 'DL39 · 2026-11-04';
+const BUILD_ID = 'DL41 · 2026-11-04';
 
 const DB_NAME = 'LabOpsCache';
 const DB_STORE = 'datasets';
@@ -4063,6 +4072,7 @@ function renderTab(tab, force) {
     case 'crosssell': renderCrossSell(); break;
     case 'sales':     renderSalesHub(); break;
     case 'docgrid':   renderDoctorGrid(); break;
+    case 'golden':    renderDoctorGrid(true); break;
     case 'docdetail': renderDoctorDetail(); break;
     case 'status':    renderStatus(); break;
     case 'empgrid':   renderEmployeeGrid(); break;
@@ -5717,16 +5727,71 @@ function retentionDelta() {
   return out;
 }
 
-const DGRID = { query: '', sort: 'revenue', limit: 60, quiet: '' };
+/* ══ GOLDEN LIST: the Doctor Grid, for the Diamond-list doctors only ══════════
+   The list: the Diamond list uploaded on the Reports tab when there is one (so
+   one list serves everything), otherwise the Diamond list file built in below.
+   Matched by DOCTOR: the name in either order ("Jeffrey Morgan" / "Morgan
+   Jeffrey"), ignoring "Dr." and punctuation; when two doctors share a name, the
+   practice decides — a cut-off practice name still matches the one it begins.
+   "Other Doctor(s)" means every doctor at that practice. */
+const GOLDEN_DEFAULT = [["HL Grandridge Dental", "Jeffrey Morgan"], ["INSP Simply Dental Implants", "Richard Guerra"], ["HL Colonial Drive Preventative & Comprehensive Dentistry", "Tommy Dorsey"], ["INSP Maczko, Mitchell", "Mitchell Maczko"], ["ELITE00748 Implant Dentistry Of Greater Lansing", "Erwin Crawford"], ["Family Dentistry of Colorado Springs", "Ron Kazemi"], ["Aura Dental Care", "Dharik Patel"], ["HL Warner Robins Family Dentistry", "Patel Nency"], ["INSP Suburban Family Dental", "Roman Dziubyk"], ["HL Naperville Dental Specialists", "Anthony LaVacca"], ["Fort Worth Dentist - Henderson St.", "Ghaznia Khan"], ["Periodontal Implant Associates", "Amarik Singh"], ["INSP MacLean & Iskander DMD", "Douglas MacLean"], ["MB2 Dental Arts of Huntley", "Bansal Shobhit"], ["HL Riverside Crossing Dental Care", "Stokey Nicholas"], ["Poldek Family Dental", "Kirk Poldek"], ["Suri Dental Group", "Vishal Suri"], ["HL Dental Care of Mt. Vernon", "Oh Sehun"], ["Partridge, Drew", "Drew Partridge"], ["MB2 Dental Care of Mid Florida Sebring", "Ernesto Llerena"], ["Affordable Dentures & Implants Algonquin", "Aisha Omer"], ["HL Austell Family Dental Care", "Taiwo Ogundipe"], ["HL Dental Care On Smile Way", "Richard Cottrell"], ["Ideal Dental Lab", "Eddie Larson"], ["Peacock Dental", "Sundeep Franklin"], ["INSP Webster Dental Care of Hoffman Estates-Keith Nemanich", "Keith Nemanich"], ["HL Whispering Springs Dental Care", "Donna Wilkerson"], ["INSP Kenneth Johnson", "Kenneth A. Johnson"], ["Horton and Vranas", "Michele Horton"], ["INSP Beyond Smiles", "Kerry Lowery"], ["ELITE8211 Westfield Dental, LLP", "Jason Derr"], ["HL Christie Dental of Meadowcrest", "Kenneth Steig"], ["Mondovi Dental Grisworld", "Hacker"], ["HL Family Dental of Canton", "Carol Angstadt"], ["HL Premier Dental Partners West County - Olive Blvd", "Christopher Brown"], ["HL Dental Care at Cedar Crossing", "Tyler Brockman"], ["HL True Smiles", "Le Huy"], ["HL Janesville Family Dental Care", "Andrew Bachman"], ["HL Holmestown Commons Dental Care", "David Thieroff"], ["HL Staunton Dental Care", "Kareem Shvan"], ["Palos Hills Dentistry", "Nicholas Amigoni"], ["HL Arts District Dental", "Cecil Hill"], ["MB2 Machesney Dental Studio", "Bansal Shobhit"], ["Experience Dental Thornton", "Jeremy Altdorfer"], ["Dental Care of Arlington Heights", "Gary Todd"], ["HL Wexford Dental Arts, LLC", "Anita Pitts"], ["HL Dickson Dental", "Stover Matthew"], ["HL Naperville Dental Specialists", "Irene Jovicic"], ["HL Greater Pittsburgh Dental Group", "Aaron Chiu"], ["HL Nokomis Dental Care", "Nicole Griffith"], ["ELITE11288 Morrow County Dental", "Shawn Rajendram"], ["Magical Smiles", "Michael Link"], ["Dental Fields", "Nishu Sharma"], ["Arlington Dentistry", "Ghaznia Khan"], ["Experience Dental Boulder", "Adam Altdorfer"], ["HL Terracina Dental Care", "Bhayani Nisha"], ["HL Cambridge Dental Care", "Benjamin Brubaker"], ["Cerama-Lab Inc.", "Cerama Lab"], ["HL Longston Place Dental", "Ameenuddin Ahmed"], ["Miller, Stacey", "Stacey Miller"], ["Tiner Family Dental", "Kirk Tiner"], ["ELITE1264 Five Points Dental", "Ronald Roessler"], ["HL Dental Care on Causeway", "Melanie Goforth-Moore"], ["Midwest Dental Pontiac", "Angela Bess"], ["INSP Laskaris, Niki", "Niki Laskaris"], ["HL The Smile Centre - Venice", "Bojko Sonja"], ["HL Sunridge Dental Care", "McEvoy Kelsey"], ["Market Heights Family Dental", "Matthew Tochterman"], ["Peak Family Dental", "David Pass"], ["HL Dental Care of Pewaukee", "Niedziela Jeffrey"], ["Elliff, Andrew", "Andrew Elliff"], ["HL Killian Road Dental Care", "Breanna Henley"], ["Miller, Angela", "Angela Miller"], ["Valley Dental Care - Aurora", "Satish Gottumukkula"], ["HL Dental Care of Grandview", "Edward Perkins"], ["HL College Avenue Family Dentistry", "Charles Hines"], ["Jason Giuliano DDS Homewood", "Jason Giuliano DDS"], ["Advanced Periodontics", "Lee Patrone"], ["INSP Antioch Dental Center", "Donald Bennett"], ["HL Dental Care at Cedar Crossing", "Chaney Brown"], ["HL Desert Family Dentistry", "Clinton Boscamp"], ["DCA Dental One Associates of Waldorf", "Deana Moody"], ["George, Thomas", "Thomas George"], ["New Day Dentistry - Littleton", "Habil Soondis"], ["King Dental", "Melissa Ewa"], ["HL Cross Timbers Family Dental", "Courtney Wedel"], ["HL ForwardDental - Menomonee Falls", "Evleth Tristen"], ["HL Family Dental Care of Olathe", "Swetha Nagaraju"], ["The Dental Edition", "Baha Abuaita"], ["INSP Schmit, Richard", "Richard Schmit"], ["HL Metro Dentalcare - Maple Grove - Bass Lake", "Lang Kelly"], ["HL Dental Care at Summerfield Crossing", "Caitlin Wild"], ["Midwest Dental Pontiac", "Brandon Gray"], ["HL Dental Care on Holly Hill", "Ganesh Rajagopalan"], ["HL Williamsburg Cosmetic Dentistry", "Jeffrey Oglesby"], ["HL ForwardDental - Muskego - Janesville", "Megan LeGros"], ["Larson - Boulder, Craig", "Craig Larson"], ["INSP McMillan, Patrick", "Patrick Mcmillan"], ["HL Bonita Estero Dental Group", "Claudie Feeney Delgado"], ["Hindman Family Dentistry", "Joshua Hindman"], ["HL 370 DENTAL CARE", "Timothy Davis"], ["MB2 Round Lake Family Dental", "Kalpit Shah"], ["INSP MacLean & Iskander DMD", "Other Doctor(s)"], ["Ideal Dental Lab", "Other Doctor(s)"]];
+const gNorm = v => String(v || '').toLowerCase().replace(/\bdr\.?\s+/g, '').replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+const gNameKey = v => gNorm(v).split(' ').filter(Boolean).sort().join(' ');
+function goldenRows() {
+  const up = (typeof KEYACCT !== 'undefined' && KEYACCT.list) ? KEYACCT.list.filter(r => r.doctor_name).map(r => [r.practice_name || '', r.doctor_name]) : [];
+  return up.length ? { rows: up, src: 'the Diamond list on the Reports tab' } : { rows: GOLDEN_DEFAULT, src: 'the Diamond list file' };
+}
+function goldenMatch() {
+  const G = goldenRows(), ck = 'golden:' + G.rows.length + ':' + G.src;
+  if (APP.derived && APP.derived[ck]) return APP.derived[ck];
+  const byName = new Map(), seen = new Map();
+  for (const r of APP.raw || []) {
+    if (!r || !r.drId) continue;
+    let x = seen.get(r.drId);
+    if (!x) { x = { id: r.drId, pracs: new Set() }; seen.set(r.drId, x); const k = gNameKey(r.drName); (byName.get(k) || byName.set(k, []).get(k)).push(x); }
+    if (r.practice) x.pracs.add(gNorm(r.practice));
+  }
+  const ids = new Set(), unmatched = [];
+  G.rows.forEach(([prac, doc]) => {
+    // "Other Doctor(s)" / "All doctors": every doctor at that practice
+    if (/^\s*(other|all)\b[^a-z]*doctor|^\s*others?\s*$/i.test(doc)) {
+      const P = gNorm(prac), at = P ? [...seen.values()].filter(x => [...x.pracs].some(q => q.startsWith(P) || P.startsWith(q))) : [];
+      if (at.length) at.forEach(x => ids.add(x.id)); else unmatched.push({ prac, doc });
+      return;
+    }
+    const c = byName.get(gNameKey(doc)) || [];
+    if (!c.length) { unmatched.push({ prac, doc }); return; }
+    const P = gNorm(prac), byP = P ? c.filter(x => [...x.pracs].some(q => q.startsWith(P) || P.startsWith(q))) : [];
+    (byP.length ? byP : c).forEach(x => ids.add(x.id));
+  });
+  const out = { ids, unmatched, total: G.rows.length, src: G.src };
+  if (APP.derived) APP.derived[ck] = out;
+  return out;
+}
+
+// the Doctor Grid and the Golden List share one view, each with its own search / sort / filter
+const DG_MAIN = { query: '', sort: 'revenue', limit: 60, quiet: '' };
+const DG_GOLD = { query: '', sort: 'revenue', limit: 60, quiet: '', only: null };
+let DGRID = DG_MAIN;
 let stQuiet = () => null;   // Retention's per-row gone-quiet info (set when its table draws)
 
-function renderDoctorGrid() {
-  const el = document.getElementById('panel-docgrid');
+function renderDoctorGrid(golden) {
+  // one view, two tabs: the other tab's copy is emptied so the element ids never clash
+  const other = document.getElementById(golden ? 'panel-docgrid' : 'panel-golden');
+  if (other) other.innerHTML = '';
+  if (APP.rendered) APP.rendered[golden ? 'docgrid' : 'golden'] = false;
+  DGRID = golden ? DG_GOLD : DG_MAIN;
+  const GM = golden ? goldenMatch() : null;
+  if (golden) DG_GOLD.only = GM.ids;
+  const el = document.getElementById(golden ? 'panel-golden' : 'panel-docgrid');
   el.innerHTML = `
     <div class="section-header">
       <div>
-        <div class="section-title">Doctor Grid</div>
-        <div class="section-sub">All accounts as cards — search, sort, click for the full profile.</div>
+        <div class="section-title">${golden ? '⭐ Golden List' : 'Doctor Grid'}</div>
+        <div class="section-sub">${golden
+          ? `The Diamond-list doctors — the same view as the Doctor Grid. ${GM.total - GM.unmatched.length} of ${GM.total} found, from ${esc(GM.src)}.`
+          : 'All accounts as cards — search, sort, click for the full profile.'}</div>
+        ${golden && GM.unmatched.length ? `<details class="gl-miss"><summary>${GM.unmatched.length} not found in the lab data</summary>${GM.unmatched.map(u => `<div><b>${esc(u.doc)}</b> <span>${esc(u.prac)}</span></div>`).join('')}</details>` : ''}
       </div>
       <div class="section-actions">
         <button class="btn-text" id="dgExport">⬇ Export Visible</button>
@@ -5746,7 +5811,10 @@ function renderDoctorGrid() {
         <button class="pill" data-sort="remakeRate">Remake %</button>
         <button class="pill" data-sort="avgTat">Turnaround</button>
         <button class="pill" data-sort="name">A → Z</button>
-        <button class="pill" data-sort="quiet" title="Red first, then orange, yellow, teal — within each, the most recent to cross the line first">! Quiet</button>
+      </div>
+      <div class="qm-sort" id="dgQuietSort" role="group" aria-label="Sort a gone-quiet colour first">
+        ${[['teal', '5–9'], ['yellow', '10–14'], ['orange', '15–19'], ['red', '20+']].map(([lv, rng]) =>
+          `<button type="button" class="qm-btn" data-lv="${lv}" title="${rng} business days without a case — click to put these first" aria-pressed="false"><span class="qm qm-${lv}">!</span><b id="dgQc_${lv}">0</b></button>`).join('')}
       </div>
       <select class="gf-select dg-quietf" id="dgQuiet" title="Show only doctors with a gone-quiet mark" aria-label="Gone-quiet filter">
         <option value="">All doctors</option><option value="any">! Any mark (5+ days)</option><option value="red">! Red (20+)</option>
@@ -5762,18 +5830,32 @@ function renderDoctorGrid() {
 
   gridBindToggle('doctors', () => drawDGrid());
   const q = document.getElementById('dgQuery');
+  q.value = DGRID.query || '';
+  document.querySelectorAll('#dgSort .pill').forEach(x => x.classList.toggle('active', x.dataset.sort === DGRID.sort));
   q.addEventListener('input', () => { DGRID.query = q.value.toLowerCase().trim(); DGRID.limit = 60; drawDGrid(); });
   const qf = document.getElementById('dgQuiet'); qf.value = DGRID.quiet || '';
   qf.addEventListener('change', () => { DGRID.quiet = qf.value; DGRID.limit = 60; drawDGrid(); });
+  const setQuietBtns = () => document.querySelectorAll('#dgQuietSort .qm-btn').forEach(x => { const on = DGRID.sort === 'quiet:' + x.dataset.lv; x.classList.toggle('on', on); x.setAttribute('aria-pressed', on); });
   document.querySelectorAll('#dgSort .pill').forEach(b => {
     b.addEventListener('click', () => {
       document.querySelectorAll('#dgSort .pill').forEach(x => x.classList.remove('active'));
       b.classList.add('active');
-      DGRID.sort = b.dataset.sort; DGRID.limit = 60; drawDGrid();
+      DGRID.sort = b.dataset.sort; DGRID.limit = 60; setQuietBtns(); drawDGrid();
     });
   });
+  // a coloured ! puts that colour first; clicking it again goes back to Revenue
+  document.querySelectorAll('#dgQuietSort .qm-btn').forEach(b => b.addEventListener('click', () => {
+    const want = 'quiet:' + b.dataset.lv, off = DGRID.sort === want;
+    DGRID.sort = off ? 'revenue' : want; DGRID.limit = 60;
+    document.querySelectorAll('#dgSort .pill').forEach(x => x.classList.toggle('active', off && x.dataset.sort === 'revenue'));
+    setQuietBtns(); drawDGrid();
+  }));
+  { const Q = quietInfo(), n = { teal: 0, yellow: 0, orange: 0, red: 0 };   // how many of each, right now
+    aggByDoctor().forEach(d => { if (DGRID.only && !DGRID.only.has(d.drId)) return; const L = quietLevel((Q.get(d.drId) || {}).bd); if (L) n[L[1]]++; });
+    Object.entries(n).forEach(([lv, c]) => { const el = document.getElementById('dgQc_' + lv); if (el) el.textContent = c.toLocaleString(); }); }
+  setQuietBtns();
   document.getElementById('dgExport').addEventListener('click', () => {
-    downloadCSV('doctors.csv', dgFilteredDocs().map(d => ({
+    downloadCSV(DGRID === DG_GOLD ? 'golden-list.csv' : 'doctors.csv', dgFilteredDocs().map(d => ({
       name: d.name, email: d.email, phone: d.phone, city: d.city, state: d.state,
       cases: d.cases, revenue: d.revenue, avg_case: d.avgCase, remake_rate: d.remakeRate,
       median_turnaround_days: d.medTat, avg_turnaround_days: d.avgTat,
@@ -5791,6 +5873,7 @@ function renderDoctorGrid() {
 
 function dgFilteredDocs() {
   let docs = aggByDoctor();
+  if (DGRID.only) docs = docs.filter(d => DGRID.only.has(d.drId));   // the Golden List
   if (DGRID.query) {
     const qq = DGRID.query;
     docs = docs.filter(d =>
@@ -5805,11 +5888,13 @@ function dgFilteredDocs() {
     const Q = quietInfo();
     docs = docs.filter(d => { const L = quietLevel((Q.get(d.drId) || {}).bd); return DGRID.quiet === 'any' ? !!L : !!L && L[1] === DGRID.quiet; });
   }
-  if (DGRID.sort === 'quiet') {
-    // red → orange → yellow → teal; within a level, the most recent to cross first
-    const Q = quietInfo();
+  if (String(DGRID.sort).startsWith('quiet')) {
+    // the chosen colour first; then red → orange → yellow → teal; within a colour,
+    // the most recent to cross the line first
+    const Q = quietInfo(), pick = QUIET_RANK[String(DGRID.sort).split(':')[1]] || 0;
+    const key = q => { const r = quietRank(q); return r && r === pick ? 9 : r; };
     docs.sort((a, b) => { const qa = Q.get(a.drId), qb = Q.get(b.drId);
-      return quietRank(qb) - quietRank(qa) || ((qa ? qa.bd : 1e9) - (qb ? qb.bd : 1e9)) || (b.revenue || 0) - (a.revenue || 0); });
+      return key(qb) - key(qa) || ((qa ? qa.bd : 1e9) - (qb ? qb.bd : 1e9)) || (b.revenue || 0) - (a.revenue || 0); });
   }
   else if (DGRID.sort === 'name') docs.sort((a,b) => a.name.localeCompare(b.name));
   else if (DGRID.sort === 'grow' || DGRID.sort === 'slip') {
