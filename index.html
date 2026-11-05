@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.11.04-DL43</title>
+<title>Lab Sales Dashboard v2026.11.05-DL44</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -184,10 +184,20 @@ html, body {
 .sv-daylist { display: flex; flex-direction: column; gap: 10px; min-width: 0; margin-top: 14px; }
 .sv-dupe-note { color: #a16207; }
 /* ── COACH ── */
+/* recent remakes */
+.rm-reasons { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.rm-chip { font-size: 12px; background: #fef2f2; color: #991b1b; border-radius: 999px; padding: 3px 10px; } .rm-chip b { margin-left: 4px; }
+.rm-new { background: #fee2e2; color: #b91c1c; font-weight: 800; border-radius: 999px; padding: 2px 8px; margin-left: 6px; }
+.rm-wrap { overflow-x: auto; } .rm-tbl { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.rm-tbl th { text-align: left; font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--mut); padding: 6px 10px; border-bottom: 1px solid var(--border); }
+.rm-tbl td { padding: 7px 10px; border-bottom: 1px solid var(--border); color: var(--dim); } .rm-tbl td b { color: var(--ink); }
+.rm-tbl .num { text-align: right; font-variant-numeric: tabular-nums; } .rm-tbl tr.rm-fresh td { background: #fff7f7; }
+.rm-more summary { cursor: pointer; color: var(--accent-ink); font-weight: 600; font-size: 12.5px; margin-top: 8px; }
 /* ⭐ Golden List */
 .gm { margin-right: 4px; font-size: 13px; vertical-align: 1px; cursor: help; }
 .gm-tag { font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 999px; background: #fef3c7; color: #92400e; }
 .pm-gold.on { background: #fef3c7; border-color: #f59e0b; color: #92400e; }
+.pm-silv.on { background: #f1f5f9; border-color: #94a3b8; color: #334155; } .gm-tag.sv { background: #f1f5f9; color: #334155; }
 .sh-gq-red { background: #fecaca; color: #b91c1c; } .sh-gq-orange { background: #fed7aa; color: #c2410c; } .sh-gq-yellow { background: #fde68a; color: #92400e; }
 .sh-gq-teal { background: #e0f5f6; color: #18818b; } .sh-gq-ok { background: #dcfce7; color: #166534; }
 /* gone quiet: the ! mark */
@@ -1427,6 +1437,7 @@ tr.cs-open td { background: var(--card-2); white-space: normal; cursor: default;
       <button class="tab-btn" data-tab="sales">💼 Sales Hub</button>
       <button class="tab-btn" data-tab="docgrid">👨‍⚕️ Doctor Grid</button>
       <button class="tab-btn" data-tab="golden">⭐ Golden List</button>
+      <button class="tab-btn" data-tab="silver">🥈 Silver List</button>
       <button class="tab-btn" data-tab="docdetail">🔍 Doctor Detail</button>
       <button class="tab-btn" data-tab="prodgrid">📦 Product Grid</button>
       <button class="tab-btn" data-tab="proddetail">📈 Product Detail</button>
@@ -1493,6 +1504,7 @@ tr.cs-open td { background: var(--card-2); white-space: normal; cursor: default;
     <div class="tab-panel" id="panel-sales"></div>
     <div class="tab-panel" id="panel-docgrid"></div>
     <div class="tab-panel" id="panel-golden"></div>
+    <div class="tab-panel" id="panel-silver"></div>
     <div class="tab-panel" id="panel-docdetail"></div>
     <div class="tab-panel" id="panel-empgrid"></div>
     <div class="tab-panel" id="panel-empdetail"></div>
@@ -1897,7 +1909,7 @@ const APP = {
 
 /* Bump when normalization logic changes, so it's possible to tell at a glance
    (bottom of the Avg Turnaround card) which build a browser is running. */
-const BUILD_ID = 'DL43 · 2026-11-04';
+const BUILD_ID = 'DL44 · 2026-11-05';
 
 const DB_NAME = 'LabOpsCache';
 const DB_STORE = 'datasets';
@@ -2083,6 +2095,8 @@ function finishIngest(rawRows, fileName, freshUpload) {
     setTimeout(() => {
       initDashboard();
       hideProgress();
+      { const h = (location.hash || '').replace(/^#/, '');   // a "See Dashboard" link from a report
+        if (h && !APP._hashOpened && document.querySelector('#tabsBar .tab-btn[data-tab="' + h.replace(/[^a-z]/gi, '') + '"]')) { APP._hashOpened = true; switchTab(h); } }
       // Only a genuine upload triggers the automatic push — restoring the cached
       // dataset on page load must not re-sync or re-queue emails.
       if (freshUpload) setTimeout(() => { try { autoSyncAll(); } catch (e) { console.error(e); } }, 400);
@@ -4078,7 +4092,8 @@ function renderTab(tab, force) {
     case 'crosssell': renderCrossSell(); break;
     case 'sales':     renderSalesHub(); break;
     case 'docgrid':   renderDoctorGrid(); break;
-    case 'golden':    renderDoctorGrid(true); break;
+    case 'golden':    renderDoctorGrid('golden'); break;
+    case 'silver':    renderDoctorGrid('silver'); break;
     case 'docdetail': renderDoctorDetail(); break;
     case 'status':    renderStatus(); break;
     case 'empgrid':   renderEmployeeGrid(); break;
@@ -5024,6 +5039,18 @@ function renderSalesHub() {
       <div class="sh-list" id="shGoldList"></div>
     </div>
 
+    <!-- SILVER LIST -->
+    <div class="sh-section">
+      <div class="sh-section-head">
+        <div>
+          <div class="sh-section-title"><span class="sh-section-title-icon">🥈</span>Silver List — who needs a call</div>
+          <div class="sh-section-sub">Your Silver-list doctors (not on the Golden List), quietest first, then the biggest 30-day slips</div>
+        </div>
+        <button class="btn-text" id="shSilvOpen">Open the Silver List ↗</button>
+      </div>
+      <div class="sh-list" id="shSilvList"></div>
+    </div>
+
     <!-- AT-RISK -->
     <div class="sh-section">
       <div class="sh-section-head">
@@ -5229,16 +5256,17 @@ function renderSalesHub() {
     });
   }
 
-  { // ⭐ Golden List: quietest first, then the biggest 30-day slips
-    const G = goldenIds(), Q = quietInfo(), seen = new Map();
-    (APP.raw || []).forEach(r => { if (r && G.has(r.drId) && !seen.has(r.drId)) seen.set(r.drId, { id: r.drId, name: r.drName, practice: r.practice || '' }); });
+  // ⭐ Golden and 🥈 Silver: quietest first, then the biggest 30-day slips
+  [['shGoldList', 'shGoldOpen', goldenIds(), 'golden', 'No Golden List doctors in this view.'], ['shSilvList', 'shSilvOpen', silverIds(), 'silver', 'No Silver List doctors in this view.']].forEach(([listEl, btn, G, tab, empty]) => {
+    const Q = quietInfo(), seen = new Map();
+    (APP.raw || []).forEach(r => { if (r && G.has(r.drId) && !seen.has(r.drId) && (tab === 'golden' || !isGolden(r.drId))) seen.set(r.drId, { id: r.drId, name: r.drName, practice: r.practice || '' }); });
     const items = [...seen.values()].map(x => ({ ...x, q: Q.get(x.id), t: trendOf(x.id) }))
       .sort((a, b) => quietRank(b.q) - quietRank(a.q) || (a.q && b.q ? a.q.bd - b.q.bd : 0) || (a.t.delta - b.t.delta));
-    shList('shGoldList', items.map(x => ({ id: x.id, name: x.name, practice: x.practice,
+    shList(listEl, items.map(x => ({ id: x.id, name: x.name, practice: x.practice,
       meta: (x.q ? 'Last case ' + fmtDateShort(x.q.last) + (x.q.bd ? ' · ' + bdWord(x.q.bd) + ' ago' : ' · today') : 'No cases') + ' · last 30 business days ' + fmtUSD(x.t.last) + (x.t.prev ? ' (' + (x.t.pct >= 0 ? '▲' : '▼') + Math.abs(Math.round(x.t.pct * 100)) + '%)' : ''),
-      pill: x.q && quietLevel(x.q.bd) ? quietLevel(x.q.bd)[1] : 'active', pillClass: x.q && quietLevel(x.q.bd) ? 'sh-gq-' + quietLevel(x.q.bd)[1] : 'sh-gq-ok', val: fmtUSD(x.t.last) })), { limit: 15, empty: 'No Golden List doctors in this view.' });
-    const go = document.getElementById('shGoldOpen'); if (go) go.onclick = () => switchTab('golden');
-  }
+      pill: x.q && quietLevel(x.q.bd) ? quietLevel(x.q.bd)[1] : 'active', pillClass: x.q && quietLevel(x.q.bd) ? 'sh-gq-' + quietLevel(x.q.bd)[1] : 'sh-gq-ok', val: fmtUSD(x.t.last) })), { limit: 15, empty });
+    const go = document.getElementById(btn); if (go) go.onclick = () => switchTab(tab);
+  });
   shList('shRiskList', atRiskHV.slice(0, 15).map(d => ({
     id: d.drId, name: d.name, practice: d.practice || '',
     meta: `${d.city || '—'}, ${d.state || ''} · ${d.cases} cases`,
@@ -5646,6 +5674,40 @@ function tatChg(x) {
 }
 // the second line on a grid card: remake and turnaround, last 30 business days
 const trend2HTML = x => `<div class="dr-trend2"><span>Remake <b>${pct1(x.remL)}</b> ${remChg(x)}</span><span>Turnaround <b>${days1(x.tatL)}</b> ${tatChg(x)}</span></div>`;
+/* RECENT REMAKES on Doctor Detail — what was remade, when, and why over the last
+   90 days (whatever the date range), so a problem shows up early. One row per
+   case + product; units are the remade units. */
+function ddRemakesHTML(drId) {
+  const md = getMaxDate(); if (!md || !drId) return '';
+  const end = new Date(md.getFullYear(), md.getMonth(), md.getDate(), 23, 59, 59), from = new Date(+end - 90 * 864e5), fresh = new Date(+end - 14 * 864e5);
+  let units = 0, rUnits = 0, lastEver = null; const items = new Map();
+  for (const r of rawByGroupState()) {
+    if (r.drId !== drId || !r.anchorDate || r.anchorDate > end) continue;
+    if (r.remake && (!lastEver || r.anchorDate > lastEver.anchorDate)) lastEver = r;
+    if (r.anchorDate <= from) continue;
+    units += r.qty || 0;
+    if (!r.remake) continue;
+    rUnits += r.qty || 0;
+    const k = (r.caseNo || r.caseKey || '') + '|' + (r.product || '');
+    let x = items.get(k);
+    if (!x) { x = { date: r.anchorDate, caseNo: r.caseNo || '', product: r.product || '—', reason: '', qty: 0 }; items.set(k, x); }
+    x.qty += r.qty || 0; if (r.anchorDate > x.date) x.date = r.anchorDate; if (!x.reason && r.remakeReason) x.reason = r.remakeReason;
+  }
+  const list = [...items.values()].sort((a, b) => b.date - a.date), nFresh = list.filter(x => x.date >= fresh).length;
+  const reasons = {}; list.forEach(x => { const k = x.reason || 'No reason given'; reasons[k] = (reasons[k] || 0) + x.qty; });
+  const top = Object.entries(reasons).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  const row = x => `<tr${x.date >= fresh ? ' class="rm-fresh"' : ''}><td>${esc(fmtDateShort(x.date))}</td><td>${esc(x.caseNo)}</td><td><b>${esc(x.product)}</b></td><td>${x.reason ? esc(x.reason) : '<span class="text-mut">No reason given</span>'}</td><td class="num">${fmtN(x.qty)}</td></tr>`;
+  const tbl = rows => `<div class="rm-wrap"><table class="rm-tbl"><thead><tr><th>Date</th><th>Case</th><th>Product remade</th><th>Reason</th><th class="num">Units</th></tr></thead><tbody>${rows.map(row).join('')}</tbody></table></div>`;
+  return `<div class="card mb20 rm-card">
+    <div class="c30-h"><div class="chart-title" style="margin:0">🔁 Recent remakes — last 90 days</div>
+      <small>${list.length ? `${fmtN(rUnits)} remade unit${rUnits === 1 ? '' : 's'} of ${fmtN(units)} (${units ? (rUnits / units * 100).toFixed(1) : '0.0'}%)` : ''}${nFresh ? ` <span class="rm-new">${nFresh} in the last 2 weeks</span>` : ''}</small></div>
+    ${!list.length
+      ? `<div class="text-mut" style="font-size:13px">No remakes in the last 90 days.${lastEver ? ` The last one was ${esc(fmtDateShort(lastEver.anchorDate))}: ${esc(lastEver.product || '—')}${lastEver.remakeReason ? ' — ' + esc(lastEver.remakeReason) : ''}.` : ' None in the data.'}</div>`
+      : `<div class="rm-reasons">${top.map(([k, n]) => `<span class="rm-chip">${esc(k)} <b>${fmtN(n)}</b></span>`).join('')}</div>
+         ${tbl(list.slice(0, 10))}
+         ${list.length > 10 ? `<details class="rm-more"><summary>Show all ${list.length} remakes</summary>${tbl(list.slice(10))}</details>` : ''}`}
+  </div>`;
+}
 // Doctor / Product Detail: the three measures side by side
 function cmp30HTML(x) {
   const tile = (label, now, before, badge, sub) => `<div class="c30-t"><div class="c30-l">${label}</div><div class="c30-v">${now}</div><div class="c30-b">vs ${before} ${badge}</div>${sub ? `<div class="c30-s">${sub}</div>` : ''}</div>`;
@@ -5755,45 +5817,68 @@ function retentionDelta() {
   return out;
 }
 
-/* ══ GOLDEN LIST: the Doctor Grid, for the Diamond-list doctors only ══════════
-   The list: the Diamond list uploaded on the Reports tab when there is one (so
+/* ══ GOLDEN & SILVER LISTS ═══════════════════════════════════════════════════
+   Golden: the Diamond list uploaded on the Reports tab when there is one (so
    one list serves everything), otherwise the Diamond list file built in below.
-   Matched by DOCTOR: the name in either order ("Jeffrey Morgan" / "Morgan
-   Jeffrey"), ignoring "Dr." and punctuation; when two doctors share a name, the
-   practice decides — a cut-off practice name still matches the one it begins.
-   "Other Doctor(s)" means every doctor at that practice. */
+   Silver: the Silver list file built in below, minus anyone on the Golden List.
+   Matched by DOCTOR: the name in either order, ignoring "Dr.", titles (DDS, DMD…)
+   and middle initials; when two doctors share a name, the practice decides — a
+   cut-off practice name still matches the one it begins. A partial name
+   ("Hacker") is looked for at its practice. "Other Doctor(s)" means every doctor
+   at that practice. */
 const GOLDEN_DEFAULT = [["HL Grandridge Dental", "Jeffrey Morgan"], ["INSP Simply Dental Implants", "Richard Guerra"], ["HL Colonial Drive Preventative & Comprehensive Dentistry", "Tommy Dorsey"], ["INSP Maczko, Mitchell", "Mitchell Maczko"], ["ELITE00748 Implant Dentistry Of Greater Lansing", "Erwin Crawford"], ["Family Dentistry of Colorado Springs", "Ron Kazemi"], ["Aura Dental Care", "Dharik Patel"], ["HL Warner Robins Family Dentistry", "Patel Nency"], ["INSP Suburban Family Dental", "Roman Dziubyk"], ["HL Naperville Dental Specialists", "Anthony LaVacca"], ["Fort Worth Dentist - Henderson St.", "Ghaznia Khan"], ["Periodontal Implant Associates", "Amarik Singh"], ["INSP MacLean & Iskander DMD", "Douglas MacLean"], ["MB2 Dental Arts of Huntley", "Bansal Shobhit"], ["HL Riverside Crossing Dental Care", "Stokey Nicholas"], ["Poldek Family Dental", "Kirk Poldek"], ["Suri Dental Group", "Vishal Suri"], ["HL Dental Care of Mt. Vernon", "Oh Sehun"], ["Partridge, Drew", "Drew Partridge"], ["MB2 Dental Care of Mid Florida Sebring", "Ernesto Llerena"], ["Affordable Dentures & Implants Algonquin", "Aisha Omer"], ["HL Austell Family Dental Care", "Taiwo Ogundipe"], ["HL Dental Care On Smile Way", "Richard Cottrell"], ["Ideal Dental Lab", "Eddie Larson"], ["Peacock Dental", "Sundeep Franklin"], ["INSP Webster Dental Care of Hoffman Estates-Keith Nemanich", "Keith Nemanich"], ["HL Whispering Springs Dental Care", "Donna Wilkerson"], ["INSP Kenneth Johnson", "Kenneth A. Johnson"], ["Horton and Vranas", "Michele Horton"], ["INSP Beyond Smiles", "Kerry Lowery"], ["ELITE8211 Westfield Dental, LLP", "Jason Derr"], ["HL Christie Dental of Meadowcrest", "Kenneth Steig"], ["Mondovi Dental Grisworld", "Hacker"], ["HL Family Dental of Canton", "Carol Angstadt"], ["HL Premier Dental Partners West County - Olive Blvd", "Christopher Brown"], ["HL Dental Care at Cedar Crossing", "Tyler Brockman"], ["HL True Smiles", "Le Huy"], ["HL Janesville Family Dental Care", "Andrew Bachman"], ["HL Holmestown Commons Dental Care", "David Thieroff"], ["HL Staunton Dental Care", "Kareem Shvan"], ["Palos Hills Dentistry", "Nicholas Amigoni"], ["HL Arts District Dental", "Cecil Hill"], ["MB2 Machesney Dental Studio", "Bansal Shobhit"], ["Experience Dental Thornton", "Jeremy Altdorfer"], ["Dental Care of Arlington Heights", "Gary Todd"], ["HL Wexford Dental Arts, LLC", "Anita Pitts"], ["HL Dickson Dental", "Stover Matthew"], ["HL Naperville Dental Specialists", "Irene Jovicic"], ["HL Greater Pittsburgh Dental Group", "Aaron Chiu"], ["HL Nokomis Dental Care", "Nicole Griffith"], ["ELITE11288 Morrow County Dental", "Shawn Rajendram"], ["Magical Smiles", "Michael Link"], ["Dental Fields", "Nishu Sharma"], ["Arlington Dentistry", "Ghaznia Khan"], ["Experience Dental Boulder", "Adam Altdorfer"], ["HL Terracina Dental Care", "Bhayani Nisha"], ["HL Cambridge Dental Care", "Benjamin Brubaker"], ["Cerama-Lab Inc.", "Cerama Lab"], ["HL Longston Place Dental", "Ameenuddin Ahmed"], ["Miller, Stacey", "Stacey Miller"], ["Tiner Family Dental", "Kirk Tiner"], ["ELITE1264 Five Points Dental", "Ronald Roessler"], ["HL Dental Care on Causeway", "Melanie Goforth-Moore"], ["Midwest Dental Pontiac", "Angela Bess"], ["INSP Laskaris, Niki", "Niki Laskaris"], ["HL The Smile Centre - Venice", "Bojko Sonja"], ["HL Sunridge Dental Care", "McEvoy Kelsey"], ["Market Heights Family Dental", "Matthew Tochterman"], ["Peak Family Dental", "David Pass"], ["HL Dental Care of Pewaukee", "Niedziela Jeffrey"], ["Elliff, Andrew", "Andrew Elliff"], ["HL Killian Road Dental Care", "Breanna Henley"], ["Miller, Angela", "Angela Miller"], ["Valley Dental Care - Aurora", "Satish Gottumukkula"], ["HL Dental Care of Grandview", "Edward Perkins"], ["HL College Avenue Family Dentistry", "Charles Hines"], ["Jason Giuliano DDS Homewood", "Jason Giuliano DDS"], ["Advanced Periodontics", "Lee Patrone"], ["INSP Antioch Dental Center", "Donald Bennett"], ["HL Dental Care at Cedar Crossing", "Chaney Brown"], ["HL Desert Family Dentistry", "Clinton Boscamp"], ["DCA Dental One Associates of Waldorf", "Deana Moody"], ["George, Thomas", "Thomas George"], ["New Day Dentistry - Littleton", "Habil Soondis"], ["King Dental", "Melissa Ewa"], ["HL Cross Timbers Family Dental", "Courtney Wedel"], ["HL ForwardDental - Menomonee Falls", "Evleth Tristen"], ["HL Family Dental Care of Olathe", "Swetha Nagaraju"], ["The Dental Edition", "Baha Abuaita"], ["INSP Schmit, Richard", "Richard Schmit"], ["HL Metro Dentalcare - Maple Grove - Bass Lake", "Lang Kelly"], ["HL Dental Care at Summerfield Crossing", "Caitlin Wild"], ["Midwest Dental Pontiac", "Brandon Gray"], ["HL Dental Care on Holly Hill", "Ganesh Rajagopalan"], ["HL Williamsburg Cosmetic Dentistry", "Jeffrey Oglesby"], ["HL ForwardDental - Muskego - Janesville", "Megan LeGros"], ["Larson - Boulder, Craig", "Craig Larson"], ["INSP McMillan, Patrick", "Patrick Mcmillan"], ["HL Bonita Estero Dental Group", "Claudie Feeney Delgado"], ["Hindman Family Dentistry", "Joshua Hindman"], ["HL 370 DENTAL CARE", "Timothy Davis"], ["MB2 Round Lake Family Dental", "Kalpit Shah"], ["INSP MacLean & Iskander DMD", "Other Doctor(s)"], ["Ideal Dental Lab", "Other Doctor(s)"]];
+const SILVER_DEFAULT = [["INSP Simply Dental Implants", "Richard Guerra"], ["HL Colonial Drive Preventative & Comprehensive Dentistry", "Tommy Dorsey"], ["Periodontal Implant Associates", "Amarik Singh"], ["INSP Suburban Family Dental", "Roman Dziubyk"], ["HL Grandridge Dental", "Jeffrey Morgan"], ["INSP Maczko, Mitchell", "Mitchell Maczko"], ["MB2 Dental Care of Mid Florida Sebring", "Ernesto Llerena"], ["Affordable Dentures & Implants Algonquin", "Aisha Omer"], ["HL Naperville Dental Specialists", "Irene Jovicic"], ["INSP Webster Dental Care of Hoffman Estates-Keith Nemanich", "Keith Nemanich"], ["ELITE00748 Implant Dentistry Of Greater Lansing", "Erwin Crawford"], ["HL Riverside Crossing Dental Care", "Stokey Nicholas"], ["HL Warner Robins Family Dentistry", "Patel Nency"], ["HL Austell Family Dental Care", "Taiwo Ogundipe"], ["MB2 Dental Arts of Huntley", "Bansal Shobhit"], ["HL Staunton Dental Care", "Kareem Shvan"], ["Family Dentistry of Colorado Springs", "Ron Kazemi"], ["HL Mahan Village Dental Care", "Cole Kanesha"], ["INSP MacLean & Iskander DMD", "Douglas MacLean"], ["Peacock Dental", "Sundeep Franklin"], ["HL Christie Dental of Meadowcrest", "Kenneth Steig"], ["Poldek Family Dental", "Kirk Poldek"], ["Fort Worth Dentist - Henderson St.", "Ghaznia Khan"], ["Ideal Dental Lab", "Eddie Larson"], ["Partridge, Drew", "Drew Partridge"], ["Arlington Dentistry", "Ghaznia Khan"], ["HL Dental Care at Cedar Crossing", "Tyler Brockman"], ["HL Whispering Springs Dental Care", "Donna Wilkerson"], ["Mondovi Dental Grisworld", "Hacker"], ["Dental Fields", "Nishu Sharma"], ["HL Premier Dental Partners West County - Olive Blvd", "Christopher Brown"], ["HL Holmestown Commons Dental Care", "David Thieroff"], ["HL Anchor Point Dental Care", "Mark Artzer"], ["Tiner Family Dental", "Kirk Tiner"], ["HL 1st Advantage Dental - Queensbury", "Barclay Natalie"], ["HL Arts District Dental", "Cecil Hill"], ["INSP Kenneth Johnson", "Kenneth A. Johnson"], ["Experience Dental Thornton", "Jeremy Altdorfer"], ["Elliff, Andrew", "Andrew Elliff"], ["HL Janesville Family Dental Care", "Andrew Bachman"], ["Palos Hills Dentistry", "Nicholas Amigoni"], ["HL Dickson Dental", "Stover Matthew"], ["HL Metro Dentalcare - Maple Grove - Bass Lake", "Lang Kelly"], ["HL Family Dental of Canton", "David Wilder"], ["Jason Giuliano DDS Homewood", "Jason Giuliano DDS"], ["HL True Smiles", "Le Huy"], ["The Dental Edition", "Baha Abuaita"], ["HL Dental Care of Grandview", "Edward Perkins"], ["ELITE8211 Westfield Dental, LLP", "Jason Derr"], ["Dental Care of Arlington Heights", "Gary Todd"], ["Opalescence Dental", "Jackson Whitcomb"], ["HL Advanced Dentistry of Citrus County - Lecanto", "Herman Goh"], ["King Dental", "Melissa Ewa"], ["HL Dental Care on Holly Hill", "Ganesh Rajagopalan"], ["HL Family Dental of Canton", "Carol Angstadt"], ["HL Dental Care of Mt. Vernon", "Oh Sehun"], ["INSP Laskaris, Niki", "Niki Laskaris"], ["INSP Antioch Dental Center", "Donald Bennett"], ["Aura Dental Care", "Dharik Patel"], ["Trivedi, Payal", "Payal Trivedi"], ["Advanced Periodontics", "Lee Patrone"], ["HL Dental Care On Smile Way", "Richard Cottrell"], ["HL Dental Care of Huntley", "Grant Pizzo"], ["HL The Smile Centre - Venice", "Bojko Sonja"], ["HL Weeki Wachee Dental Care", "Affan Siddiqui"], ["HL Naperville Dental Specialists", "Anthony LaVacca"], ["HL Terracina Dental Care", "Bhayani Nisha"], ["HL Highpointe Dental Care", "Jeremy Pins"], ["Gentle Dental Care - Mundelein, IL", "Anthony Collins"], ["Peak Family Dental", "David Pass"], ["ELITE1264 Five Points Dental", "Ronald Roessler"], ["HL Greater Pittsburgh Dental Group", "Aaron Chiu"], ["HL Stadium Family Dentistry", "King Melissa"], ["Clearly Cares Dental", "Kenneth Barker"], ["HL Nokomis Dental Care", "Nicole Griffith"], ["Midwest Dental Pontiac", "Brandon Gray"], ["Primary Dental Ltd", "Palak Patel"], ["Experience Dental Boulder Jeremy Altdorfer", "Jeremy Altdorfer"], ["HL Desert Family Dentistry", "Clinton Boscamp"], ["HL Family Dental Care of Olathe", "Swetha Nagaraju"], ["HL TFD - Crystal Lake", "John Yang"], ["HL Sunridge Dental Care", "McEvoy Kelsey"], ["INSP McMillan, Patrick", "Patrick Mcmillan"], ["Miller, Angela", "Angela Miller"], ["HL Dental Care of Pewaukee", "Niedziela Jeffrey"], ["Midwest Dental Pontiac", "Angela Bess"], ["HL Dental Care on Holly Hill", "Taidiana Gonzalez Santander"], ["George, Thomas", "Thomas George"], ["Waters Dentistry", "Cameron Waters"], ["Galaxy Dental", "Zhana Krasyuk"], ["HL Killeen Dental Health Center", "Hyatt Steven"], ["ELITE11288 Morrow County Dental", "Shawn Rajendram"], ["Market Heights Family Dental", "GARY PUNDT"], ["HL Bernwood Park Dental Care", "Dimitrios Gatis"], ["Tim Aiossa DDS", "Tim Aiossa"], ["HL ForwardDental - Muskego - Janesville", "Megan LeGros"], ["MB2 Machesney Dental Studio", "Bansal Shobhit"], ["HL Metro Park Dental Arts", "Dylan Reed"], ["HL Chesley Family Dental", "Kefei Duan"], ["HL Carus Dental - Brodie Lane", "Evans James"], ["HL Williamson Road Dental Care", "Trivedi Malav"], ["Villaz Dental", "Firas Katbi"], ["INSP Beyond Smiles", "Kerry Lowery"], ["HL ForwardDental - West Allis", "Sean Luangpraseuth"], ["Miller, Stacey", "Stacey Miller"], ["Pueblo Dental and Implant Services", "Ron Kazemi"], ["HL College Avenue Family Dentistry", "Charles Hines"], ["HL Cross Timbers Family Dental", "Courtney Wedel"], ["American Dental Center", "Mina Haghiri"], ["Cerama-Lab Inc.", "Cerama Lab"], ["HL American Family Dentistry - Germantown", "Carlos Osorio"], ["Dr. Franz G Stockmann DDS PC", "Franz Stockman"], ["Experience Dental Fort Collins", "Adam Altdorfer"], ["HL Longston Place Dental", "Ameenuddin Ahmed"], ["Midwest Dental Red Wing", "Richard Warnick"], ["Market Heights Family Dental", "Matthew Tochterman"], ["Cary Family Dental", "NIRAJ PATEL"], ["HL Gainesville Family Dentistry", "Brian Winterman"], ["HL Cambridge Dental Care", "Benjamin Brubaker"], ["Smiles for Families", "Aldina Levy"], ["HL Pooler Parkway Dental Care", "Jacob Solomon"], ["INSP MacLean & Iskander DMD", "Dr. Ellie Iskander"], ["Van Alstyne Dental", "Jackson Lloyd"], ["INSP Maczko, Mitchell", "kelsey maczko"], ["Nguyen, David T", "David T. Nguyen"], ["Goad Family Dentistry", "Logan Goad"], ["Division Street Dental", "Noor Khaki"], ["HL Suncreek Family Dentistry", "Nizami Shayan"], ["Smile 360 Chicago", "Mustafa Salam"], ["HL Greater Pittsburgh Dental Group", "Chui Jim"], ["HL Dental Care on Causeway", "Melanie Goforth-Moore"], ["HL Family Dental Care of East Peoria", "Krupa J Bordatto"], ["HL Killian Road Dental Care", "Breanna Henley"], ["HL American Family Dentistry - Mountain Grove", "Michael Konrad"], ["Shim, Edward", "Edward Shim"], ["HL 370 DENTAL CARE", "Timothy Davis"], ["Webster Dental Care of Portage Park", "Larry Cohen"], ["Magical Smiles", "Michael Link"], ["HL Inspire Dental - Chapel Hill", "Alexander Hall"], ["DCA Dental One Associates of Waldorf", "Deana Moody"], ["Elliot M Razdolsky Dental Center", "Elliott Razdolsky"], ["HL The Dentist of Colorado", "Michael Miller"], ["Dental Dezigns", "Antony Soty"], ["HL Dental Care at Winchester Center", "Kevin Cappelen"], ["Advanced Family Dental Care-Elgin", "Anita Sharma"], ["Kind Smiles Dental Health", "Allison Konick"], ["HL Pine Island Road Dental Care", "Yaniel Torres"], ["HL Dental Group of Rockford", "Assad Qasim"], ["MB2 Round Lake Family Dental", "Kalpit Shah"], ["Brothers Dental - Center Point", "Alan Andrews"], ["HL UDA - Charlotte - University Place", "David Lesansky"], ["HL Family Dentistry on Freedom", "Jennifer Brunetti"], ["HL 1st Advantage Dental - Queensbury", "Bharat Patel"], ["HL Byron Family Dental Care", "Jessica Montgomery"], ["Cosmos Family Dental, PC Aurora IL", "Lodhi"], ["Havel Dental", "Brian Havel"], ["Suri Dental Group", "Vishal Suri"], ["HL Coastal Dental Care of Milford", "Jennifer Ortiz"], ["HL Kathleen Dental Care", "Khalil Ali"], ["River Forest Dental Studio", "Gina Piccioni"], ["HL Dental Care at Cedar Crossing", "Chaney Brown"], ["HL Unbridled Dental Care", "Rachel Wilson, DMD"], ["Comfort Dental Care - Schaumburg", "Brijesh Patel"], ["HL Lucie Dental", "Mikhail Gankin"], ["HL Grand Lely Dental Care", "Boris Bujila"], ["Signature Smile Arts Chicago - Dr. Shore", "Alex Shore"], ["HL Green Street Smiles", "Norman Peets"], ["HL Hershey Plaza Dental Center", "Bharat Kundnani"], ["HL Grand Dental", "Trenten Wood"], ["Merit Dental Sandusky", "Parag Kirpekar"], ["HL Imperial Lakes Dental Care", "Christopher Basily"], ["Bram, Keith", "Keith Bram"], ["HL Christie Dental of Suntree", "Anjay Kalra"], ["My Health Dentistry", "Manal Ibrahim"], ["HL Dental Care at Casey Key", "Hightower Kaitlin"], ["HL Dental Care at Summerfield Crossing", "Caitlin Wild"], ["HL Vista View Dental Care", "Enrique Wisemann"], ["Diaz, Martha", "Martha Diaz"], ["ACME Dentistry", "Zubair Mohammed"], ["HL Little River Dental Care", "Tran Tuan"], ["HL Dental Care of Veterans Parkway", "Essence Campbell"], ["HL Dental Care at Foxbank", "Christian Edwards"], ["HL Meadow Farms Dental Care", "Justin Kauffman"], ["HL ForwardDental - Menomonee Falls", "Evleth Tristen"], ["HL Autumn Dental", "Ramsha Sajjad"], ["HL All Smiles Northwest", "Steinhubel Michelle"], ["Signature Smile Arts: Alex Shore DDS", "Alex Shore"], ["HL Colorado Precision Dentistry", "Leyva Heather"], ["HL Mt. Sterling Smiles", "Krisy Howard"], ["Bartlett Dental Station", "William Prosniewski"], ["Elliff, Andrew", "Will Prosniewski"], ["Moore, Kelly", "Kelly Moore"], ["Lake Street Dental", "Harjinder Khaira"], ["HL Mountain Crest Dental", "Colin Smith"], ["Medical Center Dental Associates- Bryan Erce", "Bryan Erce"], ["HL Williamson Road Dental Care", "Boladale Ajayi"], ["Lakota Shorewood, Mike", "Mike Lakota"], ["Brothers Dental", "Alan Andrews"], ["HL Coconut Point Dental Care", "Dordevic Predrag"], ["HL Gainesville Family Dentistry", "Billingsley Matthew"], ["Orland Elite", "Samar Odeh"], ["HL Family Dental Care of East Peoria", "Dan Bordatto"], ["New Day Dentistry - Littleton", "Habil Soondis"], ["HL Dental Care of Cookeville", "Upadhyayula Kameswara Satya Srik"], ["Addison Dental Studio", "Lucy Shah"], ["HL Stratford Dental", "Brian Evans"], ["HL Quail Run Dental Care", "Andrea Wallace"], ["Larson - Boulder, Craig", "Craig Larson"], ["Root Dental", "Rick Root"], ["HL Family Dental Care of South Bradenton", "Nichole Koby"], ["HL Mariner Village Dental Care", "Palepu Nikhila"], ["King Dental", "Kalyani, Ramamurthy"], ["HL Family Dental of Canton", "Logan McIntire"], ["Wood Dental Group", "Natalie Wood"], ["HL V2 Dentistry - Keizer", "Meredith Van Voorhis"], ["Gladiola Dental Care", "Aleksandra Glodek"], ["Andrew J. Mettman DDS LLC", "Andrew Mettman"], ["HL Family Dentistry at Riverside Crossing", "Katelyn Nevitt-Dziedziejko"], ["HL American Family Dentistry - Mountain Grove", "Goksel Turker"], ["HL Neibauer - Dumfries", "Surendran Swapna"], ["Innovative Dentist - Denver", "Albert Kim"], ["Horton and Vranas", "Michele Horton"], ["HL Haynes Bridge Dental Care", "Sarah Abdulhameed"], ["South Barrington Dental Care", "Allison Bartley, DMD"], ["Advanced Family Dental Care-Elgin", "Nitin Patel"], ["Elmwood Dental", "Nitin Patel"], ["HL Dental Care on Causeway", "Linda Thomas"], ["Valley Dental Care - Aurora", "Satish Gottumukkula"], ["HL Pine Island Road Dental Care", "Cerchiara Teresa"], ["HL Artistic Smiles Family & Cosmetic Dentistry", "Clarence Kegler"], ["PG Family Dental", "Peter Drahos"], ["Celebrating Smiles", "Thomas Marsho"], ["HL Williamsburg Cosmetic Dentistry", "Jeffrey Oglesby"], ["HL Silver Falls Dental Care", "Kelly Harris"], ["HL Dental Care On Smile Way", "Gabriel W Martin"], ["HL Prairie Lakes Dental Care", "Raymond Arsenault"], ["My Bloomingdale Dentist", "Henry Kim"], ["HL Spring House Family Dentistry", "Norman Graulich"], ["INSP Modern Essence", "Brainard Llanes"], ["HL Legacy Landing Dentistry", "Pamela Johnson-Darr"], ["Brothers Dental - Center Point", "Cory Andrews"], ["HL Family Dentistry at Riverside Crossing", "Leor Lindner"], ["Villaz Dental", "Quraishi Maseera"], ["HL Lorraine Road Dental Care", "Mary Dixon"], ["HL Bickford Family Dental Care", "Messah Martin"], ["HL Metro Dentalcare - Maplewood", "William Johnson"], ["Hindman Family Dentistry", "Joshua Hindman"], ["Kingery Dental", "John Micaletti"], ["HL Dental Care at Triple Crown", "Eiman Ashraf"], ["HL DeBary Dental Care", "Amin Meyzgan"], ["HL Sunridge Dental Care", "Sara Birrer"], ["HL Wexford Dental Arts, LLC", "Anita Pitts"], ["Project Worthmore", "Manisha Makhija"], ["Rubino Dentistry", "Ross Rubino"], ["Taylor Dental Center- Adelayme Raed", "Aldelayme Raed"], ["INSP Hart Dental", "Agnieszka Iwaszczyszyn"], ["Icon Dental Studio PLLC", "Pratiti Gandhi DMD"], ["Ajay Das DDS PC", "Ajay Das"], ["HL Royal Oaks Dental Care", "Zayda Hubert Reyes"], ["HL Ashby Park Restorative and Cosmetic Dentistry", "Vasudevan Paridhie"], ["HL Sawgrass Complete Dentistry", "Lombardo Robert"], ["HL Skymarks Family Dental Care", "Nisha Mody"], ["HL Neibauer - Dumfries", "Nalluri Jatin Kumar"], ["HL North Aurora Lifetime Dentistry", "Nessim Ingy"], ["HL Absolute Dental Care", "Mahmoud Qarawi"], ["Dr. Jackie's Family Dental", "Jackie McMahon"], ["Caring Smiles Dental", "Ankur Patel"], ["HL Dental Care of Patchogue", "Qi Dai"], ["Galdos Dental", "Hugo Galdos Santalo"], ["INSP Hart Dental", "Iwona Iwaszczyszyn"], ["Spark Dental PC", "Bhatia Ritika"], ["Dental Fields", "Erid Aliaj"], ["Midwest Dental Boone", "Halie Bricker"], ["Leading Edge Dental Center", "Krizia Pallarca"], ["HL Absolute Dental Care", "Burton JERRY"], ["HL Diamond Valley Dental Care", "Matthew Smith"], ["HL Falcon Point Dental Care", "Kevin Elliott"], ["HL Dental Care at Pretty Pond", "Ahmed Jawad"], ["HL Meadow Ranch Dental Care", "Rafael Castro Mompie"], ["HL Diamond Valley Dental Care", "Shahin Hasan"], ["TruCare Dentistry", "Trusha Patel"], ["HL Dental Care at Triple Crown", "Nooreddin Almoutem"], ["The Toothery", "Jessica Bertoglio"], ["HL South Austin Dentist", "Steven Van Wicklen"], ["HL Dental Care at Winchester Center", "Arianna Pelaez Leon"], ["HL Briarwood Park Dental Care", "Benjamin Richardson"], ["HL Vista View Dental Care - Stanley", "Michael Stanley"], ["Cedar Mountain Family Dentistry", "David Sugiyama"], ["Midwest Dental Watseka", "Shandra Bundy-Smith"], ["Prairie Meadows Dental", "T. Walia"], ["HL Signature Smiles - Lathrup Village", "Ahsen Malik"], ["HL Deer Creek Family Dental", "Ryan Poertner"], ["HL ForwardDental - Green Bay - Lombardi", "Hitzeman Teresa"], ["Pristine Family Dental", "Anjum Khan"], ["Acacia Family Dentistry", "JASMINE LIU"], ["INSP Schmit, Richard", "Richard Schmit"], ["Kunnel Dental Center", "Jessie Kunnel"], ["Stearns Dental", "Nishu Sharma"], ["HL The Smile Centre - Venice", "Ashley Wagler"], ["Castle Lake Dental", "Stephenie Sharp"], ["Wheaton Dental Clinic", "Mary Hatzis"], ["First Class Smiles", "Victor Grandinetti"], ["HL Woodland Family Dental Care", "Singh Rajpaul"], ["Windy City Dental", "Jane Lang"], ["Freiberg Family Dentistry", "Chelsea Freiberg"], ["HL Forest Valley Dental Care", "Heather Lane Whitmire"], ["Bohl, Eric", "Eric Bohl"], ["HL Meadow Farms Dental Care", "Twila M. Bell Hudley"], ["Smiles on Miner", "Aena Patel"], ["HL 1st Advantage Dental - Clifton Park", "Hassan Tehzeeb"], ["Edidin, Steven D.", "Steven Edidin"], ["HL Dental Care at Prairie Crossing", "Whiteside Jeffrey"], ["HL Advanced Dentistry", "Wylde Tyler"], ["HL Dental Care at Babcock Ranch", "Randy Lopez"], ["Prime Dental Associates", "Victoria Kushnir"], ["Wojciechowski, Mark A.", "Mark Wojciechowski"], ["Laskin Family Dental", "Julia Laskin"], ["HL UDA - Charlotte - University Place", "Alexander Paul"], ["River Pointe Dental Huntley", "Rachelle Hardy"], ["HL Optimum Dentistry", "David Santana"], ["HL McDonogh Dental", "Mark Sugarman"], ["HL Covel, Stack and Henon, DDS, P.C.", "Deepika Naidu Thota"], ["HL Colorado Precision Dentistry", "Emory Jack"], ["HL Smile Design Fourth Street", "Taylor L Dietl"], ["HL Okaloosa Family Dentistry", "Alex Szymborski"], ["King Dental", "Shahzmeen Hussain"], ["HL Whispering Springs Dental Care", "Aaleeyah Pringle"], ["Orland Elite", "Ashraf Ahmad"], ["HL Pearly Whites Family Dentistry", "Heather Manka"], ["HL Geist Dental Care", "Raven Murdock"], ["Price, Lauren", "Lauren Price"], ["HL Oswego Commons Family Dental", "Maturi Venu"], ["H & M Family Dentistry", "Hua Gao"], ["ELITE FakhraAhmad", "Fakhra Ahmad"], ["HL Dental Care at Gorden Crossing", "Hunter Tania"], ["Finesse Dental Care", "Niravkumar Patel"], ["Clearly Cares Dental", "Phalguni Patel"], ["HL City Smiles DC", "Stuart Ross"], ["New Gen Dental", "Shilpa Khullar"], ["HL San Carlos Dental Care", "Rayven Newberry"], ["HL CC - Venice", "Kathleen Beazell"], ["Marengo Dental", "Zimmer"], ["Federal Heights Family Dentistry", "Vivian Vong"], ["HL Mesa Ridge Dental Center", "Ahmed Fahad"], ["Rockford Dental Lounge", "Ribhi salaman"], ["Advanced Family Dental Care-Elgin", "Pooja Sharma"], ["HL Deer Creek Family Dental", "Adrian Mohn"], ["Becker Dental & Associates", "Boris Becker"], ["HL True Smiles", "Huy Le"], ["MB2 Palatine Dental Associates", "Dr. Jane Parker"], ["HL Family Dentistry of Poplar Bluff", "Mark Harris"], ["River Pointe Dental Fox River Grove", "Rachelle Hardy"], ["HL Hershey Plaza Dental Center", "Sydney Kunkel"], ["HL North Aurora Lifetime Dentistry", "Daniel Campolieto"], ["HL Artistic Smiles Family & Cosmetic Dentistry", "Jennifer Brunetti"], ["HL Mallard Creek Dental", "Monica Foley"], ["Brothers Dental", "Cory Andrews"], ["HL West Highland Dental Care", "Monica Garay"], ["HL Mosaic Dental - Apple Valley", "Dr. Shuchi Patel"], ["HL Coastal Dental Care of Milford", "Aye Myat"], ["VIG Dental", "Iva Arnaudova"], ["Peacock Dental", "Diana Capota"], ["International Dental Center", "Raben Salaman"], ["HL Crosspoint Family Dental Care", "Patel Rushi"], ["HL Diamond Valley Dental Care", "Ronald Johnson"], ["Midwest Dental Watseka", "E Osterhoff"], ["Paloma Dental", "Alexandra Bassett"], ["HL Lifetime Dentistry of Chickasha", "Noremil Simmons"], ["HL Seasons Family Dental Care", "Zachary Behrendt"], ["Experience Dental Boulder", "Adam Altdorfer"], ["HL North Vermilion Family Dental", "Vishal Kalavadia"], ["Sky Dental Care", "Vilpa Patel"], ["HL Dental Care at Palmer Ranch", "Dang Vu"], ["DCA Premier Dental of Fairfield", "Ronnie Guidice"], ["King Dental", "Alnaasan Faisal Osama"], ["HL Associated Dental Care Providers-Carondelet", "Patel Jay"], ["HL Edgewood Family Dentistry", "Chien Peter"], ["HL Walla Walla Dental Care", "Danis Laizure"], ["Crystal Soto - Mirza Dental", "Zubair Mohammed"], ["INSP Hart Dental", "Paulina Wisniewska"], ["Mirza Dental - Kedzie 47 Dental-", "ROHAN VERMA"], ["HL Dental Care of Veterans Parkway", "Edwin Scott"], ["Crystal Soto - Mirza Dental", "Gaurav Aidasani"], ["Crystal Soto - Mirza Dental", "Mohammed Mir"], ["Midwest Dental West Dundee", "Zoran Stojanovic"], ["HL MyWildwoodDentist", "Collette Lucas"], ["Pueblo Dental and Implant Services", "NASSIF ."], ["Midwest Dental Green Bay West", "Julie Farrell"], ["HL Gainesville Family Dentistry", "Daniel Habib"], ["HL Mesa Ridge Dental Center", "Branon Johnson"], ["HL Chestnut Hills - Monroeville", "Kathryn Dozzi"], ["HL Landmark Dental Care", "Joshua Young"], ["HL Family Dental on Louetta", "Gowid Kirouls"], ["HL North Hills Family Dental", "Tara Duah"], ["HL Complete Dentistry of Estero", "Whitney Haidet"], ["HL Family Dental Care on Washington", "Bhooshir Patel"], ["MB2 Palatine Dental Associates", "Jessica Britten"], ["Jeremy Altdorfer Experience Dental Fort Collins", "Jeremy Altdorfer"], ["MB2 Forest Hills Family Dentistry", "Bradley Dorsch"], ["Omnia Dental", "Alla shtilman"], ["HL Rocky Mount Smilemakers", "Tiffany Huynh"], ["HL Main Street Dental Care", "Donald Kim"], ["HL Forest Valley Dental Care", "Kai Alexander Standifer"], ["Great Smiles Family Dental Dr. Juan Aguirre", "Juan Aguirre"], ["Absolute Dental", "Jasmeen Singh"], ["Spark Dental PC", "Muzaffer Misbah"], ["Meda Dental", "Sathya Meda Naga"], ["Federal Heights Family Dentistry", "Alan Wong"], ["HL Hammond Family Dentistry", "Alysha Moll"], ["HL Enclave Dental Care", "Matthew Phillips"], ["HL Creekside Commons Dentistry", "Zena Gutmann"], ["John E. Freund DDS", "John Freund"], ["HL Lakeview Family Dental", "Sheena Lyn"], ["HL Allison Park Dentistry", "Shin Kyungmin"], ["Gomez Dental", "Hector Gomez"], ["Root Dental Algonquin", "Maggie Grothe"], ["HL Bonita Estero Dental Group", "Claudie Feeney Delgado"], ["HL V2 Dentistry - Keizer", "Brian Van Voorhis"], ["Signature Smile Arts Chicago - Dr. Shore", "Aaron Kutinsky"], ["Glendale Heights Family Dental", "Bhumika Patel"], ["Ageless Dentistry & Beyond Park Ridge", "Marie Faklaris"], ["HL Morningside Family Dental", "Aliker Paul"], ["Fantastic Smiles Mt. Prospect", "Ewa Koser"], ["HL ForwardDental - Brown Deer - Sherman", "Brent Tollerud"], ["HL Montour Dental Pittsburgh", "Brendan Bernard"], ["Albert Magalio Dentistry", "Albert Magalio"], ["INSP Hart Dental", "Rudnicki"], ["HL Dental Care on Quebec", "Kiersten Stack"], ["HL Second Creek Dental Care", "Aya Alshafi"], ["Sandpiper Dental", "Kim Doan"], ["HL Green Mount Family Dentistry", "Amanda Littlefield"], ["Envision a Smile Dentistry South Elgin", "Carl E. Henley"], ["Sonrisa Family Dental", "Albert Adebayo"], ["HL Pearly Whites Family Dentistry", "Lindquist Theresa"], ["HL Southpointe Complete Dental", "Branon Johnson"], ["Haven Family Dental", "Keyrolos Bottros"], ["All Smiles Cosmetic & General Dentistry Dr. Patrick Spilotro", "Dr. Patrick Spilotro"], ["HL Advanced Dental Health Center", "Carley Abbott"], ["HL ForwardDental - West Allis", "Anjali Mehta"], ["Salud Family Dental Center", "Asim Ansari"], ["Health First Dental", "Asim Ansari"], ["Solace Dental Group", "Emad Zaidi"], ["HL Fusion Dental - Bethesda", "Tavakoli Paymaan"], ["Cicero Dental Center - Aldelayme", "Aldelayme Raed"], ["Kreider Family Dentistry", "Ping Lucero"], ["International Dental Center-Rockford", "Ribhi Salamah"], ["Vantage Point Dental", "Dr. Zach Hernann"], ["INSP Renovo Endodontic Studio - Schaumburg", "Jonathan Wong"], ["Northeast Family Dental Care-Elgin", "Omar Arshad"], ["King Dental", "Nishu Sharma"], ["HL Southpointe Complete Dental", "David Johnson"], ["HL Smile Design Downtown Tampa", "Matthew Munro"], ["Grand Dentistry - Gurnee", "Rachel Cohn"], ["Vitality Smiles", "No Doctor Vitality Smiles"], ["HL San Carlos Dental Care", "Stacy Vadakkan"], ["MB2 Dental Care of Mid Florida Sebring", "Nelda Iznaga"], ["Smile Bright Dental", "Amin Ilyas"], ["Betty Aivazian DDS, LTD", "Aram Aivazian"], ["Palos Hills Dentistry", "Sawsan Asfour"], ["HL Barracks Road Dental Care", "Ahmad Jumaa"], ["HL Meadow Oaks Dental Care", "Matthew Bright"], ["Villaz Dental", "Mohamed Ibrahim Rasheedha"], ["Larson - Longmont, Craig", "Craig Larson"], ["ADS Dental Solutions", "ADS"], ["ELITE11486 Oldroyd Family Dentistry", "Elliott Rotert"], ["Walter Stupnitsky DDS", "Walter Stupnitsky"], ["HL Junction Dental Care", "Azeem Tasneem"], ["Tom L. Baranowski DDS", "Tom Baranowski"], ["Valley Dental Care - Aurora", "Samantha Kothapalli"], ["HL UDA - Charlotte - University 2", "Travis Thomas"], ["HL Dental Care at Mullins Colony", "Golnaz Emami Naeini"], ["Elite Dental Studio LTD", "Dawood Harunani"], ["HL Woodland Dental Care", "Maria Carrillo"], ["HL Green Street Smiles", "Jonathan Taylor"], ["HL Lucie Dental", "Scott Azari"], ["HL Dental Care of Huntley", "Yong Woo Lee"], ["HL Crosspoint Family Dental Care", "Rushi Patel"], ["HL Harbor Point Dental Care", "Gomez Renee"], ["ISmile Dental and Implants", "Eric Johnson"], ["Dental Fields", "Ami Barot"], ["Zen Dental", "Remy Dalloul"], ["Thomas Sellet", "Thomas Sellet"], ["HL Nokomis Dental Care", "Nicole Dunlap"], ["HL Mirada Market Dental Care", "Amanda Forche"], ["Shining Smiles - Franklin Park", "Rainah Hanis"], ["HL Dental Care of Huntsville", "Coke Kristain"], ["HL MyWildwoodDentist", "Nicole Nong"], ["HL Duvall Family Dental", "Anna Lisin"], ["Midwest Dental Vernon Hills", "Elysia An"], ["HL Metro Dentalcare - Woodbury - Commerce", "Alan Repak"], ["MB2 Premier Dental - Coweta", "Chad Reid"], ["Ostendorf Family Dentistry", "Chris Ostendorf"], ["Glendale Heights Family Dental", "Amina Quadri"], ["HL Bradenton Smiles Dentistry", "Kelly Harris"], ["HL Lakeview Family Dental", "Eugene Osbon"], ["HL Bradenton Smiles Dentistry", "Lauritsen Nicole"], ["HL Advanced Dentistry of Citrus County - Lecanto", "Nikoll Sanchez Garrido"], ["HL Metro Dentalcare - Saint Paul - Midway", "Benijala Salihbegovic"], ["HL Carus Dental - Georgetown - University", "Daniel Caraveo"], ["HL Bell Tower Dental Care", "Christopher Norris"], ["HL CC - Venice", "Charlotte Haught"], ["Ageless Dentistry & Beyond South Elgin", "Marie Faklaris"], ["HL ForwardDental - Brookfield", "Sejal Patel"], ["DCA Argyle Dental Center - Hussey", "Thomas Hussey"], ["HL Lakeside Dental - Tuscaloosa", "Andrew Musso"], ["HL Porter Dental Center", "Li Lu"], ["HL Avon Dental Care", "Thomas Hughes"], ["HL Associated Dental Care Providers-Chandler", "Brianne Kaufman"], ["HL Bay Area Dental Care", "Hale Stephen"], ["HL East Creek Dental Care", "Kaiwei Wang"], ["Advanced Family Dental Care-Elgin", "Obaidi"], ["Shining Smiles - Wheaton", "Salman Javed"], ["HL Summit Plaza Dental Care", "Patrick Sedlar"], ["Dental Fields", "Lynn Kholoki"], ["Maine Dental Laboratory", "Maine Dental Lab"], ["HL Dental Care on 7", "Angel Hale"], ["HL Skymarks Family Dental Care", "Bianca Uttamchandani"], ["Envision A Smile Sleep Hollow", "Carl E. Henley"], ["HL Diamond Valley Dental Care", "Hasan Shahin"], ["DODProgressive", "Chaitra Rao-Aithal, DDS"], ["MB2 Forest Hills Family Dentistry", "Michael Reidy"], ["HL ADT - Rockford", "Reena Patel"], ["Dao Dental Care", "David Dao"], ["HL Family Dentistry at Riverside Crossing", "Joseph Giroux"], ["HL Twinsburg Dental Associates", "Britni Gray"], ["Loukas Dentistry", "Thanasi Loukas"], ["Lisle Dental Center", "Glenn Amante"], ["ELITE01072 Smith Family Dentistry WV", "Chris Smith"], ["HL Dental Care at Foxbank", "Ashley Puthiyadam"], ["Midwest Dental Danville", "Divya Gade"], ["HL Lorraine Road Dental Care", "Erika Ynga"], ["Dental Fields", "Mehan Aditi"], ["R Family Dental", "David Reisinger"], ["Peak Family Dental - Modrowski", "Brian Modrowski"], ["All Family Dental Grayslake", "Naheed Yasmeen"], ["HL Timothy Road Dental Care", "Clanton Wendi"], ["MB2 Dental Arts of Huntley", "Ihmud Ihmud"], ["MB2 Advanced Family Dentistry Alaska", "Daigle"], ["HL Green Mount Family Dentistry", "Gladsy George"], ["Amesbury Family Dental", "David Huynh"], ["HL University Place Dental", "Bryan Goldesberry"], ["All Family Dental Grayslake", "Malika"], ["HL Inland Family Dentistry", "Adriana Zelaya"], ["HL Carolina Dental Group", "Katelyn Nevitt-Dziedziejko"], ["Brickyard Family Dental", "Francis Kim"], ["HL Pearly Whites Family Dentistry", "Rachel Slenker"], ["HL Byron Family Dental Care", "TaRhonda Ingram"], ["HL Dixon Park Dental Care", "Beard Kimberly"], ["HL Harbor Point Dental Care", "Anna Antony"], ["HL Dental Care of Mt. Vernon", "DO NOT ENTER James Oh"], ["HL Naperville Dental Specialists", "Nicolette Spencer"], ["HL Smiles at Carolina Forest", "Chirag Patel"], ["HL Harrison Bridge Dental Care", "Shelly Elizabeth"], ["HL Highland City Dental Care", "Nur Sheikhan"], ["Cumberland JAcob Whipple", "Jacob Whipple"], ["Beacon Hill Dental Care", "Bill Sheehy"], ["Willow Run Dental", "Lonnie McMurtrey"], ["Highlands Dental Care", "Tripty Sharma"], ["HL Weeki Wachee Dental Care", "John Contreras"], ["INSP Beyond Smiles", "Lamiyo Tanovic"], ["HL UDA - Charlotte - University 2", "Patricia Aguirre"], ["HL Barracks Road Dental Care", "Fatima Shehzana"], ["TM Studio LLC", "Tom Sadkowy"], ["HL Today's Family Dental", "Randall Meyer"], ["HL Franklin Dental Care", "Paul Maizan"], ["Dental Care of Arlington Heights", "Siddharth Bansal"], ["Webster Dental Care of Lakeview", "Dr. Jacinta Tracey"], ["Burns, Michael", "No Doctor Burns, Michael"], ["Corey J. Walther DDS", "Corey Walther"], ["Somonauk Family Dental Dr. Ilyas", "Irfana Ilyas"], ["Philip, Abraham", "Abraham Philip"], ["Love Dental, Inc", "Shandra Bundy-Smith"], ["Emerald Dental CO", "Stephanie Paswaters"], ["HL Timothy Road Dental Care", "Jamie Sarkan"], ["HL Standiford Plaza Dental Care", "Parker Upchurch"], ["Woodland Dental - Dr. Tyler Grisar", "Tyler Grisar"], ["Plum Grove Dental Associates- Adeoti", "Stephen Adeoti"], ["Market Heights Family Dental", "Richard Fossum"], ["All Family Dental and Braces", "Estelle Milrud"], ["Betty Aivazian DDS, LTD", "Sylvia Deeks"], ["Bailey Dental", "Jared Smith"], ["Medical Center Dental Associates - Melrose Park", "Bryan Erce"], ["HL Crescent Park Dental Care", "Jawad Noor"], ["HL West Villages Dental Care", "Gadalla Sheref"], ["HL Admiral Dental Care", "Totaro Jared"], ["HL Imperial Lakes Dental Care", "Christina Basily"], ["HL Family Dental at Dublin Heights", "Anthony Presicci"], ["HL Advanced Dental Health Center", "Clayton Cummings"], ["HL Family Dentistry on Freedom", "Gabriel Lima"], ["HL Dental Care of Sherrills Ford", "Andrew Faulk"], ["HL Florence Family Dentistry", "Sufeeya Irani"], ["HL Gibsonia Dental Care", "Anthony Colangelo"], ["All Family Dental Grayslake", "shivakumar"], ["VIG Dental", "Demat Borjas"], ["Shining Smiles - Franklin Park", "Karan Varma"], ["Bella Smiles Dental", "Amy Qian"], ["Your Smile Studio", "Robert Wertke"], ["HL Fusion Dental - Bethesda", "Subramanian Vipul"], ["HL ForwardDental - Brookfield", "Nathaniel Van Ryn"], ["HL Dental Care on 7", "Angela Marulanda"], ["Stearns Dental", "Bhatia Ritika"], ["HL Neibauer - Harrison Crossing", "Madad Zohra"], ["Celebrating Smiles", "Felicia Chu"], ["King Dental", "Ali Ghayda"], ["Shining Smiles - Franklin Park", "Yull Villasenor"], ["HL Absolute Dental Care", "Michael Folck"], ["HL Dental Care of Bixby", "Todd Davis"], ["HL Naperville Dental Specialists", "Naqvi Rabia"], ["HL Whispering Springs Dental Care", "Hiten Patel"], ["HL My Dentist - Ada", "Morgan Moody"], ["HL Duck Creek Dental Care", "Patrick Canty"], ["HL Oswego Commons Family Dental", "Toritto Nicola"], ["HL Dental Care of Davenport", "Christian Watkins"], ["HL Stadium Family Dentistry", "Edgardo Leiva"], ["HL Franklin Dental Care", "Sean Fox"], ["HL Dental Care of Viera East", "Marisa Arriaga"], ["HL Premier Dental Partners Downtown", "Mona Patel"], ["HL Dental Care on Quebec", "David Harger"], ["HL Jacaranda Dental Care", "Erik Holsen"], ["HL Lifetime Dentistry of Chickasha", "Carley Abbott"], ["HL Creative Smiles Dental Care", "Emily Finney"], ["HL Coddle Creek Dental Care", "Boladale Ajayi"], ["HL St. Augustine Family Dentistry", "German Obando"], ["HL Salem Dental Care", "Emilio Ribas"], ["HL Dental Care at Lakewood Walk", "Igor Bilov"], ["MB2 Machesney Dental Studio", "Esha Munshi"], ["HL Coastal Dental Care of Milford", "Derek Rizzitelli"], ["HL Crosspoint Family Dental Care", "Senger-Paz Monica"], ["HL Dental Care on Quebec", "Manisha Wohlford"], ["HL Beaver Creek Commons Dental", "Patel Vanee"], ["HL Dental Care at The Fountains", "Katherine Reece"], ["HL Macedonia Dental Arts", "Jacob Rosebrock"], ["HL Parkstone Dental Care", "Donald Thompson II"], ["HL Pine Rock Dental Care", "Lena Umme"], ["HL Station Side Dental Care", "Steven Owczaruk"], ["HL Highbrook Way Dental Care", "Darren Wallace"], ["Risus Orthodontics", "Joseph Kunnel"], ["Webster Dental Care of Lakeview", "Brian Havel"], ["HL Water Tower Dental Care", "Reed Reddell"], ["HL Westport Dental Care", "Ellen Denmead"], ["Flack Family Dentistry", "David Flack"]];
 const gNorm = v => String(v || '').toLowerCase().replace(/\bdr\.?\s+/g, '').replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
-const gNameKey = v => gNorm(v).split(' ').filter(Boolean).sort().join(' ');
+const G_TITLES = new Set(['dds', 'dmd', 'md', 'ms', 'msd', 'phd', 'pc', 'pa', 'pllc', 'llc', 'jr', 'sr', 'ii', 'iii', 'iv', 'dr']);
+const gTokens = v => gNorm(v).split(' ').filter(w => w.length > 1 && !G_TITLES.has(w));
+const gNameKey = v => gTokens(v).sort().join(' ');
 function goldenRows() {
   const up = (typeof KEYACCT !== 'undefined' && KEYACCT.list) ? KEYACCT.list.filter(r => r.doctor_name).map(r => [r.practice_name || '', r.doctor_name]) : [];
   return up.length ? { rows: up, src: 'the Diamond list on the Reports tab' } : { rows: GOLDEN_DEFAULT, src: 'the Diamond list file' };
 }
-function goldenMatch() {
-  const G = goldenRows(), ck = 'golden:' + G.rows.length + ':' + G.src;
-  if (APP.derived && APP.derived[ck]) return APP.derived[ck];
+// every doctor in the data, by name key, with their name words and practices
+function listIndex() {
+  if (APP.derived && APP.derived.listIdx) return APP.derived.listIdx;
   const byName = new Map(), seen = new Map();
   for (const r of APP.raw || []) {
     if (!r || !r.drId) continue;
     let x = seen.get(r.drId);
-    if (!x) { x = { id: r.drId, pracs: new Set() }; seen.set(r.drId, x); const k = gNameKey(r.drName); (byName.get(k) || byName.set(k, []).get(k)).push(x); }
+    if (!x) { x = { id: r.drId, toks: new Set(gTokens(r.drName)), pracs: new Set() }; seen.set(r.drId, x); const k = gNameKey(r.drName); (byName.get(k) || byName.set(k, []).get(k)).push(x); }
     if (r.practice) x.pracs.add(gNorm(r.practice));
   }
-  const ids = new Set(), unmatched = [];
-  G.rows.forEach(([prac, doc]) => {
-    // "Other Doctor(s)" / "All doctors": every doctor at that practice
-    if (/^\s*(other|all)\b[^a-z]*doctor|^\s*others?\s*$/i.test(doc)) {
-      const P = gNorm(prac), at = P ? [...seen.values()].filter(x => [...x.pracs].some(q => q.startsWith(P) || P.startsWith(q))) : [];
-      if (at.length) at.forEach(x => ids.add(x.id)); else unmatched.push({ prac, doc });
-      return;
+  const out = { byName, docs: [...seen.values()] };
+  if (APP.derived && APP.raw && APP.raw.length) APP.derived.listIdx = out;
+  return out;
+}
+function listMatch(rows) {
+  const { byName, docs } = listIndex(), ids = new Set(), unmatched = [], perRow = [];
+  rows.forEach(([prac, doc]) => {
+    const P = gNorm(prac), atP = x => !!P && [...x.pracs].some(q => q.startsWith(P) || P.startsWith(q));
+    let got;
+    if (/^\s*(other|all)\b[^a-z]*doctor|^\s*others?\s*$/i.test(doc)) got = docs.filter(atP);
+    else {
+      let c = byName.get(gNameKey(doc)) || [];
+      if (!c.length) { const t = gTokens(doc); if (t.length && P) c = docs.filter(x => atP(x) && t.every(w => x.toks.has(w))); }
+      const byP = c.filter(atP); got = byP.length ? byP : c;
     }
-    const c = byName.get(gNameKey(doc)) || [];
-    if (!c.length) { unmatched.push({ prac, doc }); return; }
-    const P = gNorm(prac), byP = P ? c.filter(x => [...x.pracs].some(q => q.startsWith(P) || P.startsWith(q))) : [];
-    (byP.length ? byP : c).forEach(x => ids.add(x.id));
+    if (!got.length) unmatched.push({ prac, doc });
+    got.forEach(x => ids.add(x.id)); perRow.push(got.map(x => x.id));
   });
-  const out = { ids, unmatched, total: G.rows.length, src: G.src };
-  if (APP.derived) APP.derived[ck] = out;
+  return { ids, unmatched, perRow };
+}
+function goldenMatch() {
+  const G = goldenRows(), ck = 'golden:' + G.rows.length + ':' + G.src;
+  if (APP.derived && APP.derived[ck]) return APP.derived[ck];
+  const m = listMatch(G.rows), out = { ids: m.ids, unmatched: m.unmatched, total: G.rows.length, src: G.src };
+  if (APP.derived && APP.raw && APP.raw.length) APP.derived[ck] = out;
+  return out;
+}
+function silverMatch() {
+  if (APP.derived && APP.derived.silverMatch) return APP.derived.silverMatch;
+  const gold = goldenIds(), m = listMatch(SILVER_DEFAULT), ids = new Set(); let dupes = 0;
+  m.perRow.forEach(r => { if (r.length && r.every(id => gold.has(id))) dupes++; r.forEach(id => { if (!gold.has(id)) ids.add(id); }); });
+  const out = { ids, unmatched: m.unmatched, total: SILVER_DEFAULT.length, dupes, src: 'the Silver list file' };
+  if (APP.derived && APP.raw && APP.raw.length) APP.derived.silverMatch = out;
   return out;
 }
 
@@ -5805,41 +5890,54 @@ function goldenIds() {
   return ids;
 }
 const isGolden = id => !!id && goldenIds().has(id);
-const goldMark = id => isGolden(id) ? '<span class="gm" title="Golden List" aria-label="Golden List">⭐</span>' : '';
+function silverIds() {
+  if (APP.derived && APP.derived.silverIds) return APP.derived.silverIds;
+  const ids = (APP.raw && APP.raw.length) ? silverMatch().ids : new Set();
+  if (APP.derived && APP.raw && APP.raw.length) APP.derived.silverIds = ids;
+  return ids;
+}
+const isSilver = id => !!id && !isGolden(id) && silverIds().has(id);
+const goldMark = id => isGolden(id) ? '<span class="gm" title="Golden List" aria-label="Golden List">⭐</span>'
+                     : isSilver(id) ? '<span class="gm" title="Silver List" aria-label="Silver List">🥈</span>' : '';
 const drBadges = id => goldMark(id) + ' ' + quietMark(quietInfo().get(id));
-const goldMarkEmail = id => isGolden(id) ? '<span title="Golden List" style="margin-right:3px">⭐</span>' : '';
+const goldMarkEmail = id => isGolden(id) ? '<span title="Golden List" style="margin-right:3px">⭐</span>' : isSilver(id) ? '<span title="Silver List" style="margin-right:3px">🥈</span>' : '';
 // the Golden doctors' names, for matching Salesly offices by the doctors on their lab lines
-function goldenNameKeys() {
-  if (APP.derived && APP.derived.goldenNames) return APP.derived.goldenNames;
-  const ids = goldenIds(), out = new Set();
-  (APP.raw || []).forEach(r => { if (r && ids.has(r.drId)) out.add(gNameKey(r.drName)); });
-  if (APP.derived && APP.raw && APP.raw.length) APP.derived.goldenNames = out;
+function listNameKeys(kind) {
+  const ck = kind + 'Names'; if (APP.derived && APP.derived[ck]) return APP.derived[ck];
+  const ids = kind === 'golden' ? goldenIds() : silverIds(), out = new Set();
+  (APP.raw || []).forEach(r => { if (r && ids.has(r.drId) && (kind === 'golden' || !isGolden(r.drId))) out.add(gNameKey(r.drName)); });
+  if (APP.derived && APP.raw && APP.raw.length) APP.derived[ck] = out;
   return out;
 }
+const goldenNameKeys = () => listNameKeys('golden');
 
 // the Doctor Grid and the Golden List share one view, each with its own search / sort / filter
 const DG_MAIN = { query: '', sort: 'revenue', limit: 60, quiet: '' };
 const DG_GOLD = { query: '', sort: 'revenue', limit: 60, quiet: '', only: null };
+const DG_SILV = { query: '', sort: 'revenue', limit: 60, quiet: '', only: null };
 let DGRID = DG_MAIN;
 let stQuiet = () => null;   // Retention's per-row gone-quiet info (set when its table draws)
 
-function renderDoctorGrid(golden) {
-  // one view, two tabs: the other tab's copy is emptied so the element ids never clash
-  const other = document.getElementById(golden ? 'panel-docgrid' : 'panel-golden');
-  if (other) other.innerHTML = '';
-  if (APP.rendered) APP.rendered[golden ? 'docgrid' : 'golden'] = false;
-  DGRID = golden ? DG_GOLD : DG_MAIN;
-  const GM = golden ? goldenMatch() : null;
-  if (golden) DG_GOLD.only = GM.ids;
-  const el = document.getElementById(golden ? 'panel-golden' : 'panel-docgrid');
+function renderDoctorGrid(mode) {
+  // one view, three tabs (Doctor Grid · Golden List · Silver List): the other tabs'
+  // copies are emptied so the element ids never clash
+  const kind = mode === true ? 'golden' : (mode || '');
+  const PANELS = { '': ['panel-docgrid', 'docgrid'], golden: ['panel-golden', 'golden'], silver: ['panel-silver', 'silver'] };
+  Object.keys(PANELS).forEach(k => { if (k === kind) return; const o = document.getElementById(PANELS[k][0]); if (o) o.innerHTML = ''; if (APP.rendered) APP.rendered[PANELS[k][1]] = false; });
+  DGRID = kind === 'golden' ? DG_GOLD : kind === 'silver' ? DG_SILV : DG_MAIN;
+  const LM = kind === 'golden' ? goldenMatch() : kind === 'silver' ? silverMatch() : null;
+  if (LM) DGRID.only = LM.ids;
+  const el = document.getElementById(PANELS[kind][0]);
   el.innerHTML = `
     <div class="section-header">
       <div>
-        <div class="section-title">${golden ? '⭐ Golden List' : 'Doctor Grid'}</div>
-        <div class="section-sub">${golden
-          ? `The Diamond-list doctors — the same view as the Doctor Grid. ${GM.total - GM.unmatched.length} of ${GM.total} found, from ${esc(GM.src)}.`
+        <div class="section-title">${kind === 'golden' ? '⭐ Golden List' : kind === 'silver' ? '🥈 Silver List' : 'Doctor Grid'}</div>
+        <div class="section-sub">${kind === 'golden'
+          ? `The Diamond-list doctors — the same view as the Doctor Grid. ${LM.total - LM.unmatched.length} of ${LM.total} found, from ${esc(LM.src)}.`
+          : kind === 'silver'
+          ? `The Silver-list doctors who aren’t on the Golden List — the same view as the Doctor Grid. ${LM.ids.size} doctors · ${LM.dupes} of the list’s ${LM.total} names are on the Golden List instead.`
           : 'All accounts as cards — search, sort, click for the full profile.'}</div>
-        ${golden && GM.unmatched.length ? `<details class="gl-miss"><summary>${GM.unmatched.length} not found in the lab data</summary>${GM.unmatched.map(u => `<div><b>${esc(u.doc)}</b> <span>${esc(u.prac)}</span></div>`).join('')}</details>` : ''}
+        ${LM && LM.unmatched.length ? `<details class="gl-miss"><summary>${LM.unmatched.length} not found in the lab data</summary>${LM.unmatched.map(u => `<div><b>${esc(u.doc)}</b> <span>${esc(u.prac)}</span></div>`).join('')}</details>` : ''}
       </div>
       <div class="section-actions">
         <button class="btn-text" id="dgExport">⬇ Export Visible</button>
@@ -5903,7 +6001,7 @@ function renderDoctorGrid(golden) {
     Object.entries(n).forEach(([lv, c]) => { const el = document.getElementById('dgQc_' + lv); if (el) el.textContent = c.toLocaleString(); }); }
   setQuietBtns();
   document.getElementById('dgExport').addEventListener('click', () => {
-    downloadCSV(DGRID === DG_GOLD ? 'golden-list.csv' : 'doctors.csv', dgFilteredDocs().map(d => ({
+    downloadCSV(DGRID === DG_GOLD ? 'golden-list.csv' : DGRID === DG_SILV ? 'silver-list.csv' : 'doctors.csv', dgFilteredDocs().map(d => ({
       name: d.name, email: d.email, phone: d.phone, city: d.city, state: d.state,
       cases: d.cases, revenue: d.revenue, avg_case: d.avgCase, remake_rate: d.remakeRate,
       median_turnaround_days: d.medTat, avg_turnaround_days: d.avgTat,
@@ -6175,7 +6273,7 @@ function renderDoctorDetail() {
         <div class="detail-name" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
           <span>${esc(s.drName)}</span>
           ${statusBadgeHTML(APP.selectedDoctorId, 'lg')}
-          ${isGolden(APP.selectedDoctorId) ? '<span class="gm-tag">⭐ Golden List</span>' : ''}
+          ${isGolden(APP.selectedDoctorId) ? '<span class="gm-tag">⭐ Golden List</span>' : isSilver(APP.selectedDoctorId) ? '<span class="gm-tag sv">🥈 Silver List</span>' : ''}
           ${(() => { const q = quietInfo().get(APP.selectedDoctorId), L = q && quietLevel(q.bd); return L ? `<span class="qm-tag qm-${L[1]}" title="${esc(quietTip(q))}"><b>!</b> ${bdWord(q.bd)} since the last case${q.usual ? ` · usually every ${q.usual}` : ''}</span>` : ''; })()}
         </div>
         ${ddPracticeTabs.length === 1
@@ -6214,6 +6312,7 @@ function renderDoctorDetail() {
     </div>
 
     ${cmp30HTML(trendOf(APP.selectedDoctorId))}
+    ${ddRemakesHTML(APP.selectedDoctorId)}
     <div class="card mb20 dd-crm" id="ddCrm">${ddCrmHead(0, false)}<div class="crm-nil">Loading visits and calls from Salesly…</div></div>
 
     <div class="flex-row">
@@ -11266,6 +11365,7 @@ function renderTimeline() {
       <select id="tlStatusFilter">
         <option value="all">All Clients</option>
         <option value="golden">⭐ Golden List only</option>
+        <option value="silver">🥈 Silver List only</option>
         <option value="active">Active</option>
         <option value="inactive">Inactive</option>
         <option value="has-gaps">Has Gaps</option>
@@ -11329,6 +11429,7 @@ function tlApplyFilters() {
 
   TL.filtered = TL.all.filter(c => {
     if (status === 'golden' && !isGolden(c.drId)) return false;
+    if (status === 'silver' && !isSilver(c.drId)) return false;
     if (status === 'active' && c.status !== 'active') return false;
     if (status === 'inactive' && c.status !== 'inactive') return false;
     if (status === 'has-gaps' && c.gapCount === 0) return false;
@@ -13012,7 +13113,8 @@ function sbStatusLine(docRow, label) {
     extra.push((Math.round(docRow.avgTat * 10) / 10) + 'd avg turnaround');
   { const q = docRow.drId ? quietInfo().get(docRow.drId) : null;   // Salesly reads this for its gone-quiet mark
     if (q && q.usual) extra.push('sends every ~' + q.usual + ' business day' + (q.usual === 1 ? '' : 's'));
-    if (docRow.drId && isGolden(docRow.drId)) extra.push('⭐ Golden List'); }
+    if (docRow.drId && isGolden(docRow.drId)) extra.push('⭐ Golden List');
+    else if (docRow.drId && isSilver(docRow.drId)) extra.push('🥈 Silver List'); }
   return SB_LAB_MARK + ' ' + lbl + ' · Dr. ' + docRow.name + ' · last case ' + sbUS(docRow.last) + ' · ' + docRow.cases + ' cases · ' + sbMoney(docRow.rev90) + ' last 90d · ' + sbMoney(docRow.rev) + ' lifetime' +
          (extra.length ? ' · ' + extra.join(' · ') : '');
 }
@@ -13911,7 +14013,15 @@ function rpCell(curM, prevM, metric) {
   return '<div style="font-weight:700;color:#0f172a">' + s.v(cur) + '</div>' +
          '<div style="font-size:11px">' + rpDeltaHTML(cur, prev, s.f, s.gd, s.u) + '</div>';
 }
-function rpHead(title, sub, maxDate) {
+/* "See Dashboard →" — opens the dashboard on the report's own tab (…/#golden).
+   Only when the report is built from the dashboard's web address. */
+function rpDashUrl() { try { return /^https?:$/.test(location.protocol) ? location.origin + location.pathname : ''; } catch (e) { return ''; } }
+function rpDashBtn(tab) {
+  const u = rpDashUrl(); if (!u) return '';
+  return '<a href="' + esc(u + (tab ? '#' + tab : '')) + '" style="display:inline-block;margin-top:12px;background:#0f8b99;color:#ffffff;text-decoration:none;font-weight:700;font-size:13px;padding:9px 18px;border-radius:8px">See Dashboard →</a>';
+}
+function rpHead(title, sub, maxDate, tab) {
+  tab = tab || (/Employee/.test(title) ? 'empgrid' : /Customer/.test(title) ? 'docgrid' : /Product Report/.test(title) ? 'prodgrid' : /Status/.test(title) ? 'status' : /Golden|Silver/.test(title) ? 'golden' : '');
   const scope = [
     APP.filters.group ? 'Group: ' + APP.filters.group : '',
     APP.filters.state ? 'State: ' + APP.filters.state : ''
@@ -13920,7 +14030,7 @@ function rpHead(title, sub, maxDate) {
     '<div style="font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#92dde5;font-weight:700">Lab Sales Dashboard — Daily Report</div>' +
     '<div style="font-size:22px;font-weight:800;margin:4px 0 2px">' + title + '</div>' +
     '<div style="font-size:12px;color:#cbd5e1">' + sub + ' · Data through <b style="color:#fff">' + esc(fmtDate(maxDate)) + '</b>' +
-    (scope ? ' · ' + esc(scope) : '') + ' · <b style="color:#fff">Invoiced business days only (Mon–Fri)</b> · Generated ' + esc(new Date().toLocaleString()) + '</div></div>';
+    (scope ? ' · ' + esc(scope) : '') + ' · <b style="color:#fff">Invoiced business days only (Mon–Fri)</b> · Generated ' + esc(new Date().toLocaleString()) + '</div>' + rpDashBtn(tab) + '</div>';
 }
 /* A safety net: if the report day's revenue is far below a normal day (under 40%
    of the median of the 10 business days before it), the data probably hadn't
@@ -14218,7 +14328,7 @@ function rpBuildStatusReport() {
   }
 
   const KA = keyAcctResolve(docs);
-  const dia = d => isGolden(d.drId) ? '⭐ ' : KA.byDoc.has(d.drId) ? '💎 ' : '';   // ⭐ = the Golden (Diamond) List
+  const dia = d => isGolden(d.drId) ? '⭐ ' : isSilver(d.drId) ? '🥈 ' : KA.byDoc.has(d.drId) ? '💎 ' : '';   // ⭐ Golden (Diamond) · 🥈 Silver
   const rpDocRow = d =>
     '<tr>' +
     '<td style="padding:7px 12px;border-bottom:1px solid #f1f5f9;font-size:12.5px;font-weight:700;color:#0f172a">' + dia(d) + esc(d.name) + quietMarkEmail(RQ0.get(d.drId)) + '</td>' +
@@ -14402,7 +14512,7 @@ async function rpBuildVisitReport(forDate) {
   const CHIP = (bg, txt) => `<span style="background:${bg}1a;color:${bg};border:1px solid ${bg}40;border-radius:5px;padding:1px 7px;font-size:10.5px;font-weight:700;white-space:nowrap;margin-right:4px">${txt}</span>`;
   const reps = Array.from(byRep.entries()).sort((a, b) => b[1].length - a[1].length);
 
-  let h = `<div style="${RP_F}font-size:15px;font-weight:800;color:#0f172a;margin:0 0 4px">Visits on ${esc(day)}</div>`;
+  let h = (rpDashUrl() ? `<div style="margin-bottom:12px">${rpDashBtn('svdetail')}</div>` : '') + `<div style="${RP_F}font-size:15px;font-weight:800;color:#0f172a;margin:0 0 4px">Visits on ${esc(day)}</div>`;
   h += `<div style="${RP_F}font-size:12px;color:#64748b;margin-bottom:14px">${total} visit${total === 1 ? '' : 's'} across ${reps.length} rep${reps.length === 1 ? '' : 's'}.</div>`;
 
   reps.forEach(([rep, list]) => {
@@ -14863,15 +14973,16 @@ function rpTodayStart() {
 }
 function rpDayLabel(d) { return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }); }
 
-/* ══ ⭐ GOLDEN LIST REPORT — like Status Changes, for the Golden doctors only ═══
-   For the report day (the last complete business day): where every Golden
+/* ══ ⭐ GOLDEN & 🥈 SILVER LIST REPORT — like Status Changes, for the two lists ══
+   For the report day (the last complete business day), for each list: where every
    doctor stands, who moved since the business day before (a status change, or
    crossing 10 / 15 / 20 business days without a case), who needs a call (every
-   Golden doctor showing a !), and the full roster by status. */
+   doctor showing a !), and the roster by status. Silver's rosters show the top
+   40 per status — everyone is on the Silver List tab. */
 const GR_STATUS = [['current', 'Current', '#166534', '#dcfce7'], ['new', 'New', '#075985', '#e0f2fe'], ['winback', 'Winback', '#6b21a8', '#f3e8ff'],
                    ['falloff', 'Falloff', '#92400e', '#fef3c7'], ['inactive', 'Inactive', '#b91c1c', '#fee2e2']];
-function rpBuildGoldenReport() {
-  const G = goldenIds(), day = rpReportDay(), prevDay = retPrevBizDay(day), F = RP_F;
+function rpListBody(G, icon, label, rosterCap) {
+  const day = rpReportDay(), prevDay = retPrevBizDay(day), F = RP_F;
   const now = new Map(), before = new Map();
   computeDoctorStatus(day).forEach(d => { if (G.has(d.drId)) now.set(d.drId, d); });
   computeDoctorStatus(prevDay).forEach(d => { if (G.has(d.drId)) before.set(d.drId, d); });
@@ -14883,26 +14994,28 @@ function rpBuildGoldenReport() {
   const td = v => '<td style="padding:7px 12px;border-bottom:1px solid #f1f5f9;font-size:12.5px;vertical-align:top">' + v + '</td>';
   const chg = t => !t.prev ? (t.last ? '<span style="color:#047857;font-weight:700">new</span>' : '—') :
     fmtUSD(t.last) + ' <span style="color:' + (t.pct >= 0 ? '#047857' : '#b91c1c') + ';font-weight:700">' + (t.pct >= 0 ? '▲ ' : '▼ ') + Math.abs(Math.round(t.pct * 100)) + '%</span>';
-  const who = d => '<b style="color:#0f172a">⭐ ' + esc(d.name || '') + '</b>' + quietMarkEmail(Q.get(d.drId)) + (d.practice ? '<div style="font-size:11px;color:#64748b">' + esc(d.practice) + '</div>' : '');
+  const who = d => '<b style="color:#0f172a">' + icon + ' ' + esc(d.name || '') + '</b>' + quietMarkEmail(Q.get(d.drId)) + (d.practice ? '<div style="font-size:11px;color:#64748b">' + esc(d.practice) + '</div>' : '');
   const table = (heads, rows) => '<table cellpadding="0" cellspacing="0" style="' + F + 'width:100%;border-collapse:collapse;background:#fff;border:1px solid #e2e8f0;border-radius:10px;margin-bottom:6px">' +
     '<tr>' + heads.map(th).join('') + '</tr>' + rows.join('') + '</table>';
   const fullRow = d => { const q = Q.get(d.drId), t = trendOf(d.drId);
     return '<tr>' + td(who(d)) + td(chip(d.status)) + td(q ? esc(fmtDateShort(q.last)) : '—') + td(q && q.usual ? 'every ~' + bdWord(q.usual) : '—') +
       td(fmtUSD(rev90.get(d.drId) || 0)) + td(chg(t)) + '</tr>'; };
   const heads = ['Doctor', 'Status', 'Last case', 'Usual rhythm', '90-day revenue', 'Last 30 bus. days vs before'];
-  const sec = (title, note) => '<div style="' + F + 'font-size:15px;font-weight:800;color:#0f172a;margin:22px 0 8px">' + title + (note ? ' <span style="font-weight:500;font-size:11px;color:#64748b">' + note + '</span>' : '') + '</div>';
+  const sec = (title, note) => '<div style="' + F + 'font-size:15px;font-weight:800;color:#0f172a;margin:18px 0 8px">' + title + (note ? ' <span style="font-weight:500;font-size:11px;color:#64748b">' + note + '</span>' : '') + '</div>';
   const nil = t => '<div style="' + F + 'font-size:12px;color:#64748b;font-style:italic;margin-bottom:6px">' + t + '</div>';
   const docs = [...now.values()], dayLbl = rpDayLabel(day), prevLbl = rpDayLabel(prevDay);
 
-  let h = rpHead('⭐ Golden List Report', 'Your Diamond-list doctors — where each one stands, who moved, and who needs a call', day) + rpIncompleteNote() + quietKeyEmail();
+  // the list's own banner
+  let h = '<div style="' + F + 'margin:26px 0 4px;padding:12px 16px;border-radius:10px;background:' + (icon === '⭐' ? '#fef3c7' : '#f1f5f9') + ';font-size:18px;font-weight:800;color:#0f172a">' +
+    icon + ' ' + label + ' <span style="font-size:13px;font-weight:600;color:#475569">— ' + docs.length + ' doctors</span></div>';
 
-  // 1. at a glance: status counts (with the change since the day before) and ! levels
+  // 1. at a glance
   const cnt = (m, k) => [...m.values()].filter(d => d.status === k).length;
   const lv = { red: 0, orange: 0, yellow: 0, teal: 0, none: 0 };
   docs.forEach(d => { const L = quietLevel((Q.get(d.drId) || {}).bd); lv[L ? L[1] : 'none']++; });
-  const tile = (label, n, sub, fg, bg) => '<td style="padding:10px 12px;background:' + bg + ';border-radius:10px;text-align:center;width:20%"><div style="font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:' + fg + '">' + label + '</div>' +
+  const tile = (lbl, n, sub, fg, bg) => '<td style="padding:10px 12px;background:' + bg + ';border-radius:10px;text-align:center;width:20%"><div style="font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:' + fg + '">' + lbl + '</div>' +
     '<div style="font-size:22px;font-weight:800;color:#0f172a">' + n + '</div>' + (sub ? '<div style="font-size:11px;color:' + fg + ';font-weight:700">' + sub + '</div>' : '') + '</td>';
-  h += sec('At a glance — ' + docs.length + ' Golden doctors', 'status change vs ' + prevLbl);
+  h += sec('At a glance', 'status change vs ' + prevLbl);
   h += '<table cellpadding="0" cellspacing="6" style="' + F + 'width:100%;border-collapse:separate"><tr>' + GR_STATUS.map(([k, l, fg, bg]) => {
     const a = cnt(now, k), b = cnt(before, k), dlt = a - b; return tile(l, a, dlt ? (dlt > 0 ? '▲ +' : '▼ −') + Math.abs(dlt) : '±0', fg, bg); }).join('') + '</tr></table>';
   h += '<table cellpadding="0" cellspacing="6" style="' + F + 'width:100%;border-collapse:separate"><tr>' +
@@ -14910,33 +15023,38 @@ function rpBuildGoldenReport() {
     tile('Sending', lv.none, 'under 5 bus. days', '#166534', '#dcfce7') + '</tr></table>';
 
   // 2. moved since the business day before
-  const moved = docs.filter(d => before.has(d.drId) && before.get(d.drId).status !== d.status)
-    .map(d => ({ d, from: before.get(d.drId).status }));
+  const moved = docs.filter(d => before.has(d.drId) && before.get(d.drId).status !== d.status).map(d => ({ d, from: before.get(d.drId).status }));
   const crossed = docs.filter(d => { const q = Q.get(d.drId); return q && (q.bd === 10 || q.bd === 15 || q.bd === 20); });
   h += sec('Moved ' + dayLbl, 'since ' + prevLbl);
   h += moved.length ? table(['Doctor', 'Status change', 'Last case', '90-day revenue'], moved.map(({ d, from: f }) =>
       '<tr>' + td(who(d)) + td(chip(f) + ' → ' + chip(d.status)) + td(Q.get(d.drId) ? esc(fmtDateShort(Q.get(d.drId).last)) : '—') + td(fmtUSD(rev90.get(d.drId) || 0)) + '</tr>'))
-    : nil('No Golden doctor changed status.');
+    : nil('No ' + label + ' doctor changed status.');
   h += crossed.length ? table(['Doctor', 'Crossed', 'Last case', 'Usual rhythm'], crossed.sort((a, b) => Q.get(b.drId).bd - Q.get(a.drId).bd).map(d => { const q = Q.get(d.drId);
       return '<tr>' + td(who(d)) + td('<b>' + q.bd + ' business days</b> without a case') + td(esc(fmtDateShort(q.last))) + td(q.usual ? 'every ~' + bdWord(q.usual) : '—') + '</tr>'; }))
-    : nil('No Golden doctor crossed 10, 15 or 20 business days ' + dayLbl + '.');
+    : nil('No ' + label + ' doctor crossed 10, 15 or 20 business days ' + dayLbl + '.');
 
-  // 3. needs a call: every Golden doctor showing a !, red first
+  // 3. needs a call
   const call = docs.filter(d => quietRank(Q.get(d.drId)) > 0)
     .sort((a, b) => quietRank(Q.get(b.drId)) - quietRank(Q.get(a.drId)) || Q.get(a.drId).bd - Q.get(b.drId).bd);
-  h += sec('Needs a call — ' + call.length, 'every Golden doctor showing a !, red first; within each colour, the most recent to cross the line first');
-  h += call.length ? table(heads, call.map(fullRow)) : nil('Every Golden doctor has sent a case in the last 5 business days.');
+  h += sec('Needs a call — ' + call.length, 'every ' + label + ' doctor showing a !, red first; within each colour, the most recent to cross the line first');
+  h += call.length ? table(heads, call.map(fullRow)) : nil('Every ' + label + ' doctor has sent a case in the last 5 business days.');
 
   // 4. everyone, by status
-  h += sec('Everyone — by status');
-  GR_STATUS.forEach(([k, l]) => {
+  h += sec('Everyone — by status', rosterCap ? 'top ' + rosterCap + ' per status by 90-day revenue — everyone is on the ' + label + ' tab' : '');
+  GR_STATUS.forEach(([k]) => {
     const list = docs.filter(d => d.status === k).sort((a, b) => (rev90.get(b.drId) || 0) - (rev90.get(a.drId) || 0));
     if (!list.length) return;
-    h += '<div style="' + F + 'font-size:13px;font-weight:800;color:#0f172a;margin:12px 0 6px">' + chip(k) + ' ' + list.length + ' doctor' + (list.length === 1 ? '' : 's') + '</div>' + table(heads, list.map(fullRow));
+    const shown = rosterCap ? list.slice(0, rosterCap) : list;
+    h += '<div style="' + F + 'font-size:13px;font-weight:800;color:#0f172a;margin:12px 0 6px">' + chip(k) + ' ' + list.length + ' doctor' + (list.length === 1 ? '' : 's') +
+      (shown.length < list.length ? ' <span style="font-weight:500;color:#64748b">(top ' + shown.length + ' shown)</span>' : '') + '</div>' + table(heads, shown.map(fullRow));
   });
   const missing = G.size - docs.length;
-  if (missing > 0) h += nil(missing + ' Golden doctor' + (missing === 1 ? ' has' : 's have') + ' no cases in the current state/group filters.');
+  if (missing > 0) h += nil(missing + ' ' + label + ' doctor' + (missing === 1 ? ' has' : 's have') + ' no cases in the current state/group filters.');
   return h;
+}
+function rpBuildGoldenReport() {
+  return rpHead('⭐ Golden &amp; 🥈 Silver List Report', 'Your Golden and Silver doctors — where each one stands, who moved, and who needs a call', rpReportDay(), 'golden') +
+    rpIncompleteNote() + quietKeyEmail() + rpListBody(goldenIds(), '⭐', 'Golden List', 0) + rpListBody(silverIds(), '🥈', 'Silver List', 40);
 }
 
 async function rpBuildAll() {
@@ -14948,7 +15066,7 @@ async function rpBuildAll() {
       { key: 'doctors',  subject: '📋 Daily Customer Report — ' + rpDayLabel(rpReportDay()), html: rpBuildDoctorReport() },
       { key: 'products', subject: '📦 Daily Product Report — ' + rpDayLabel(rpReportDay()),  html: rpBuildProductReport() },
       { key: 'status',   subject: '🔔 Status Changes Report — ' + rpDayLabel(rpReportDay()), html: rpBuildStatusReport() },
-      { key: 'golden',   subject: '⭐ Golden List Report — ' + rpDayLabel(rpReportDay()),    html: rpBuildGoldenReport() },
+      { key: 'golden',   subject: '⭐ Golden & 🥈 Silver List Report — ' + rpDayLabel(rpReportDay()), html: rpBuildGoldenReport() },
       { key: 'visits',   subject: '🚗 Daily Visit Report — ' + rpDayLabel(rpReportDay()),    html: (await rpBuildVisitReport(isoDate(rpReportDay()))).html },
       { key: 'employees', subject: '🧑‍🔧 Daily Employee Production', html: await rpBuildEmployeeReport() }
     ]
@@ -15124,7 +15242,7 @@ function renderReports() {
       <input class="sync-input" id="rpRcpt_products" placeholder="e.g. production@lab.com" value="${esc(cfg.rcptProducts || '')}">
       <label class="sb-label">🔔 Status changes → </label>
       <input class="sync-input" id="rpRcpt_status" placeholder="e.g. owner@lab.com, reps@lab.com" value="${esc(cfg.rcptStatus || '')}">
-      <label class="sb-label">⭐ Golden List → </label>
+      <label class="sb-label">⭐ Golden &amp; 🥈 Silver List → </label>
       <input class="sync-input" id="rpRcpt_golden" placeholder="e.g. owner@lab.com, reps@lab.com" value="${esc(cfg.rcptGolden || '')}">
       <label class="sb-label">🚗 Daily visits → </label>
       <input class="sync-input" id="rpRcpt_visits" placeholder="e.g. owner@lab.com" value="${esc(cfg.rcptVisits || '')}">
@@ -15148,7 +15266,7 @@ function renderReports() {
         <button class="btn-text" id="rpPrevDoc">📋 Customer report</button>
         <button class="btn-text" id="rpPrevProd">📦 Product report</button>
         <button class="btn-text" id="rpPrevStat">🔔 Status changes</button>
-        <button class="btn-text" id="rpPrevGold">⭐ Golden List</button>
+        <button class="btn-text" id="rpPrevGold">⭐ Golden &amp; 🥈 Silver</button>
         <button class="btn-text" id="rpPrevVisits">🚗 Daily visits</button>
         <button class="btn-text" id="rpPrevEmp">🧑‍🔧 Employee production</button>
       </div>
@@ -15956,7 +16074,8 @@ function pmBuildControls() {
         <label class="coach-f"><span>State</span><select class="gf-select" id="pmState"><option value="">Loading states…</option></select></label>
         <label class="coach-f pm-q"><span>Search — name, city, address, doctor, lab or zip</span><input class="gf-select" id="pmQ" placeholder="Search offices"></label>
         <div class="pm-tiers" role="group" aria-label="Show">${PM_TIERS.map(([t, l]) => `<button type="button" class="pm-tier" data-t="${t}">${l}</button>`).join('')}
-          <button type="button" class="pm-tier pm-gold" id="pmGoldOnly" aria-pressed="false" title="Only offices where a Golden List doctor works">⭐ Golden only</button></div>
+          <button type="button" class="pm-tier pm-gold" id="pmGoldOnly" aria-pressed="false" title="Only offices where a Golden List doctor works">⭐ Golden only</button>
+          <button type="button" class="pm-tier pm-silv" id="pmSilverOnly" aria-pressed="false" title="Only offices where a Silver List doctor works">🥈 Silver only</button></div>
       </div>
       <div class="pm-filters" id="pmFilters"></div>
       <div class="pm-more" id="pmMore"></div>
@@ -15967,6 +16086,7 @@ function pmBuildControls() {
   let qt = null; host.querySelector('#pmQ').addEventListener('input', e => { clearTimeout(qt); qt = setTimeout(() => { PMAP.f.q = e.target.value.trim(); pmApply(false); }, 200); });
   host.querySelectorAll('.pm-tier[data-t]').forEach(b => b.addEventListener('click', () => { PMAP.tiers[b.dataset.t] = !PMAP.tiers[b.dataset.t]; pmPaintFilters(); pmApply(false); }));
   host.querySelector('#pmGoldOnly').addEventListener('click', e => { PMAP.goldenOnly = !PMAP.goldenOnly; e.currentTarget.classList.toggle('on', PMAP.goldenOnly); e.currentTarget.setAttribute('aria-pressed', PMAP.goldenOnly); pmApply(false); });
+  host.querySelector('#pmSilverOnly').addEventListener('click', e => { PMAP.silverOnly = !PMAP.silverOnly; e.currentTarget.classList.toggle('on', PMAP.silverOnly); e.currentTarget.setAttribute('aria-pressed', PMAP.silverOnly); pmApply(false); });
 }
 
 /* signed in? who is it, the reps, and the state list — needed by both views */
@@ -16097,14 +16217,18 @@ function pmQuiet(o) {
   const t = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' }).split('-').map(Number);
   return { last, bd: bizDaysAfter(last, new Date(t[0], t[1] - 1, t[2])), usual };
 }
-// an office is Golden when a Golden doctor is on one of its lab lines
-function pmGolden(o) {
-  const n = String(o.notes || ''); if (!/LAB:/i.test(n)) return false;
-  if (/Golden List/i.test(n)) return true;
-  const keys = goldenNameKeys(); if (!keys.size) return false;
-  return n.split('\n').some(l => { const m = /LAB:/i.test(l) && l.match(/Dr\.\s+([^·]+?)\s+·/); return !!m && keys.has(gNameKey(m[1])); });
+// an office is Golden (or Silver) when a Golden (Silver) doctor is on one of its lab lines
+function pmListKind(o) {
+  const n = String(o.notes || ''); if (!/LAB:/i.test(n)) return '';
+  if (/Golden List/i.test(n)) return 'golden';
+  const names = n.split('\n').map(l => { const m = /LAB:/i.test(l) && l.match(/Dr\.\s+([^·]+?)\s+·/); return m ? gNameKey(m[1]) : null; }).filter(Boolean);
+  if (names.some(k => listNameKeys('golden').has(k))) return 'golden';
+  if (/Silver List/i.test(n) || names.some(k => listNameKeys('silver').has(k))) return 'silver';
+  return '';
 }
-const pmGoldMark = o => pmGolden(o) ? '<span class="gm" title="Golden List">⭐</span>' : '';
+const pmGolden = o => pmListKind(o) === 'golden';
+const pmGoldMark = o => { const k = pmListKind(o); return k === 'golden' ? '<span class="gm" title="Golden List">⭐</span>' : k === 'silver' ? '<span class="gm" title="Silver List">🥈</span>' : ''; };
+const pmListPass = o => !PMAP.goldenOnly && !PMAP.silverOnly ? true : (PMAP.goldenOnly && pmListKind(o) === 'golden') || (PMAP.silverOnly && pmListKind(o) === 'silver');
 function pmPopupHTML(o, compact) {
   const addr = [o.addr, [o.city, [pmAbbr(o.state), o.zip].filter(Boolean).join(' ')].filter(Boolean).join(', ')].filter(Boolean).join(', ');
   const labs = SLF.statuses(o).map(s => { const x = PM_LAB.find(l => l[0] === s); return x ? `<span class="pm-lab" style="--c:${x[2]}">${x[1]}</span>` : ''; }).join('');
@@ -16325,7 +16449,7 @@ async function pmShowState(st) {
 /* apply Salesly's filters + the tier chips, then repaint the map, cities and list */
 function pmApply(fit) {
   const f = PMAP.f, q = String(f.q || '').toLowerCase(), S = v => (v == null ? '' : String(v)).toLowerCase();
-  PMAP.shown = PMAP.offices.filter(o => PMAP.tiers[pmTierOf(o)] && SLF.pass(o, f) && (!PMAP.goldenOnly || pmGolden(o))
+  PMAP.shown = PMAP.offices.filter(o => PMAP.tiers[pmTierOf(o)] && SLF.pass(o, f) && pmListPass(o)
     && (!q || S(o.name).includes(q) || S(o.city).includes(q) || S(o.addr).includes(q) || S(o.drs).includes(q) || S(o.lab).includes(q) || S(o.zip).includes(q)));
   if (PMAP.cluster) {
   PMAP.markers = new Map(); PMAP.cluster.clearLayers();
