@@ -100,7 +100,7 @@ try {
   await page.evaluate(({ rcpt, fallback }) => {
     const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
     set('rpRcpt', fallback);
-    ['doctors', 'products', 'status', 'visits', 'employees'].forEach(k => set('rpRcpt_' + k, rcpt[k] || ''));
+    ['doctors', 'products', 'status', 'golden', 'visits', 'employees'].forEach(k => set('rpRcpt_' + k, rcpt[k] || ''));
   }, { rcpt, fallback });
 
   if (DRY) {
