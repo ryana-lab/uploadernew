@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.11.06-DL58</title>
+<title>Lab Sales Dashboard v2026.11.06-DL60</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -225,8 +225,19 @@ html, body {
 .rm-tbl td { padding: 7px 10px; border-bottom: 1px solid var(--border); color: var(--dim); } .rm-tbl td b { color: var(--ink); }
 .rm-tbl .num { text-align: right; font-variant-numeric: tabular-nums; } .rm-tbl tr.rm-fresh td { background: #fff7f7; }
 .rm-more summary { cursor: pointer; color: var(--accent-ink); font-weight: 600; font-size: 12.5px; margin-top: 8px; }
+/* visit notes */
+.sv-v2 { padding: 7px 0; border-bottom: 1px solid var(--border); } .sv-v2:last-of-type { border-bottom: none; }
+.sv-v2h { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink); } .sv-v2h i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; } .sv-v2h span { color: var(--mut); font-size: 12px; }
+.sv-v2n { white-space: pre-wrap; font-size: 13px; line-height: 1.45; color: var(--ink); background: var(--card-2); border-radius: 8px; padding: 7px 10px; margin: 5px 0 0 17px; }
+.sv-v2x { font-size: 12px; color: var(--mut); font-style: italic; margin: 3px 0 0 17px; }
+.pm-pop-vn { font-size: 12px; color: var(--dim); background: var(--card-2); border-radius: 6px; padding: 4px 8px; margin: 4px 0; white-space: pre-wrap; }
+.pm-lvvn { white-space: pre-wrap; color: var(--ink); margin: 3px 0 4px 14px; } .crm-n { white-space: pre-wrap; }
 /* Churn */
-.ch-mix { display: flex; flex-wrap: wrap; gap: 8px; } .ch-chip { font-size: 12.5px; border-radius: 999px; padding: 4px 12px; background: var(--card-2); color: var(--ink); }
+.ch-mix { display: flex; flex-wrap: wrap; gap: 8px; } .ch-chip { font: inherit; font-size: 12.5px; border-radius: 999px; padding: 4px 12px; background: var(--card-2); color: var(--ink); border: 1px solid transparent; cursor: pointer; }
+.ch-chip:hover { border-color: var(--border); } .ch-chip.on { border-color: #7c3aed; box-shadow: 0 0 0 2px rgba(124,58,237,.2); }
+.ch-rl { margin-top: 14px; border-top: 1px solid var(--border); padding-top: 12px; } .ch-rlh { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; } .ch-rlh .btn-text { margin-left: auto; }
+.ch-rr { cursor: pointer; } .ch-rr:hover td { background: var(--card-2); } .ch-rw { font-size: 12px; color: var(--dim); min-width: 280px; }
+.ch-dayh { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; } .ch-dayh span { flex: 1; text-align: center; }
 .ch-chip b { margin-left: 4px; } .ch-chip small { color: var(--mut); margin-left: 2px; }
 .ch-newprod, .ch-remake { background: #fee2e2; } .ch-tat, .ch-hold { background: #fef3c7; } .ch-price { background: #e0f2fe; } .ch-practice { background: #ede9fe; } .ch-taper { background: #f1f5f9; } .ch-none { background: #ecfdf5; }
 .ch-pills { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 14px; }
@@ -2011,7 +2022,7 @@ const APP = {
 
 /* Bump when normalization logic changes, so it's possible to tell at a glance
    (bottom of the Avg Turnaround card) which build a browser is running. */
-const BUILD_ID = 'DL58 · 2026-11-06';
+const BUILD_ID = 'DL60 · 2026-11-06';
 
 const DB_NAME = 'LabOpsCache';
 const DB_STORE = 'datasets';
@@ -7862,6 +7873,8 @@ function svNormDate(s) {   // → 'YYYY-MM-DD' or ''
   if (m) return ok(m[3], m[1], m[2]) ? m[3] + '-' + m[1].padStart(2, '0') + '-' + m[2].padStart(2, '0') : '';
   return '';
 }
+// Salesly VDA117 stores a visit note's own commas, ~, | and line breaks encoded — decode them
+const svVNote = s => String(s || '').replace(/%(25|7E|7C|2C|0A)/gi, (m, h) => ({ '25': '%', '7E': '~', '7C': '|', '2C': ',', '0A': '\n' })[h.toUpperCase()]);
 function svParseVisits(v) {  // "date~color~note~rep~uid | …", newest first
   if (!v) return [];
   const arr = typeof v === 'string' ? v.split(/[|,]/).map(s => s.trim()).filter(Boolean) : (Array.isArray(v) ? v : []);
@@ -7871,7 +7884,7 @@ function svParseVisits(v) {  // "date~color~note~rep~uid | …", newest first
       return { date: d, color: item.color || '', note: item.note || '', rep: item.rep || '', uid: item.uid || '' };
     }
     const p = String(item).split('~'); const d = svNormDate(p[0]); if (!d) return null;
-    return { date: d, color: (p[1] || '').trim(), note: (p[2] || '').trim(), rep: (p[3] || '').trim(), uid: (p[4] || '').trim() };
+    return { date: d, color: (p[1] || '').trim(), note: svVNote((p[2] || '').trim()), rep: (p[3] || '').trim(), uid: (p[4] || '').trim() };
   }).filter(Boolean).sort((a, b) => a.date < b.date ? 1 : a.date > b.date ? -1 : 0);
 }
 function svLabFigures(nts) {   // one entry per 📊 LAB line (per doctor at this practice)
@@ -8468,10 +8481,11 @@ function svOfficeCard(o, dayVisits, all) {
         <td class="r">${svUSD(d.rev90)}</td><td class="r">${svUSD(d.lifetime)}</td>
         <td class="r">${d.remakePct != null ? d.remakePct + '%' : '—'}</td><td class="r">${d.avgTat != null ? d.avgTat + 'd' : '—'}</td></tr>`; }).join('')}
       </tbody></table></div>` : ''}
-    ${notes ? `<div class="sv-sub">Notes</div><div class="sv-notes">${esc(notes)}</div>` : ''}
-    ${history.length > 1 ? `<details class="sv-hist"><summary>All ${history.length} visits to this office</summary>
-      ${history.map(v => `<div class="sv-visit"><i style="background:${(SV_OUTCOME[v.color] || {}).c || '#cbd5e1'}"></i>
-         ${esc(svDay(v.date))} · ${esc(v.rep || '—')}${v.note ? ` <span class="sv-vnote">“${esc(v.note)}”</span>` : ''}</div>`).join('')}</details>` : ''}
+    ${history.length ? (() => { const vh = v => `<div class="sv-v2"><div class="sv-v2h"><i style="background:${(SV_OUTCOME[v.color] || {}).c || '#cbd5e1'}"></i><b>${esc(svDay(v.date))}</b>
+        <span>${esc((SV_OUTCOME[v.color] || {}).label || 'Visit')} · ${esc(v.rep || '—')}</span></div>${v.note ? `<div class="sv-v2n">${esc(v.note)}</div>` : '<div class="sv-v2x">No note for this visit</div>'}</div>`;
+      return `<div class="sv-sub">Visits &amp; visit notes</div>${history.slice(0, 6).map(vh).join('')}
+        ${history.length > 6 ? `<details class="sv-hist"><summary>All ${history.length} visits</summary>${history.slice(6).map(vh).join('')}</details>` : ''}`; })() : ''}
+    ${notes ? `<div class="sv-sub">Office notes</div><div class="sv-notes">${esc(notes)}</div>` : ''}
   </div>`;
 }
 
@@ -11749,7 +11763,7 @@ async function rmkWorkbook(R, S, lo, hi, k) {
    before: turnaround, remakes (and a remake on a product new to them), price,
    holds, the practice as a whole, and how they stopped (taper vs abrupt).
    ═══════════════════════════════════════════════════════════════ */
-const CH = { month: null, day: null, doc: null, min: '1000', show: 'gone', rk: null };   // opens on the doctors still gone
+const CH = { month: null, day: null, doc: null, min: '1000', show: 'all', rk: null, reason: null, rlim: 50 };
 const CH_REASON = {
   newprod:  { icon: '🆕', label: 'Remake on a product new to them' },
   remake:   { icon: '🔁', label: 'Remakes' },
@@ -11760,6 +11774,12 @@ const CH_REASON = {
   taper:    { icon: '📉', label: 'Tapered off over months' },
   none:     { icon: '❔', label: 'No service issue in the data' } };
 const CH_DAY = 864e5, chDay0 = d => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+/* Churn is counted in BUSINESS DAYS: the Sales Hub's 30 days ≈ 21 working days.
+   Counting working days, the churn day always lands on a working day — so churn
+   shows on every weekday, right up to the latest day of data. */
+const chBizN = T => Math.round(T * 5 / 7);
+function chBizAdd(d, n) { const x = chDay0(d); let k = 0; while (k < n) { x.setDate(x.getDate() + 1); const w = x.getDay(); if (w !== 0 && w !== 6) k++; } return x; }
+function chBizBetween(a, b) { const x = chDay0(a), e = chDay0(b); let n = 0; while (x < e) { x.setDate(x.getDate() + 1); const w = x.getDay(); if (w !== 0 && w !== 6) n++; } return n; }
 // every doctor's lines, and the days they sent a case
 function chIndex() {
   if (APP.derived && APP.derived.chIndex) return APP.derived.chIndex;
@@ -11860,9 +11880,9 @@ function chEpisodes(T, minRev) {
   if (!idx.byPrac) { idx.byPrac = new Map(); idx.docs.forEach(d => d.pracLast.forEach((t, p) => (idx.byPrac.get(p) || idx.byPrac.set(p, []).get(p)).push(d))); }
   const eps = [], floor = +idx.start + 120 * CH_DAY;
   idx.docs.forEach(d => {
-    const L = d.dayList, stops = [];
+    const L = d.dayList, stops = [], TB = chBizN(T);
     for (let i = 0; i < L.length; i++) { const next = L[i + 1]; const gap = (next != null ? next : +idx.end) - L[i];
-      if (gap < T * CH_DAY) continue;
+      if (gap < 28 * CH_DAY || chBizBetween(new Date(L[i]), new Date(next != null ? next : +idx.end)) < TB) continue;   // 21+ business days with no case
       // their usual gap between sends, over the 180 days before — a monthly sender
       // gone 35 days hasn't churned; a weekly sender gone 30 days has
       const prior = L.slice(0, i + 1).filter(t => t > L[i] - 180 * CH_DAY), gaps = [];
@@ -11879,7 +11899,7 @@ function chEpisodes(T, minRev) {
       if (gs ? !(isGolden(d.id) || isSilver(d.id)) : (rev < +minRev || cases < 3)) return;
       const lastRow = d.rows.filter(r => +chDay0(r.anchorDate) === +s.last)[0] || d.rows[0];
       eps.push({ id: d.id, name: d.name, practice: lastRow.practice || '', city: lastRow.city || '', state: lastRow.stateAbbr || lastRow.state || '',
-                 last: s.last, back: s.back, churn: new Date(+s.last + T * CH_DAY), rev, cases, T, usual: s.usual });
+                 last: s.last, back: s.back, churn: chBizAdd(s.last, chBizN(T)), rev, cases, T, TB: chBizN(T), usual: s.usual });
     });
   });
   const out = { eps, idx };
@@ -11893,12 +11913,11 @@ function renderChurn() {
   const { eps, idx } = chEpisodes(T, CH.min);
   // the date range: churn days inside the dashboard's range
   let lo = null, hi = null; (APP.filtered || []).forEach(r => { if (r.anchorDate) { if (!lo || r.anchorDate < lo) lo = r.anchorDate; if (!hi || r.anchorDate > hi) hi = r.anchorDate; } });
-  const all = eps.filter(e => (!lo || e.last >= chDay0(lo)) && (!hi || e.last <= hi));                   // the cards: the full picture
+  const all = eps.filter(e => (!lo || e.churn >= chDay0(lo)) && (!hi || e.churn <= hi));                 // the cards: the full picture
   const inRange = all.filter(e => CH.show === 'all' || (CH.show === 'gone' ? !e.back : !!e.back));         // the calendar: what "Show" asks for
   inRange.forEach(e => { if (!e.why) e.why = chReasons(e, idx); });
-  // the calendar puts each doctor on the day of their LAST CASE — the day they actually stopped.
-  // (On last case + 30 days, a weekday last case always lands two weekdays later — never a Mon or Tue.)
-  const byDay = new Map(); inRange.forEach(e => { const k = isoDate(e.last); (byDay.get(k) || byDay.set(k, []).get(k)).push(e); });
+  // the calendar puts each doctor on the day they CHURNED: 21 business days after their last case
+  const byDay = new Map(); inRange.forEach(e => { const k = isoDate(e.churn); (byDay.get(k) || byDay.set(k, []).get(k)).push(e); });
   const rk = [T, CH.min, CH.show, lo && isoDate(lo), hi && isoDate(hi), inRange.length].join('|');
   if (CH.rk !== rk) { CH.rk = rk; const ks = [...byDay.keys()].sort(); CH.day = ks.length ? ks[ks.length - 1] : null; CH.month = (CH.day || isoDate(hi || getMaxDate())).slice(0, 7); CH.doc = null; }
   const mix = {}; inRange.forEach(e => { const k = e.why.list[0].k; mix[k] = (mix[k] || 0) + 1; });
@@ -11908,10 +11927,10 @@ function renderChurn() {
   el.innerHTML = `
     <div class="section-header">
       <div><div class="section-title">📉 Churn</div>
-        <div class="section-sub">Every doctor who stopped sending — churned = no case for ${T}+ days (the Sales Hub’s rule) <i>and</i> at least 2½× their usual gap between cases — with the most likely reason, from their last 90 days vs the year before.</div></div>
+        <div class="section-sub">Every doctor who stopped sending, on the day they churned — <b>${chBizN(T)} business days</b> with no case (the Sales Hub’s ${T} days, counted in working days) <i>and</i> at least 2½× their usual gap — with the most likely reason, from their last 90 days before stopping vs the year before.</div></div>
       <div class="section-actions cs-acts">
         <label class="coach-f"><span>Accounts worth</span>${sel('chMin', [['500', '$500+ a year'], ['1000', '$1,000+ a year'], ['5000', '$5,000+ a year'], ['gs', '⭐ Golden & 🥈 Silver only']], CH.min)}</label>
-        <label class="coach-f"><span>Show</span>${sel('chShow', [['gone', 'Still gone (lost)'], ['back', 'Came back (a lapse)'], ['all', 'All churns']], CH.show)}</label>
+        <label class="coach-f"><span>Show</span>${sel('chShow', [['all', 'All churns'], ['gone', 'Still gone (lost)'], ['back', 'Came back (a lapse)']], CH.show)}</label>
       </div>
     </div>
     <div class="rmk-kpis">
@@ -11920,12 +11939,33 @@ function renderChurn() {
       ${kpi('Came back', fmtN(back), all.length ? Math.round(back / all.length * 100) + '% of churns were a lapse' : '')}
       ${kpi('Revenue at stake', fmtUSD(rev), 'all churns, their last 12 months')}
     </div>
-    <div class="card mb20"><div class="chart-title">Most likely reason <small class="text-mut">· ${esc({ gone: 'doctors still gone', back: 'churns that came back', all: 'all churns' }[CH.show])}</small></div>
-      <div class="ch-mix">${Object.entries(mix).sort((a, b) => b[1] - a[1]).map(([k, n]) => `<span class="ch-chip ch-${k}">${CH_REASON[k].icon} ${esc(CH_REASON[k].label)} <b>${n}</b> <small>${Math.round(n / inRange.length * 100)}%</small></span>`).join('') || '<span class="text-mut">No churn in this range.</span>'}</div></div>
+    <div class="card mb20"><div class="chart-title">Most likely reason <small class="text-mut">· ${esc({ gone: 'doctors still gone', back: 'churns that came back', all: 'all churns' }[CH.show])} · click one for the list</small></div>
+      <div class="ch-mix">${Object.entries(mix).sort((a, b) => b[1] - a[1]).map(([k, n]) => `<button type="button" class="ch-chip ch-${k}${CH.reason === k ? ' on' : ''}" data-r="${k}">${CH_REASON[k].icon} ${esc(CH_REASON[k].label)} <b>${n}</b> <small>${Math.round(n / inRange.length * 100)}%</small></button>`).join('') || '<span class="text-mut">No churn in this range.</span>'}</div>
+      <div id="chReasonList"></div></div>
     <div class="card mb20" id="chCal"></div>`;
-  CH.byDay = byDay; CH.lo = lo; CH.hi = hi; chPaintCal();
+  CH.byDay = byDay; CH.lo = lo; CH.hi = hi; CH.list = inRange; chPaintCal(); chPaintReason();
+  el.querySelectorAll('.ch-chip[data-r]').forEach(b => b.onclick = () => { CH.reason = CH.reason === b.dataset.r ? null : b.dataset.r; CH.rlim = 50;
+    el.querySelectorAll('.ch-chip[data-r]').forEach(x => x.classList.toggle('on', x.dataset.r === CH.reason)); chPaintReason(); });
   document.getElementById('chMin').onchange = e => { CH.min = e.target.value; CH.rk = null; renderChurn(); };
   document.getElementById('chShow').onchange = e => { CH.show = e.target.value; CH.rk = null; renderChurn(); };
+}
+// a reason chip clicked: everyone whose most likely reason it is
+function chPaintReason() {
+  const host = document.getElementById('chReasonList'); if (!host) return;
+  if (!CH.reason) { host.innerHTML = ''; return; }
+  const R = CH_REASON[CH.reason], rows = (CH.list || []).filter(e => e.why.list[0].k === CH.reason).sort((a, b) => b.churn - a.churn || b.rev - a.rev);
+  const fmtD = t => t.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  host.innerHTML = `<div class="ch-rl"><div class="ch-rlh"><b>${R.icon} ${esc(R.label)} — ${fmtN(rows.length)} doctor${rows.length === 1 ? '' : 's'}</b>
+      <span class="text-mut">${fmtUSD(rows.reduce((t, e) => t + e.rev, 0))} a year · newest first · click a doctor for their analysis</span><button class="btn-text" id="chRClose">Close ✕</button></div>
+    <div class="rmk-wrap"><table class="rmk-tbl"><thead><tr><th>Doctor</th><th>Practice</th><th>Churned</th><th>Last case</th><th class="num">A year</th><th></th><th>Why</th></tr></thead><tbody>
+    ${rows.slice(0, CH.rlim).map((e, i) => `<tr class="ch-rr" data-i="${i}"><td><b>${goldMark(e.id)}${esc(e.name)}</b></td><td class="text-mut">${esc(e.practice)}${e.state ? ', ' + esc(e.state) : ''}</td>
+      <td>${esc(fmtD(e.churn))}</td><td class="text-mut">${esc(fmtD(e.last))}</td><td class="num">${fmtUSD(e.rev)}</td>
+      <td>${e.back ? '<span class="ch-back">↩ came back</span>' : '<span class="ch-gone">gone</span>'}</td><td class="ch-rw">${esc(e.why.list[0].text)}</td></tr>`).join('')}</tbody></table></div>
+    ${rows.length > CH.rlim ? `<button class="btn-text" id="chRMore">Show ${Math.min(50, rows.length - CH.rlim)} more of ${fmtN(rows.length - CH.rlim)}</button>` : ''}</div>`;
+  host.querySelectorAll('.ch-rr').forEach(tr => tr.onclick = () => { const e = rows[+tr.dataset.i]; CH.day = isoDate(e.churn); CH.month = CH.day.slice(0, 7); CH.doc = e.id; chPaintCal();
+    const b = document.getElementById('chDayBox'); if (b) b.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+  document.getElementById('chRClose').onclick = () => { CH.reason = null; document.querySelectorAll('.ch-chip[data-r]').forEach(x => x.classList.remove('on')); chPaintReason(); };
+  const more = document.getElementById('chRMore'); if (more) more.onclick = () => { CH.rlim += 50; chPaintReason(); };
 }
 function chPaintCal() {
   const host = document.getElementById('chCal'); if (!host) return;
@@ -11939,9 +11979,9 @@ function chPaintCal() {
       style="${n ? `background:rgba(124,58,237,${(0.12 + 0.6 * n / max).toFixed(2)})` : ''}" title="${n ? n + ' doctor' + (n === 1 ? '' : 's') + ' churned · ' + fmtUSD(r) + ' a year' : ''}">
       <span class="dn">${dd}</span>${n ? `<span class="dc">${n}</span><span class="du">${csK(r)}</span>` : ''}</button>`;
   }
-  host.innerHTML = `<div class="rmk-cal-head"><div class="chart-title" style="margin:0">📅 Churn by last case</div>
+  host.innerHTML = `<div class="rmk-cal-head"><div class="chart-title" style="margin:0">📅 Churn by day</div>
       <div class="rmk-cal-nav"><button class="btn-text" id="chPrev" ${mKey <= minM ? 'disabled' : ''}>‹</button><b>${first.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</b><button class="btn-text" id="chNext" ${mKey >= maxM ? 'disabled' : ''}>›</button></div>
-      <small class="text-mut">${fmtN(mN)} doctor${mN === 1 ? '' : 's'} · ${fmtUSD(mRev)} a year · each doctor sits on the day of their <b>last case</b>; the last ${SH_STATE.churnDays || 30} days can’t show churn yet · click a day</small></div>
+      <small class="text-mut">${fmtN(mN)} doctor${mN === 1 ? '' : 's'} churned · ${fmtUSD(mRev)} a year · each doctor sits on the day they churned — ${chBizN(SH_STATE.churnDays || 30)} business days after their last case · click a day</small></div>
     <div class="rmk-cal">${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(w => `<div class="rmk-cal-w">${w}</div>`).join('')}${cells}</div>
     <div id="chDayBox"></div>`;
   host.querySelectorAll('.rmk-cal-d.has').forEach(b => b.onclick = () => { CH.day = b.dataset.d; CH.doc = null; chPaintCal(); });
@@ -11957,10 +11997,15 @@ function chPaintDay() {
   if (!list.length) { box.innerHTML = '<div class="text-mut rmk-day-empty">No churn this month.</div>'; return; }
   const cur = list.find(e => e.id === CH.doc) || list[0]; CH.doc = cur.id;
   const dt = new Date(CH.day + 'T12:00:00');
-  box.innerHTML = `<div class="rmk-day-head">${dt.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })} — the last case for ${list.length} doctor${list.length === 1 ? '' : 's'} who then churned</div>
+  const ks = [...CH.byDay.keys()].sort(), at = ks.indexOf(CH.day), prevK = at > 0 ? ks[at - 1] : null, nextK = at >= 0 && at < ks.length - 1 ? ks[at + 1] : null;
+  box.innerHTML = `<div class="rmk-day-head ch-dayh"><button class="btn-text" id="chDPrev" ${prevK ? '' : 'disabled'}>‹ previous day</button>
+      <span>${dt.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })} — ${list.length} doctor${list.length === 1 ? '' : 's'} churned</span>
+      <button class="btn-text" id="chDNext" ${nextK ? '' : 'disabled'}>next day ›</button></div>
     <div class="ch-pills">${list.map(e => `<button type="button" class="ch-pill${e.id === cur.id ? ' on' : ''}" data-id="${esc(e.id)}">${goldMark(e.id)}${esc(e.name)} <small>${csK(e.rev)}</small> <span class="ch-pi">${CH_REASON[e.why.list[0].k].icon}</span></button>`).join('')}</div>
     ${chDoctorHTML(cur)}`;
   box.querySelectorAll('.ch-pill').forEach(b => b.onclick = () => { CH.doc = b.dataset.id; chPaintDay(); });
+  const go = k => { if (!k) return; CH.day = k; CH.month = k.slice(0, 7); CH.doc = null; chPaintCal(); };
+  document.getElementById('chDPrev').onclick = () => go(prevK); document.getElementById('chDNext').onclick = () => go(nextK);
   box.querySelectorAll('[data-open]').forEach(b => b.onclick = () => { APP.selectedDoctorId = b.dataset.open; switchTab(b.dataset.tab); });
 }
 function chDoctorHTML(e) {
@@ -11978,7 +12023,7 @@ function chDoctorHTML(e) {
   return `<div class="ch-doc">
     <div class="ch-dh"><div><div class="ch-dn">${goldMark(e.id)}${esc(e.name)} ${isGolden(e.id) ? '<span class="gm-tag">⭐ Golden List</span>' : isSilver(e.id) ? '<span class="gm-tag sv">🥈 Silver List</span>' : ''}</div>
       <div class="rmk-sub">${esc(e.practice)}${e.city ? ' · ' + esc(e.city) : ''}${e.state ? ', ' + esc(e.state) : ''}</div>
-      <div class="ch-facts">Last case <b>${fmtD(e.last)}</b> · counted as churned <b>${fmtD(e.churn)}</b> (${e.T} days on)${e.usual ? ' · usually sent ' + (e.usual <= 1 ? 'every day' : 'every ~' + e.usual + ' days') : ''} · <b>${fmtUSD(e.rev)}</b> and ${e.cases} cases in their last 12 months ·
+      <div class="ch-facts">Last case <b>${fmtD(e.last)}</b> · churned <b>${fmtD(e.churn)}</b> (${e.TB} business days on)${e.usual ? ' · usually sent ' + (e.usual <= 1 ? 'every day' : 'every ~' + e.usual + ' days') : ''} · <b>${fmtUSD(e.rev)}</b> and ${e.cases} cases in their last 12 months ·
         ${e.back ? `<span class="ch-back">↩ came back ${fmtD(e.back)}</span>` : '<span class="ch-gone">still gone</span>'}</div></div>
       <div class="ch-acts"><button class="btn-text" data-open="${esc(e.id)}" data-tab="docdetail">Doctor Detail ↗</button><button class="btn-text" data-open="${esc(e.id)}" data-tab="timeline">Client Timeline ↗</button></div></div>
     <div class="ch-why"><div class="ch-wt">Projected reason${W.list.length > 1 ? 's' : ''}</div>
@@ -15551,7 +15596,7 @@ async function rpBuildVisitReport(forDate) {
       // writes to the OFFICE notes as "[Jul 24, 2026] …" and leaves the visit
       // note empty — so the report reads both, or it looks like the note was
       // never saved.
-      let note = (p[2] || '').trim();
+      let note = svVNote((p[2] || '').trim());
       if (!note) {
         const stamp = '[' + new Date(day + 'T12:00:00').toLocaleDateString(undefined,
                         { month: 'short', day: 'numeric', year: 'numeric' }) + ']';
@@ -17049,7 +17094,7 @@ const SLF = (() => {
       // the uid is what attribution and closed-sale credit actually key on.
       const parts=String(item).split("~");
       const d=normDate(parts[0]); if(!d)return null;
-      return {date:d, color:(parts[1]||"").trim(), note:(parts[2]||"").trim(), rep:(parts[3]||"").trim(), uid:(parts[4]||"").trim()};
+      return {date:d, color:(parts[1]||"").trim(), note:svVNote((parts[2]||"").trim()), rep:(parts[3]||"").trim(), uid:(parts[4]||"").trim()};
     }).filter(Boolean);
     // newest first by date
     out.sort((a,b)=>a.date<b.date?1:a.date>b.date?-1:0);
@@ -17397,6 +17442,7 @@ function pmPopupHTML(o, compact) {
   return `<div class="pm-pop-o${compact ? ' compact' : ''}">
     <div class="pm-pop-n"><span class="pm-dot" style="background:${pmColor(o)}"></span>${pmGoldMark(o)}${esc(o.name || 'Unnamed office')} ${quietMark(pmQuiet(o))} <span class="pm-pop-t">${esc(pmTierOf(o))}</span>${labs}</div>
     <div class="pm-pop-a">${esc(addr || 'No address')}</div>
+    ${(() => { const v = (o.visits || [])[0], n = v && String(v.note || '').trim(); return n ? `<div class="pm-pop-vn" title="${esc(n)}">📝 ${esc(n.length > 160 ? n.slice(0, 160) + '…' : n)}</div>` : ''; })()}
     <div class="pm-pop-x">${[lv ? `Last visit ${esc(lv)}${heat ? ' · ' + heat[1] : ''}` : 'Not visited', SLF.isClaimed(o) ? `☆ ${esc(o.claimedByName || 'Claimed')}` : '',
       o.phone ? `<a href="tel:${esc(String(o.phone).replace(/[^0-9+]/g, ''))}">${esc(o.phone)}</a>` : '', o.scanner && o.scanner !== 'None' ? esc(o.scanner) : '',
       addr ? `<a href="https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(addr)}" target="_blank" rel="noopener">Directions ↗</a>` : ''].filter(Boolean).join(' · ')}</div>
@@ -17775,9 +17821,9 @@ function pmLvDetail(o) {
       ${f('Doctors', esc(o.drs || '—'))}${f('Current lab', esc(o.lab || '—'))}
       ${f('Account', SLF.isClosed(o) ? '★ Closed sale' + (o.claimedByName ? ' — ' + esc(o.claimedByName) : '') : SLF.isClaimed(o) ? '☆ Claimed by ' + esc(o.claimedByName || 'a rep') : '—')}</div>
     ${labLines.length ? `<div class="pm-lvsec">Lab</div>${labLines.map(l => `<div class="pm-lvline">${esc(l.replace(/^.*?LAB:\s*/i, ''))}</div>`).join('')}` : ''}
-    ${vis.length ? `<div class="pm-lvsec">Recent visits</div>${vis.map(v => { const h = PM_HEAT.find(x => x[0] === v.color);
-        return `<div class="pm-lvline">${h ? `<i style="background:${h[2]}"></i>` : ''}${esc(pmDay(v.date))}${v.rep ? ' · ' + esc(v.rep) : ''}${v.note ? ' — ' + esc(v.note) : ''}</div>`; }).join('')}` : ''}
-    ${other ? `<div class="pm-lvsec">Notes</div><div class="pm-lvline pm-lvnote">${esc(other.slice(0, 500))}</div>` : ''}
+    ${vis.length ? `<div class="pm-lvsec">Recent visits &amp; notes</div>${vis.map(v => { const h = PM_HEAT.find(x => x[0] === v.color);
+        return `<div class="pm-lvline">${h ? `<i style="background:${h[2]}"></i>` : ''}<b>${esc(pmDay(v.date))}</b>${v.rep ? ' · ' + esc(v.rep) : ''}${v.note ? `<div class="pm-lvvn">${esc(v.note)}</div>` : ''}</div>`; }).join('')}` : ''}
+    ${other ? `<div class="pm-lvsec">Office notes</div><div class="pm-lvline pm-lvnote">${esc(other.slice(0, 500))}</div>` : ''}
     <div class="pm-lvact"><button type="button" class="crm-save" data-crm="${esc(o.id)}">📝 Log call / email / visit</button>${pmHasPos(o) ? `<button type="button" class="btn-text" data-lvmap="${esc(o.id)}">🗺 Show on map</button>` : '<span class="text-mut">No map position yet</span>'}
       ${addr ? `<a class="btn-text" href="https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(addr)}" target="_blank" rel="noopener">Directions ↗</a>` : ''}</div></div>`;
 }
