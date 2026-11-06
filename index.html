@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.11.06-DL57</title>
+<title>Lab Sales Dashboard v2026.11.06-DL58</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -2011,7 +2011,7 @@ const APP = {
 
 /* Bump when normalization logic changes, so it's possible to tell at a glance
    (bottom of the Avg Turnaround card) which build a browser is running. */
-const BUILD_ID = 'DL57 · 2026-11-06';
+const BUILD_ID = 'DL58 · 2026-11-06';
 
 const DB_NAME = 'LabOpsCache';
 const DB_STORE = 'datasets';
@@ -11893,10 +11893,12 @@ function renderChurn() {
   const { eps, idx } = chEpisodes(T, CH.min);
   // the date range: churn days inside the dashboard's range
   let lo = null, hi = null; (APP.filtered || []).forEach(r => { if (r.anchorDate) { if (!lo || r.anchorDate < lo) lo = r.anchorDate; if (!hi || r.anchorDate > hi) hi = r.anchorDate; } });
-  const all = eps.filter(e => (!lo || e.churn >= chDay0(lo)) && (!hi || e.churn <= hi));                 // the cards: the full picture
+  const all = eps.filter(e => (!lo || e.last >= chDay0(lo)) && (!hi || e.last <= hi));                   // the cards: the full picture
   const inRange = all.filter(e => CH.show === 'all' || (CH.show === 'gone' ? !e.back : !!e.back));         // the calendar: what "Show" asks for
   inRange.forEach(e => { if (!e.why) e.why = chReasons(e, idx); });
-  const byDay = new Map(); inRange.forEach(e => { const k = isoDate(e.churn); (byDay.get(k) || byDay.set(k, []).get(k)).push(e); });
+  // the calendar puts each doctor on the day of their LAST CASE — the day they actually stopped.
+  // (On last case + 30 days, a weekday last case always lands two weekdays later — never a Mon or Tue.)
+  const byDay = new Map(); inRange.forEach(e => { const k = isoDate(e.last); (byDay.get(k) || byDay.set(k, []).get(k)).push(e); });
   const rk = [T, CH.min, CH.show, lo && isoDate(lo), hi && isoDate(hi), inRange.length].join('|');
   if (CH.rk !== rk) { CH.rk = rk; const ks = [...byDay.keys()].sort(); CH.day = ks.length ? ks[ks.length - 1] : null; CH.month = (CH.day || isoDate(hi || getMaxDate())).slice(0, 7); CH.doc = null; }
   const mix = {}; inRange.forEach(e => { const k = e.why.list[0].k; mix[k] = (mix[k] || 0) + 1; });
@@ -11928,7 +11930,7 @@ function renderChurn() {
 function chPaintCal() {
   const host = document.getElementById('chCal'); if (!host) return;
   const [y, m] = CH.month.split('-').map(Number), first = new Date(y, m - 1, 1), daysIn = new Date(y, m, 0).getDate(), mKey = CH.month;
-  const minM = CH.lo ? isoDate(CH.lo).slice(0, 7) : mKey, maxM = CH.hi ? isoDate(new Date(+CH.hi + 90 * CH_DAY)).slice(0, 7) : mKey;
+  const minM = CH.lo ? isoDate(CH.lo).slice(0, 7) : mKey, maxM = CH.hi ? isoDate(CH.hi).slice(0, 7) : mKey;
   let max = 1, mN = 0, mRev = 0; CH.byDay.forEach((l, k) => { if (k.startsWith(mKey)) { max = Math.max(max, l.length); mN += l.length; mRev += l.reduce((t, e) => t + e.rev, 0); } });
   let cells = ''; for (let i = 0; i < first.getDay(); i++) cells += '<div class="rmk-cal-d blank"></div>';
   for (let dd = 1; dd <= daysIn; dd++) {
@@ -11937,9 +11939,9 @@ function chPaintCal() {
       style="${n ? `background:rgba(124,58,237,${(0.12 + 0.6 * n / max).toFixed(2)})` : ''}" title="${n ? n + ' doctor' + (n === 1 ? '' : 's') + ' churned · ' + fmtUSD(r) + ' a year' : ''}">
       <span class="dn">${dd}</span>${n ? `<span class="dc">${n}</span><span class="du">${csK(r)}</span>` : ''}</button>`;
   }
-  host.innerHTML = `<div class="rmk-cal-head"><div class="chart-title" style="margin:0">📅 Churn by day</div>
+  host.innerHTML = `<div class="rmk-cal-head"><div class="chart-title" style="margin:0">📅 Churn by last case</div>
       <div class="rmk-cal-nav"><button class="btn-text" id="chPrev" ${mKey <= minM ? 'disabled' : ''}>‹</button><b>${first.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</b><button class="btn-text" id="chNext" ${mKey >= maxM ? 'disabled' : ''}>›</button></div>
-      <small class="text-mut">${fmtN(mN)} doctor${mN === 1 ? '' : 's'} churned · ${fmtUSD(mRev)} a year · the day = last case + ${SH_STATE.churnDays || 30} days · click a day</small></div>
+      <small class="text-mut">${fmtN(mN)} doctor${mN === 1 ? '' : 's'} · ${fmtUSD(mRev)} a year · each doctor sits on the day of their <b>last case</b>; the last ${SH_STATE.churnDays || 30} days can’t show churn yet · click a day</small></div>
     <div class="rmk-cal">${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(w => `<div class="rmk-cal-w">${w}</div>`).join('')}${cells}</div>
     <div id="chDayBox"></div>`;
   host.querySelectorAll('.rmk-cal-d.has').forEach(b => b.onclick = () => { CH.day = b.dataset.d; CH.doc = null; chPaintCal(); });
@@ -11955,7 +11957,7 @@ function chPaintDay() {
   if (!list.length) { box.innerHTML = '<div class="text-mut rmk-day-empty">No churn this month.</div>'; return; }
   const cur = list.find(e => e.id === CH.doc) || list[0]; CH.doc = cur.id;
   const dt = new Date(CH.day + 'T12:00:00');
-  box.innerHTML = `<div class="rmk-day-head">${dt.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })} — ${list.length} doctor${list.length === 1 ? '' : 's'} churned</div>
+  box.innerHTML = `<div class="rmk-day-head">${dt.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })} — the last case for ${list.length} doctor${list.length === 1 ? '' : 's'} who then churned</div>
     <div class="ch-pills">${list.map(e => `<button type="button" class="ch-pill${e.id === cur.id ? ' on' : ''}" data-id="${esc(e.id)}">${goldMark(e.id)}${esc(e.name)} <small>${csK(e.rev)}</small> <span class="ch-pi">${CH_REASON[e.why.list[0].k].icon}</span></button>`).join('')}</div>
     ${chDoctorHTML(cur)}`;
   box.querySelectorAll('.ch-pill').forEach(b => b.onclick = () => { CH.doc = b.dataset.id; chPaintDay(); });
@@ -11976,7 +11978,7 @@ function chDoctorHTML(e) {
   return `<div class="ch-doc">
     <div class="ch-dh"><div><div class="ch-dn">${goldMark(e.id)}${esc(e.name)} ${isGolden(e.id) ? '<span class="gm-tag">⭐ Golden List</span>' : isSilver(e.id) ? '<span class="gm-tag sv">🥈 Silver List</span>' : ''}</div>
       <div class="rmk-sub">${esc(e.practice)}${e.city ? ' · ' + esc(e.city) : ''}${e.state ? ', ' + esc(e.state) : ''}</div>
-      <div class="ch-facts">Last case <b>${fmtD(e.last)}</b> · churned <b>${fmtD(e.churn)}</b>${e.usual ? ' · usually sent ' + (e.usual <= 1 ? 'every day' : 'every ~' + e.usual + ' days') : ''} · <b>${fmtUSD(e.rev)}</b> and ${e.cases} cases in their last 12 months ·
+      <div class="ch-facts">Last case <b>${fmtD(e.last)}</b> · counted as churned <b>${fmtD(e.churn)}</b> (${e.T} days on)${e.usual ? ' · usually sent ' + (e.usual <= 1 ? 'every day' : 'every ~' + e.usual + ' days') : ''} · <b>${fmtUSD(e.rev)}</b> and ${e.cases} cases in their last 12 months ·
         ${e.back ? `<span class="ch-back">↩ came back ${fmtD(e.back)}</span>` : '<span class="ch-gone">still gone</span>'}</div></div>
       <div class="ch-acts"><button class="btn-text" data-open="${esc(e.id)}" data-tab="docdetail">Doctor Detail ↗</button><button class="btn-text" data-open="${esc(e.id)}" data-tab="timeline">Client Timeline ↗</button></div></div>
     <div class="ch-why"><div class="ch-wt">Projected reason${W.list.length > 1 ? 's' : ''}</div>
