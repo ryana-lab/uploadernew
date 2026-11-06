@@ -1,0 +1,94 @@
+# ════════════════════════════════════════════════════════════════════════════
+#  Daily reports — every day at 11 am Chicago
+#
+#  1. Pulls the latest from Pilot (the same job as "Pilot daily pull"), so
+#     yesterday is complete in Supabase.
+#  2. Opens the dashboard in a headless browser and presses "Send now" on the
+#     Reports tab: the same Customer, Product and Status Changes emails the
+#     dashboard builds by hand, covering the last COMPLETE business day.
+#  Never sends twice in a day. Also runnable by hand: Actions → "Daily reports".
+#
+#  THIS REPO IS PUBLIC: the logs show dates and counts only.
+# ════════════════════════════════════════════════════════════════════════════
+name: Daily reports
+
+on:
+  schedule:
+    # GitHub's clock is UTC and ignores daylight saving, so two times — the
+    # script only acts between 11 am and 3 pm Chicago, and only once a day:
+    #   16:05 UTC = 11:05 am CDT (summer)  ·  10:05 am CST (winter: skipped)
+    #   17:05 UTC = 12:05 pm CDT (summer: already sent, skipped)  ·  11:05 am CST (winter)
+    - cron: '5 16 * * *'
+    - cron: '5 17 * * *'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Send now, whatever the time — even if already sent today'
+        type: boolean
+        default: false
+      dry_run:
+        description: 'Build the reports only — send nothing'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pilot-daily          # never at the same time as a Pilot pull
+  cancel-in-progress: false
+
+jobs:
+  reports:
+    # Pinned: GitHub's newest image (Ubuntu 26.04, "ubuntu-latest") isn't supported
+    # by Playwright's browser installer yet. 24.04 is.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the scripts are in place
+        run: |
+          missing=0
+          for f in automation/pilot-sync.mjs automation/reports-daily.mjs; do
+            if [ ! -f "$f" ]; then echo "::error::$f is missing. The scripts must sit in a folder called 'automation' at the top of the repo (automation/pilot-sync.mjs, automation/reports-daily.mjs)."; missing=1; fi
+          done
+          if [ $missing = 1 ]; then
+            echo "What the repo has at the top level:"; ls -1
+            echo "Every .mjs file in the repo:"; find . -name '*.mjs' -not -path './node_modules/*' -not -path './.git/*'
+            exit 1
+          fi
+          echo "Scripts found: automation/pilot-sync.mjs, automation/reports-daily.mjs"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Pull the latest from Pilot first (so yesterday is complete)
+        continue-on-error: true      # a Pilot hiccup shouldn't stop the reports; the log shows it
+        env:
+          PILOT_API_KEY: ${{ secrets.PILOT_API_KEY }}
+          AUTOMATION_EMAIL: ${{ secrets.AUTOMATION_EMAIL }}
+          AUTOMATION_PASSWORD: ${{ secrets.AUTOMATION_PASSWORD }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          DAYS_BACK: '3'
+          PROD_DAYS_BACK: '14'
+        run: node automation/pilot-sync.mjs
+
+      - name: Install a headless browser
+        run: |
+          npm install --no-save --no-audit --no-fund playwright@1.56.0
+          # if Playwright's own browser can't be installed, the script falls back to
+          # the Google Chrome that comes with GitHub's runners
+          npx playwright install --with-deps chromium || echo "::warning::Playwright's browser could not be installed, so the runner's Google Chrome will be used"
+
+      - name: Build and send the reports
+        env:
+          DASHBOARD_URL: ${{ secrets.DASHBOARD_URL }}
+          AUTOMATION_EMAIL: ${{ secrets.AUTOMATION_EMAIL }}
+          AUTOMATION_PASSWORD: ${{ secrets.AUTOMATION_PASSWORD }}
+          REPORT_RECIPIENTS: ${{ secrets.REPORT_RECIPIENTS }}
+          FORCE: ${{ inputs.force && '1' || '' }}
+          DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
+        run: node automation/reports-daily.mjs
