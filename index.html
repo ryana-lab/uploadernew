@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.11.06-DL53</title>
+<title>Lab Sales Dashboard v2026.11.06-DL55</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -1970,7 +1970,7 @@ const APP = {
 
 /* Bump when normalization logic changes, so it's possible to tell at a glance
    (bottom of the Avg Turnaround card) which build a browser is running. */
-const BUILD_ID = 'DL53 · 2026-11-06';
+const BUILD_ID = 'DL55 · 2026-11-06';
 
 const DB_NAME = 'LabOpsCache';
 const DB_STORE = 'datasets';
@@ -15622,6 +15622,73 @@ function rpBuildGoldenReport() {
     rpIncompleteNote() + quietKeyEmail() + rpListBody(goldenIds(), '⭐', 'Golden List', 0) + rpListBody(silverIds(), '🥈', 'Silver List', 40);
 }
 
+/* ══ 🔁 DAILY REMAKES REPORT — the Remakes tab as an email ════════════════════
+   Main products only (no models, add-ons, parts, try-ins, shipping or fees).
+   For the report day (the last complete business day): the remake rate, units,
+   cases and credits for the day, the last 7 and the last 30 business days, each
+   against the period before; every case remade that day; and, for the last 30
+   business days, the products, specific reasons and doctors with the most. */
+function rpBuildRemakesReport() {
+  const day = rpReportDay(), biz = rpBizContext(), F = RP_F, Q = quietInfo(day);
+  const rowsIn = (a, b) => rawByGroupState().filter(r => { if (!r.anchorDate) return false; const o = biz.map[rpBizFoldDay(r.anchorDate)]; return o != null && o >= a && o <= b; });
+  const W = { day: [rmkRollup(rowsIn(0, 0)), rmkRollup(rowsIn(1, 1))], week: [rmkRollup(rowsIn(0, 6)), rmkRollup(rowsIn(7, 13))], month: [rmkRollup(rowsIn(0, 29)), rmkRollup(rowsIn(30, 59))] };
+  const pct = v => v == null ? '—' : (v * 100).toFixed(1) + '%';
+  const rate = R => R.units ? R.remade / R.units : null;
+  const th = l => '<th style="text-align:left;padding:8px 12px;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:#64748b;border-bottom:1px solid #e2e8f0">' + l + '</th>';
+  const td = (v, right) => '<td style="padding:7px 12px;border-bottom:1px solid #f1f5f9;font-size:12.5px;vertical-align:top' + (right ? ';text-align:right' : '') + '">' + v + '</td>';
+  const table = (heads, rows) => '<table cellpadding="0" cellspacing="0" style="' + F + 'width:100%;border-collapse:collapse;background:#fff;border:1px solid #e2e8f0;border-radius:10px;margin-bottom:6px"><tr>' + heads.map(th).join('') + '</tr>' + rows.join('') + '</table>';
+  const sec = (t, note) => '<div style="' + F + 'font-size:15px;font-weight:800;color:#0f172a;margin:22px 0 8px">' + t + (note ? ' <span style="font-weight:500;font-size:11px;color:#64748b">' + note + '</span>' : '') + '</div>';
+  const nil = t => '<div style="' + F + 'font-size:12px;color:#64748b;font-style:italic;margin-bottom:6px">' + t + '</div>';
+  // a change in remake rate: up is bad (red), down is good (green)
+  const ptsChg = (now, before) => { if (now == null || before == null) return ''; const d = (now - before) * 100;
+    const c = d > 0.3 ? '#b91c1c' : d < -0.3 ? '#047857' : '#64748b';
+    return '<div style="font-size:11.5px;font-weight:700;color:' + c + '">' + (d > 0.05 ? '▲ ' : d < -0.05 ? '▼ ' : '') + Math.abs(d).toFixed(1) + ' pts vs ' + pct(before) + '</div>'; };
+  const numChg = (now, before) => { if (!before && !now) return ''; const d = now - before;
+    const c = d > 0 ? '#b91c1c' : d < 0 ? '#047857' : '#64748b';
+    return '<div style="font-size:11.5px;font-weight:700;color:' + c + '">' + (d > 0 ? '▲ +' : d < 0 ? '▼ −' : '±') + fmtN(Math.abs(d)) + ' vs ' + fmtN(before) + '</div>'; };
+  const dayLbl = rpDayLabel(day);
+
+  let h = rpHead('🔁 Daily Remakes Report', 'Main products only — remake rate, every case remade, and what is driving it', day, 'remakes') + rpIncompleteNote();
+
+  // 1. at a glance
+  h += sec('At a glance', 'each period vs the one before it');
+  const per = [['Day', dayLbl + ' vs the business day before', W.day], ['Week', 'last 7 business days vs prior 7', W.week], ['Month', 'last 30 business days vs prior 30', W.month]];
+  h += table(['Period', 'Remake rate', 'Remade units', 'Remade cases', 'Credits given'], per.map(([l, sub, [a, b]]) =>
+    '<tr>' + td('<b style="color:#0f172a">' + l + '</b><div style="font-size:11px;color:#64748b">' + sub + '</div>') +
+    td('<b style="font-size:15px;color:#0f172a">' + pct(rate(a)) + '</b>' + ptsChg(rate(a), rate(b))) +
+    td('<b style="font-size:15px;color:#0f172a">' + fmtN(a.remade) + '</b>' + numChg(a.remade, b.remade) + '<div style="font-size:11px;color:#64748b">of ' + fmtN(a.units) + ' units</div>') +
+    td('<b style="font-size:15px;color:#0f172a">' + fmtN(a.remCases.size) + '</b>' + numChg(a.remCases.size, b.remCases.size)) +
+    td('<b style="font-size:15px;color:#0f172a">' + fmtUSD(a.disc) + '</b>') + '</tr>'));
+
+  // 2. every case remade on the report day
+  const D = W.day[0], cases = new Map();
+  D.lines.forEach(L => { const k = L.caseKey || L.caseNo || (L.drId + '|' + L.product);
+    const c = cases.get(k) || cases.set(k, { caseNo: L.caseNo, drId: L.drId, name: L.name, practice: L.practice, items: [] }).get(k); c.items.push(L); });
+  const list = [...cases.values()].sort((a, b) => b.items.reduce((t, x) => t + x.qty, 0) - a.items.reduce((t, x) => t + x.qty, 0));
+  h += sec('Remakes on ' + dayLbl + ' — ' + list.length + ' case' + (list.length === 1 ? '' : 's') + ', ' + fmtN(D.remade) + ' units');
+  h += list.length ? table(['Doctor', 'Practice', 'Product remade', 'Reason', 'Units', 'Case'], list.flatMap(c => c.items.map((it, i) => '<tr>' +
+      td(i ? '' : '<b style="color:#0f172a">' + goldMarkEmail(c.drId) + esc(c.name || '—') + '</b>' + quietMarkEmail(Q.get(c.drId))) +
+      td(i ? '' : '<span style="color:#64748b">' + esc(c.practice || '—') + '</span>') + td('<b style="color:#0f172a">' + esc(it.product) + '</b>') +
+      td(it.reason ? esc(it.reason) : '<span style="color:#94a3b8">—</span>') + td(fmtN(it.qty), true) + td(i ? '' : '<span style="color:#64748b">' + esc(c.caseNo || '') + '</span>') + '</tr>')))
+    : nil('No remakes on ' + dayLbl + '.');
+
+  // 3. the last 30 business days in brief
+  const M = W.month[0], S = rmkSections(M), spec = M.remade - M.vague;
+  h += sec('Last 30 business days — products remade most', 'top 10');
+  h += S.prods.length ? table(['Product', 'Remade units', 'Remake rate', 'Top reason'], S.prods.sort((a, b) => b.rem - a.rem).slice(0, 10).map(x => '<tr>' +
+      td('<b style="color:#0f172a">' + esc(x.name) + '</b><div style="font-size:11px;color:#64748b">' + esc(x.cat) + '</div>') + td(fmtN(x.rem), true) + td(pct(x.rate), true) +
+      td(rmkTop(x.reasons) ? esc(rmkTop(x.reasons)) : '<span style="color:#94a3b8">—</span>') + '</tr>')) : nil('No remakes in the last 30 business days.');
+  h += sec('Last 30 business days — top reasons', (M.vague ? fmtN(M.vague) + ' remade units (' + pct(M.remade ? M.vague / M.remade : 0) + ') had no specific reason and aren’t listed' : ''));
+  h += S.reasons.length ? table(['Reason', 'Remade units', 'Share', 'Products most remade for it'], S.reasons.sort((a, b) => b.rem - a.rem).slice(0, 10).map(x => '<tr>' +
+      td('<b style="color:#0f172a">' + esc(x.name) + '</b>') + td(fmtN(x.rem), true) + td(pct(spec ? x.rem / spec : 0), true) + td('<span style="color:#64748b">' + esc(x.prods) + '</span>') + '</tr>')) : nil('No specific reasons recorded.');
+  h += sec('Last 30 business days — doctors with the most remakes', 'top 10');
+  h += S.docs.length ? table(['Doctor', 'Remade units', 'Remake rate', 'Last remake', 'Top reason'], S.docs.sort((a, b) => b.rem - a.rem).slice(0, 10).map(x => '<tr>' +
+      td('<b style="color:#0f172a">' + goldMarkEmail(x._dr) + esc(x.name || '') + '</b>' + quietMarkEmail(Q.get(x._dr)) + '<div style="font-size:11px;color:#64748b">' + esc(x.practice || '') + '</div>') +
+      td(fmtN(x.rem), true) + td(pct(x.rate) + '<div style="font-size:11px;color:#64748b">of ' + fmtN(x.units) + ' units</div>', true) + td(x.last ? esc(fmtDateShort(x.last)) : '—') +
+      td(rmkTop(x.reasons) ? esc(rmkTop(x.reasons)) : '<span style="color:#94a3b8">—</span>') + '</tr>')) : nil('No remakes in the last 30 business days.');
+  return h;
+}
+
 async function rpBuildAll() {
   await keyAcctLoad(true);           // the diamond list, fresh, for the status report
   const asOf = isoDate(rpReportDay());   // the day the reports describe
@@ -15632,6 +15699,7 @@ async function rpBuildAll() {
       { key: 'products', subject: '📦 Daily Product Report — ' + rpDayLabel(rpReportDay()),  html: rpBuildProductReport() },
       { key: 'status',   subject: '🔔 Status Changes Report — ' + rpDayLabel(rpReportDay()), html: rpBuildStatusReport() },
       { key: 'golden',   subject: '⭐ Golden & 🥈 Silver List Report — ' + rpDayLabel(rpReportDay()), html: rpBuildGoldenReport() },
+      { key: 'remakes',  subject: '🔁 Daily Remakes Report — ' + rpDayLabel(rpReportDay()), html: rpBuildRemakesReport() },
       { key: 'visits',   subject: '🚗 Daily Visit Report — ' + rpDayLabel(rpReportDay()),    html: (await rpBuildVisitReport(isoDate(rpReportDay()))).html },
       { key: 'employees', subject: '🧑‍🔧 Daily Employee Production', html: await rpBuildEmployeeReport() }
     ]
@@ -15649,7 +15717,7 @@ function rpLog(msg, cls) {
 async function rpPost(action) {
   const recipients = (document.getElementById('rpRcpt').value || '').trim();
   const perReport = {};
-  ['doctors', 'products', 'status', 'golden', 'visits', 'employees'].forEach(k => {
+  ['doctors', 'products', 'status', 'golden', 'remakes', 'visits', 'employees'].forEach(k => {
     const el = document.getElementById('rpRcpt_' + k);
     const v = el ? el.value.trim() : '';
     if (v) perReport[k] = v;
@@ -15660,6 +15728,7 @@ async function rpPost(action) {
     rcptProducts: (document.getElementById('rpRcpt_products') || {}).value || '',
     rcptStatus: (document.getElementById('rpRcpt_status') || {}).value || '',
     rcptGolden: (document.getElementById('rpRcpt_golden') || {}).value || '',
+    rcptRemakes: (document.getElementById('rpRcpt_remakes') || {}).value || '',
     rcptVisits: (document.getElementById('rpRcpt_visits') || {}).value || '',
     rcptEmployees: (document.getElementById('rpRcpt_employees') || {}).value || ''
   });
@@ -15713,7 +15782,12 @@ async function rpPost(action) {
         bad.forEach(x => rpLog('  ✗ not sent: ' + x.key + ' — ' + String(x.error).slice(0, 220), 'err'));
         if (!good.length) throw new Error(bad.length ? 'Resend refused every report — ' + String(bad[0].error).slice(0, 220)
                                                      : 'nothing was sent — no stored report had recipients');
-        rpLog('  function replied: ' + good.length + ' report' + (good.length === 1 ? '' : 's') + ' sent' + (bad.length ? ', ' + bad.length + ' refused (above)' : ''));
+        if (res.emails != null) {   // one email per person (send-reports v3)
+          rpLog('  function replied: ' + res.emails + ' email' + (res.emails === 1 ? '' : 's') + ' sent — ' + (res.reports || 0) + ' report' + (res.reports === 1 ? '' : 's') + ', one email per person' +
+                (bad.length ? ' · ' + bad.length + ' refused (above)' : '') + (res.skipped ? ' · ' + res.skipped + ' report' + (res.skipped === 1 ? '' : 's') + ' had no recipients' : ''));
+        } else {
+          rpLog('  function replied: ' + good.length + ' report' + (good.length === 1 ? '' : 's') + ' sent' + (bad.length ? ', ' + bad.length + ' refused (above)' : ''));
+        }
       } else {
         const sent = Number(res.sent || 0), skipped = Number(res.skipped || 0);
         if (!sent) throw new Error('nothing was sent — ' + (skipped ? skipped + ' stored report' + (skipped === 1 ? '' : 's') + ' had no recipients' : 'no reports were stored'));
@@ -15763,6 +15837,7 @@ async function rpPreview(which) {
   box.innerHTML = which === 'doctors' ? rpBuildDoctorReport()
                 : which === 'products' ? rpBuildProductReport()
                 : which === 'golden' ? rpBuildGoldenReport()
+                : which === 'remakes' ? rpBuildRemakesReport()
                 : rpBuildStatusReport();
   box.scrollTop = 0;
 }
@@ -15810,13 +15885,12 @@ function renderReports() {
 
     <div class="card">
       <div class="sb-card-title"><span class="sb-stepnum">1</span> Delivery setup</div>
-      <div class="sb-hint">Connection is <b>shared with the Salesly Bridge tab</b> — same Supabase project.
-        Reports are written to the <code>reports</code> table and emailed by the <code>send-reports</code>
-        Edge Function on its schedule — when email is connected, set that to run <b>after</b> your usual upload, or press <b>Send now</b> once you've pushed.</div>
-      <div class="sb-row">
-        <div class="sb-hint">Backend: the Supabase project configured on the <b>Salesly Bridge</b> tab. Reports are written to the <code>reports</code> table and emailed by the <code>send-reports</code> Edge Function.</div>
-        
-      </div>
+      <div class="sb-hint"><b>Each person gets ONE email</b> containing every report they're set to receive — the reports
+        whose box below lists them, plus every report without its own list if they're in the default list. Someone
+        listed only under Status changes gets just that report.</div>
+      <div class="sb-hint" style="margin-top:6px">Sent automatically at <b>11 am (Chicago)</b> on mornings after a day with invoicing — never on
+        Mondays or after a closed day, and held if yesterday looks incomplete. <b>Send now</b> sends straight away.
+        Uses the Supabase project on the <b>Salesly Bridge</b> tab (<code>reports</code> table · <code>send-reports</code> function).</div>
       <label class="sb-label">Default recipients (comma-separated — used for any report without its own list below)</label>
       <input class="sync-input" id="rpRcpt" placeholder="owner@lab.com, sales@lab.com" value="${esc(cfg.rcpt || '')}">
       <div class="sb-hint" style="margin:12px 0 4px"><b>Send specific reports to specific people</b> (optional). Leave a box blank to use the default list above.</div>
@@ -15828,6 +15902,8 @@ function renderReports() {
       <input class="sync-input" id="rpRcpt_status" placeholder="e.g. owner@lab.com, reps@lab.com" value="${esc(cfg.rcptStatus || '')}">
       <label class="sb-label">⭐ Golden &amp; 🥈 Silver List → </label>
       <input class="sync-input" id="rpRcpt_golden" placeholder="e.g. owner@lab.com, reps@lab.com" value="${esc(cfg.rcptGolden || '')}">
+      <label class="sb-label">🔁 Remakes → </label>
+      <input class="sync-input" id="rpRcpt_remakes" placeholder="e.g. production@lab.com, quality@lab.com" value="${esc(cfg.rcptRemakes || '')}">
       <label class="sb-label">🚗 Daily visits → </label>
       <input class="sync-input" id="rpRcpt_visits" placeholder="e.g. owner@lab.com" value="${esc(cfg.rcptVisits || '')}">
       <label class="sb-label">🧑‍🔧 Employee production → </label>
@@ -15851,6 +15927,7 @@ function renderReports() {
         <button class="btn-text" id="rpPrevProd">📦 Product report</button>
         <button class="btn-text" id="rpPrevStat">🔔 Status changes</button>
         <button class="btn-text" id="rpPrevGold">⭐ Golden &amp; 🥈 Silver</button>
+        <button class="btn-text" id="rpPrevRmk">🔁 Remakes</button>
         <button class="btn-text" id="rpPrevVisits">🚗 Daily visits</button>
         <button class="btn-text" id="rpPrevEmp">🧑‍🔧 Employee production</button>
       </div>
@@ -15869,6 +15946,7 @@ function renderReports() {
   document.getElementById('rpPrevProd').onclick = () => rpPreview('products');
   document.getElementById('rpPrevStat').onclick = () => rpPreview('status');
   document.getElementById('rpPrevGold').onclick = () => rpPreview('golden');
+  document.getElementById('rpPrevRmk').onclick = () => rpPreview('remakes');
   document.getElementById('rpPrevVisits').onclick = () => rpPreview('visits');
   document.getElementById('rpPrevEmp').onclick = () => rpPreview('employees');
   kaRenderCard();
@@ -15884,7 +15962,7 @@ function renderReports() {
   const rpSaveRecipients = () => {
     const patch = {};
     const map = { rpRcpt: 'rcpt', rpRcpt_doctors: 'rcptDoctors', rpRcpt_products: 'rcptProducts',
-                  rpRcpt_status: 'rcptStatus', rpRcpt_golden: 'rcptGolden', rpRcpt_visits: 'rcptVisits', rpRcpt_employees: 'rcptEmployees' };
+                  rpRcpt_status: 'rcptStatus', rpRcpt_golden: 'rcptGolden', rpRcpt_remakes: 'rcptRemakes', rpRcpt_visits: 'rcptVisits', rpRcpt_employees: 'rcptEmployees' };
     Object.keys(map).forEach(id => { const v = rpRead(id); if (v !== null) patch[map[id]] = v; });
     if (!Object.keys(patch).length) return;
     const res = sbSaveCfgObj(patch);
