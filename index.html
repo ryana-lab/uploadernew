@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.11.06-DL50</title>
+<title>Lab Sales Dashboard v2026.11.06-DL53</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -1485,7 +1485,6 @@ tr.cs-open td { background: var(--card-2); white-space: normal; cursor: default;
       <button class="tab-btn" data-tab="empgrid">🧑‍🔧 Employee Grid</button>
       <button class="tab-btn" data-tab="empdetail">🔬 Employee Detail</button>
       <button class="tab-btn" data-tab="reports">📧 Reports</button>
-      <button class="tab-btn" data-tab="queue">✉️ Email Queue</button>
       <button class="tab-btn" data-tab="bridge">🔗 Salesly Bridge</button>
     </nav>
   </aside>
@@ -1971,7 +1970,7 @@ const APP = {
 
 /* Bump when normalization logic changes, so it's possible to tell at a glance
    (bottom of the Avg Turnaround card) which build a browser is running. */
-const BUILD_ID = 'DL50 · 2026-11-06';
+const BUILD_ID = 'DL53 · 2026-11-06';
 
 const DB_NAME = 'LabOpsCache';
 const DB_STORE = 'datasets';
@@ -6811,6 +6810,13 @@ function computeDoctorStatus(asOf) {
    that Apps Script can't answer) and mode:'no-cors' (reliable from a local
    file). We can't read the response, so we dedupe locally AND the doPost dedupes
    by email server-side — double-sends are harmless. ─────────────────────────── */
+/* WELCOME / WINBACK EMAILS — ON HOLD (Nov 2026). While true, nothing in the
+   dashboard adds to the email queue (the Onboarding Sync card, the automatic
+   New + Winback queueing on data load, "Sync now" / "Resend all"), and the Email
+   Queue tab and the sync card are hidden. Salesly office syncing is unaffected.
+   The sending job in Supabase (drain-email-queue) is paused too. To resume:
+   set this to false, redeploy, and re-activate that job. */
+const EMAIL_ON_HOLD = true;
 const SYNC_KEYS = { url: 'vda_sync_url', segs: 'vda_sync_segs', auto: 'vda_sync_auto', done: 'vda_sync_done', last: 'vda_sync_last', baseline: 'vda_sync_baseline' };
 function syncGet(k, dflt) { try { const v = localStorage.getItem(k); return v == null ? dflt : JSON.parse(v); } catch (e) { return dflt; } }
 function syncSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
@@ -6919,6 +6925,7 @@ function pushSyncRows(rows) {
   // so ignoreDuplicates lets the DATABASE decide what's already been queued —
   // it can't drift out of sync with reality the way a rebuilt JS Set could.
   // The send-emails Edge Function drains the queue every 10 minutes.
+  if (EMAIL_ON_HOLD) return Promise.resolve({ confirmed: true, data: { ok: true, added: 0, skipped: rows.length, onHold: true } });
   const db = pgClient();
   if (!db) return Promise.reject(new Error('Set your Supabase URL and anon key on the Salesly Bridge tab'));
 
@@ -6969,6 +6976,7 @@ function pushSyncRows(rows) {
      baseline.
    - force = true ("Resend all"): send everyone in the segments regardless. */
 function syncNow(force) {
+  if (EMAIL_ON_HOLD) return;   // welcome / winback emails are on hold
   const cfg = syncCfg();
   const statusEl = document.getElementById('syncStatus');
   if (!pgClient()) { if (statusEl) statusEl.textContent = 'Set your Supabase URL and anon key on the Salesly Bridge tab first.'; return; }
@@ -7089,10 +7097,9 @@ async function _autoSyncRun() {
     officeMsg = 'Salesly push failed (' + esc(String(e && e.message || e)) + ')';
   }
 
-  syncBanner('Auto-sync running — queueing New &amp; Winback emails…', 'run');
-
-  let queueMsg;
-  try {
+  let queueMsg = '';
+  if (!EMAIL_ON_HOLD) try {   // welcome / winback emails are on hold — skip this step
+    syncBanner('Auto-sync running — queueing New &amp; Winback emails…', 'run');
     if (!hasBaseline()) {
       const n = establishBaseline();
       queueMsg = 'email queue baseline set (' + n + ' existing clients marked handled — nothing sent)';
@@ -7116,13 +7123,14 @@ async function _autoSyncRun() {
   }
 
   const failed = /failed|error/i.test(officeMsg) || /failed|error/i.test(queueMsg);
-  syncBanner('<b>Sync complete</b> — ' + officeMsg + ' · ' + queueMsg +
+  syncBanner('<b>Sync complete</b> — ' + officeMsg + (queueMsg ? ' · ' + queueMsg : '') +
              '<div style="font-size:11.5px;color:#64748b;margin-top:4px">' +
              new Date().toLocaleTimeString() + ' · runs automatically on every data upload</div>',
              failed ? 'err' : 'ok');
 }
 
 function maybeAutoSync() {
+  if (EMAIL_ON_HOLD) return;   // welcome / winback emails are on hold
   const cfg = syncCfg();
   if (!cfg.auto || !cfg.url) return;
   if (!hasBaseline()) {
@@ -7215,7 +7223,7 @@ function renderStatus() {
       })()}</span>
     </div>
 
-    <div class="sync-card" id="syncCard">
+    ${EMAIL_ON_HOLD ? '' : `<div class="sync-card" id="syncCard">
       <div class="sync-head">
         <span class="sync-title">📤 Onboarding Sync → Email Queue</span>
         <button class="sync-toggle-link" id="syncToggleHelp" type="button">setup help</button>
@@ -7244,7 +7252,7 @@ function renderStatus() {
         <button class="btn-text" id="syncAllBtn" title="Send everyone in the selected segments, even if already synced">Resend all</button>
       </div>
       <div class="sync-status" id="syncStatus"></div>
-    </div>
+    </div>`}
 
     <div class="sub-tabs" id="stSegBar">
       ${segs.map(seg => `
@@ -13295,8 +13303,8 @@ function renderBridge() {
         <div style="grid-column:1/-1;margin-top:4px">
           <label class="sync-chk" style="display:flex;align-items:center;gap:8px;font-size:13px">
             <input type="checkbox" id="sbAutoAll" ${autoSyncOn() ? 'checked' : ''}>
-            <span><b>Auto-sync on every data upload</b> — pushes offices &amp; statuses to Salesly and queues
-            New + Winback emails automatically, with a confirmation when it finishes. Turn off for manual control.</span>
+            <span><b>Auto-sync on every data upload</b> — pushes offices &amp; statuses to Salesly${EMAIL_ON_HOLD ? '' : ' and queues New + Winback emails'}
+            automatically, with a confirmation when it finishes. Turn off for manual control.</span>
           </label>
         </div>
       </div>
@@ -15690,8 +15698,27 @@ async function rpPost(action) {
     if (action === 'sendNow') {
       rpLog('  asking the send-reports function to email them now…');
       const { data, error: fe } = await db.functions.invoke('send-reports', { body: { force: true } });
-      if (fe) throw new Error(fe.message + ' — is the send-reports Edge Function deployed?');
-      rpLog('  function replied: ' + JSON.stringify(data || {}));
+      if (fe) {
+        // a failed send comes back as an error whose body says why (e.g. Resend 403: domain not verified)
+        let why = fe.message || 'failed';
+        try { const b = fe.context && typeof fe.context.json === 'function' ? await fe.context.json() : null; if (b && b.error) why = b.error; } catch (e2) {}
+        if (/non-2xx|failed to send|fetch/i.test(why) && !/resend/i.test(why)) why += ' — is the send-reports Edge Function deployed?';
+        throw new Error('send-reports: ' + String(why).slice(0, 260));
+      }
+      const res = data || {};
+      if (res.ok === false) throw new Error('send-reports: ' + String(res.error || 'failed').slice(0, 260));
+      // two shapes: per-report results ({results:[…]}) or totals ({sent, skipped})
+      if (Array.isArray(res.results)) {
+        const bad = res.results.filter(x => x && x.error), good = res.results.filter(x => x && !x.error);
+        bad.forEach(x => rpLog('  ✗ not sent: ' + x.key + ' — ' + String(x.error).slice(0, 220), 'err'));
+        if (!good.length) throw new Error(bad.length ? 'Resend refused every report — ' + String(bad[0].error).slice(0, 220)
+                                                     : 'nothing was sent — no stored report had recipients');
+        rpLog('  function replied: ' + good.length + ' report' + (good.length === 1 ? '' : 's') + ' sent' + (bad.length ? ', ' + bad.length + ' refused (above)' : ''));
+      } else {
+        const sent = Number(res.sent || 0), skipped = Number(res.skipped || 0);
+        if (!sent) throw new Error('nothing was sent — ' + (skipped ? skipped + ' stored report' + (skipped === 1 ? '' : 's') + ' had no recipients' : 'no reports were stored'));
+        rpLog('  function replied: ' + sent + ' report' + (sent === 1 ? '' : 's') + ' sent' + (skipped ? ', ' + skipped + ' skipped (no recipients)' : ''));
+      }
     }
 
     const routeNote = built.reports.map(r => '    • ' + r.subject.replace(/^[^ ]+ /, '') + ' → ' + (r.to || '(no recipient — skipped)')).join('\n');
