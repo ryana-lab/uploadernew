@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.11.05-DL46</title>
+<title>Lab Sales Dashboard v2026.11.05-DL48</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -1931,7 +1931,7 @@ const APP = {
 
 /* Bump when normalization logic changes, so it's possible to tell at a glance
    (bottom of the Avg Turnaround card) which build a browser is running. */
-const BUILD_ID = 'DL46 · 2026-11-05';
+const BUILD_ID = 'DL48 · 2026-11-05';
 
 const DB_NAME = 'LabOpsCache';
 const DB_STORE = 'datasets';
@@ -2535,9 +2535,38 @@ function canonRemakeReason(raw) {
    5. RECORD NORMALIZATION
    ────────────────────────────────────────── */
 
+/* FINANCE CHARGES. The old system posted a 2.5% charge against cases as a line
+   with NO product name — a few cents to a few hundred dollars, exactly 2.5% of the
+   case (9,586 lines in July 2025 alone, $42K; ~15,600 lines and ~$71K in all on
+   file 61). They aren't sales, so they're dropped as the data loads: a line with
+   no product, a positive amount, and an amount 2–3% of its case's product value —
+   or, with no case to compare against, under $10. Credits and adjustments (the
+   negative lines, and positive ones that aren't a 2.5% charge) stay. */
+function isFinanceCharge(product, amount, caseValue) {
+  if (String(product || '').trim() || !(amount > 0)) return false;
+  return caseValue > 0 ? (amount / caseValue >= 0.02 && amount / caseValue <= 0.03) : amount < 10;
+}
+/* OPENING BALANCES. At the July 2025 changeover the old system carried each
+   practice's balance across as one large line with NO product, on a case with no
+   products (103 lines, $105K on July 7–9, 2025). They aren't sales, so they go too:
+   no product, $100 or more, nothing sold on its case. Fees (reprocessing, rush and
+   the rest) are products and stay. */
+function isOpeningBalance(product, amount, caseValue) {
+  return !String(product || '').trim() && amount >= 100 && !(caseValue > 0);
+}
+let FIN_DROPPED = { lines: 0, amount: 0 }, OB_DROPPED = { lines: 0, amount: 0 };
 function normalizeRecords(rows) {
   const out = new Array(rows.length);
   let n = 0;
+  // each case's product value, so a 2.5% finance charge can be recognised
+  const caseProdVal = new Map();
+  for (const r of rows) {
+    if (!r || typeof r !== 'object') continue;
+    const F0 = fieldMapFor(r), c = String(fv(r, F0.caseNumber) || '').trim();
+    if (!c || !String(fv(r, F0.productName) || '').trim()) continue;
+    caseProdVal.set(c, (caseProdVal.get(c) || 0) + (parseFloat(fv(r, F0.netCost)) || 0));
+  }
+  FIN_DROPPED = { lines: 0, amount: 0 }; OB_DROPPED = { lines: 0, amount: 0 };
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i];
     if (!r || typeof r !== 'object') continue;
@@ -2548,6 +2577,10 @@ function normalizeRecords(rows) {
     const productRaw = fv(r, F.productName);
     const lastRaw = fv(r, F.lastName);
     if (!String(caseNumRaw).trim() && !String(productRaw).trim() && !String(lastRaw).trim()) continue;
+    { const amt = parseFloat(fv(r, F.netCost)) || 0;   // finance charges aren't sales
+      const cval = caseProdVal.get(String(caseNumRaw).trim()) || 0;
+      if (isFinanceCharge(productRaw, amt, cval)) { FIN_DROPPED.lines++; FIN_DROPPED.amount += amt; continue; }
+      if (isOpeningBalance(productRaw, amt, cval)) { OB_DROPPED.lines++; OB_DROPPED.amount += amt; continue; } }
 
     const invDate = parseDate(fv(r, F.invoiceDate));
     const recDate = parseDate(fv(r, F.receivedDate));
