@@ -1,81 +1,106 @@
 # ════════════════════════════════════════════════════════════════════════════
-#  Daily reports — every day at 11 am Chicago
+#  Pilot LMS → Supabase, every morning
 #
-#  1. Pulls the latest from Pilot (the same job as "Pilot daily pull"), so
-#     yesterday is complete in Supabase.
-#  2. Opens the dashboard in a headless browser and presses "Send now" on the
-#     Reports tab: the same Customer, Product and Status Changes emails the
-#     dashboard builds by hand, covering the last COMPLETE business day.
-#  Never sends twice in a day. Also runnable by hand: Actions → "Daily reports".
+#  Pulls the invoice report from Pilot for yesterday plus the two days before,
+#  and re-checks production for the last 14 days, loading both into Supabase
+#  through the dashboard's own loaders. Also runnable by hand: Actions tab → "Pilot daily pull" → Run workflow.
 #
-#  THIS REPO IS PUBLIC: the logs show dates and counts only.
+#  THIS REPO IS PUBLIC: anyone can read these logs. The script prints dates and
+#  counts only. Secrets are encrypted, never shown, and blanked out of logs.
+#  Only the schedule and a manual run can start this — never a pull request.
 # ════════════════════════════════════════════════════════════════════════════
-name: Daily reports
+name: Pilot daily pull
 
 on:
   schedule:
-    # GitHub's clock is UTC and ignores daylight saving, so two times — the
-    # script only acts between 11 am and 3 pm Chicago, and only once a day:
-    #   16:05 UTC = 11:05 am CDT (summer)  ·  10:05 am CST (winter: skipped)
-    #   17:05 UTC = 12:05 pm CDT (summer: already sent, skipped)  ·  11:05 am CST (winter)
-    - cron: '5 16 * * *'
-    - cron: '5 17 * * *'
+    # GitHub's clock is UTC and ignores daylight saving, and it can start a
+    # scheduled run late — so two runs, each re-reading the last 3 days:
+    #   05:20 UTC  = 11:20 pm Chicago in winter (CST), 12:20 am in summer (CDT):
+    #               right after the 11 pm report, so today's cases are in tonight
+    #   12:17 UTC  =  6:17 am CST / 7:17 am CDT: completes anything invoiced late
+    # Odd minutes avoid GitHub's busiest moments (the top of the hour).
+    - cron: '20 5 * * *'
+    - cron: '17 12 * * *'
   workflow_dispatch:
     inputs:
-      force:
-        description: 'Send now, whatever the time — even if already sent today'
-        type: boolean
-        default: false
+      days_back:
+        description: 'How many days to pull, ending on the last day (default 3)'
+        required: false
+        default: '3'
+      end_date:
+        description: 'Last day to pull, YYYY-MM-DD (blank = yesterday)'
+        required: false
+        default: ''
       dry_run:
-        description: 'Build the reports only — send nothing'
+        description: 'Fetch and check only — load nothing'
         type: boolean
         default: false
 
 permissions:
-  contents: read
+  contents: write   # only to record the counts-only status on the automation-status branch
 
 concurrency:
-  group: pilot-daily          # never at the same time as a Pilot pull
+  group: pilot-daily
   cancel-in-progress: false
 
 jobs:
-  reports:
-    # Pinned: GitHub's newest image (Ubuntu 26.04, "ubuntu-latest") isn't supported
-    # by Playwright's browser installer yet. 24.04 is.
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
+  pull:
+    runs-on: ubuntu-24.04   # pinned: GitHub's newest image changes under us
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+
+      - name: Check the scripts are in place
+        run: |
+          missing=0
+          for f in automation/pilot-sync.mjs; do
+            if [ ! -f "$f" ]; then echo "::error::$f is missing. The scripts must sit in a folder called 'automation' at the top of the repo (automation/pilot-sync.mjs, automation/reports-daily.mjs)."; missing=1; fi
+          done
+          if [ $missing = 1 ]; then
+            echo "What the repo has at the top level:"; ls -1
+            echo "Every .mjs file in the repo:"; find . -name '*.mjs' -not -path './node_modules/*' -not -path './.git/*'
+            exit 1
+          fi
+          echo "Scripts found: automation/pilot-sync.mjs"
 
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      - name: Pull the latest from Pilot first (so yesterday is complete)
-        continue-on-error: true      # a Pilot hiccup shouldn't stop the reports; the log shows it
+      - name: Pull from Pilot and load into Supabase
         env:
           PILOT_API_KEY: ${{ secrets.PILOT_API_KEY }}
           AUTOMATION_EMAIL: ${{ secrets.AUTOMATION_EMAIL }}
           AUTOMATION_PASSWORD: ${{ secrets.AUTOMATION_PASSWORD }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-          DAYS_BACK: '3'
+          DAYS_BACK: ${{ inputs.days_back || '3' }}
           PROD_DAYS_BACK: '14'
+          END_DATE: ${{ inputs.end_date || '' }}
+          DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
+          STATUS_FILE: ${{ runner.temp }}/last-run.json
         run: node automation/pilot-sync.mjs
 
-      - name: Install a headless browser
-        run: |
-          npm install --no-save --no-audit --no-fund playwright@1.56.0
-          # if Playwright's own browser can't be installed, the script falls back to
-          # the Google Chrome that comes with GitHub's runners
-          npx playwright install --with-deps chromium || echo "::warning::Playwright's browser could not be installed, so the runner's Google Chrome will be used"
-
-      - name: Build and send the reports
+      # A public repo's scheduled jobs are switched off by GitHub after 60 days
+      # with no activity. Recording each run on its own branch keeps the repo
+      # active and leaves a visible "last ran" record — dates and counts only.
+      # It never touches the branch the dashboard is published from.
+      - name: Record the run (counts only)
+        if: always()
         env:
-          DASHBOARD_URL: ${{ secrets.DASHBOARD_URL }}
-          AUTOMATION_EMAIL: ${{ secrets.AUTOMATION_EMAIL }}
-          AUTOMATION_PASSWORD: ${{ secrets.AUTOMATION_PASSWORD }}
-          REPORT_RECIPIENTS: ${{ secrets.REPORT_RECIPIENTS }}
-          FORCE: ${{ inputs.force && '1' || '' }}
-          DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
-        run: node automation/reports-daily.mjs
+          STATUS: ${{ runner.temp }}/last-run.json
+        run: |
+          [ -f "$STATUS" ] || exit 0
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git ls-remote --exit-code --heads origin automation-status >/dev/null 2>&1; then
+            git fetch --depth=1 origin automation-status
+            git checkout -B automation-status FETCH_HEAD
+          else
+            git checkout --orphan automation-status
+            git rm -rf --quiet . || true
+          fi
+          cp "$STATUS" last-run.json
+          git add last-run.json
+          git commit --quiet -m "Pilot pull $(date -u +%Y-%m-%d)" || exit 0
+          git push --quiet origin automation-status
