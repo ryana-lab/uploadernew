@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.11.06-DL60</title>
+<title>Lab Sales Dashboard v2026.11.06-DL62</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -225,6 +225,40 @@ html, body {
 .rm-tbl td { padding: 7px 10px; border-bottom: 1px solid var(--border); color: var(--dim); } .rm-tbl td b { color: var(--ink); }
 .rm-tbl .num { text-align: right; font-variant-numeric: tabular-nums; } .rm-tbl tr.rm-fresh td { background: #fff7f7; }
 .rm-more summary { cursor: pointer; color: var(--accent-ink); font-weight: 600; font-size: 12.5px; margin-top: 8px; }
+/* Cross Selling (DL62) */
+.xs-cap { margin: 0 0 14px; } .xs-cap > summary { cursor: pointer; font-size: 13px; font-weight: 700; color: var(--ink); padding: 10px 14px; background: var(--card); border: 1px solid var(--border); border-radius: 12px; list-style: none; }
+.xs-cap > summary::-webkit-details-marker { display: none; } .xs-cap[open] > summary { border-radius: 12px 12px 0 0; border-bottom: none; } .xs-cap .cap-card { border-radius: 0 0 12px 12px; margin: 0; }
+.cap-off { color: #b91c1c; } .xs-kpi-act { cursor: pointer; } .xs-kpi-act:hover { box-shadow: 0 0 0 2px var(--accent-soft); }
+.xs-views { display: flex; gap: 6px; margin: 6px 0 10px; } .xs-view { font: inherit; font-size: 13.5px; font-weight: 700; padding: 8px 16px; border-radius: 10px; border: 1px solid var(--border); background: var(--card); color: var(--dim); cursor: pointer; }
+.xs-view.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+.xs-filters { display: flex; flex-direction: column; gap: 8px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+.xs-fg { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; } .xs-fl { font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; color: var(--mut); width: 84px; }
+.xs-fg2 { gap: 12px; } .xs-q { min-width: 280px; } .xs-catf { font-size: 12.5px; background: var(--accent-soft); color: var(--accent-ink); border-radius: 999px; padding: 3px 4px 3px 12px; }
+.xs-pill { font: inherit; font-size: 12.5px; padding: 4px 11px; border-radius: 999px; border: 1px solid var(--border); background: var(--card); color: var(--dim); cursor: pointer; }
+.xs-pill.on { background: var(--ink); color: var(--card); border-color: var(--ink); }
+.xs-head { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; font-size: 12.5px; font-weight: 700; color: var(--ink); padding: 12px 2px 8px; }
+.xs-row { border-bottom: 1px solid var(--border); } .xs-row.open { background: var(--card-2); border-radius: 10px; }
+.xs-main { all: unset; box-sizing: border-box; width: 100%; cursor: pointer; display: grid; grid-template-columns: 30px minmax(200px, 1.5fr) minmax(170px, 1.1fr) minmax(220px, 2fr) 74px 92px 44px; gap: 12px; align-items: center; padding: 11px 8px; }
+.xs-main:hover { background: var(--card-2); } .xs-pmain { grid-template-columns: 30px minmax(220px, 1.4fr) minmax(300px, 3fr) 92px 30px; }
+.xs-rank { font-size: 12px; font-weight: 800; color: var(--mut); text-align: center; }
+.xs-doc b { display: block; font-size: 13.5px; color: var(--ink); } .xs-doc small { font-size: 11.5px; color: var(--mut); }
+.xs-offer small { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: .05em; color: var(--mut); font-weight: 800; } .xs-offer b { display: block; font-size: 13.5px; color: var(--accent-ink); margin-bottom: 3px; }
+.xs-why { font-size: 12.5px; color: var(--dim); line-height: 1.4; } .xs-val { text-align: right; font-size: 15px; font-weight: 800; color: var(--ink); } .xs-val small { display: block; font-size: 10.5px; font-weight: 600; color: var(--mut); }
+.xs-more { font-size: 12px; color: var(--mut); text-align: right; }
+.xs-kind { display: inline-block; font-size: 11px; font-weight: 700; border-radius: 999px; padding: 1px 8px; white-space: nowrap; }
+.k-winback { background: #fee2e2; color: #991b1b; } .k-colleague { background: #ede9fe; color: #5b21b6; } .k-similar { background: #ccfbf1; color: #0f766e; } .k-digital { background: #dbeafe; color: #1e40af; }
+.xs-conf { display: inline-block; font-size: 11px; font-weight: 800; border-radius: 6px; padding: 2px 8px; } .c-High { background: #dcfce7; color: #166534; } .c-Medium { background: #fef3c7; color: #92400e; } .c-Low { background: #f1f5f9; color: #64748b; }
+.xs-det { padding: 4px 16px 16px 50px; } .xs-lbl { font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; color: var(--mut); margin: 10px 0 6px; }
+.xs-say { background: var(--card); border: 1px solid var(--border); border-left: 4px solid var(--accent); border-radius: 10px; padding: 8px 12px; margin-top: 4px; }
+.xs-quote { font-size: 13.5px; color: var(--ink); line-height: 1.45; } .xs-copy { margin-top: 4px; }
+.xs-tbl { width: 100%; border-collapse: collapse; font-size: 12.5px; } .xs-tbl th { text-align: left; font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--mut); padding: 6px 8px; border-bottom: 1px solid var(--border); }
+.xs-tbl td { padding: 7px 8px; border-bottom: 1px solid var(--border); vertical-align: top; color: var(--dim); } .xs-tbl .num { text-align: right; font-weight: 700; color: var(--ink); } .xs-dim td { opacity: .5; }
+.xs-facts { font-size: 12px; color: var(--mut); margin-top: 10px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.xs-pbits { display: flex; flex-direction: column; gap: 3px; font-size: 12.5px; color: var(--dim); } .xs-morebtn { margin: 12px auto 4px; display: block; }
+.xs-prow { cursor: pointer; } .xs-prow:hover td { background: var(--card-2); }
+@media (max-width: 1100px) { .xs-main { grid-template-columns: 26px 1fr 1fr 80px; } .xs-why, .xs-cf, .xs-more { display: none; } }
+.sv-offer { padding: 7px 10px; border-left: 3px solid var(--accent); background: var(--card-2); border-radius: 0 8px 8px 0; margin: 6px 0; font-size: 13px; }
+.sv-offer-why { color: var(--dim); font-size: 12.5px; margin-top: 2px; } .sv-offer-say { color: var(--ink); font-style: italic; font-size: 12.5px; margin-top: 3px; }
 /* visit notes */
 .sv-v2 { padding: 7px 0; border-bottom: 1px solid var(--border); } .sv-v2:last-of-type { border-bottom: none; }
 .sv-v2h { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink); } .sv-v2h i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; } .sv-v2h span { color: var(--mut); font-size: 12px; }
@@ -2022,7 +2056,7 @@ const APP = {
 
 /* Bump when normalization logic changes, so it's possible to tell at a glance
    (bottom of the Avg Turnaround card) which build a browser is running. */
-const BUILD_ID = 'DL60 · 2026-11-06';
+const BUILD_ID = 'DL62 · 2026-11-06';
 
 const DB_NAME = 'LabOpsCache';
 const DB_STORE = 'datasets';
@@ -7913,8 +7947,16 @@ function svLabFigures(nts) {   // one entry per 📊 LAB line (per doctor at thi
   });
   return out;
 }
+// the 💡 OFFER lines the sync writes, read back
+function svOffers(nts) {
+  return String(nts || '').split('\n').map(l => l.trim()).filter(l => l.startsWith('💡 OFFER:')).map(l => {
+    const p = l.replace(/^💡 OFFER:\s*/, '').split(' · '); return { cat: p[0] || '', doc: p[1] || '', why: p[2] || '', value: p[3] || '', conf: p[4] || '', say: p.slice(5).join(' · ') }; });
+}
+const svOffersHTML = (nts, cls) => { const offs = svOffers(nts); return offs.length ? `<div class="${cls || 'sv-sub'}">💡 What to offer</div>${offs.map(o => `<div class="sv-offer">
+    <div><b>${esc(o.cat)}</b> <span class="xs-conf c-${esc(o.conf)}">${esc(o.conf)}</span> <span class="text-mut">· ${esc(o.doc)} · ${esc(o.value)}</span></div>
+    <div class="sv-offer-why">${esc(o.why)}</div>${o.say ? `<div class="sv-offer-say">“${esc(o.say)}”</div>` : ''}</div>`).join('')}` : ''; };
 function svStripLab(nts) {   // the rep's own notes, without the 📊 LAB lines
-  return String(nts || '').split('\n').filter(l => !/LAB:\s*[A-Za-z]/i.test(l)).join('\n').replace(/^\n+|\n+$/g, '');
+  return String(nts || '').split('\n').filter(l => !/(?:LAB|OFFER):\s*[A-Za-z]/i.test(l)).join('\n').replace(/^\n+|\n+$/g, '');
 }
 
 /* ── small formatting helpers ─────────────────────────────────────────────── */
@@ -8485,6 +8527,7 @@ function svOfficeCard(o, dayVisits, all) {
         <span>${esc((SV_OUTCOME[v.color] || {}).label || 'Visit')} · ${esc(v.rep || '—')}</span></div>${v.note ? `<div class="sv-v2n">${esc(v.note)}</div>` : '<div class="sv-v2x">No note for this visit</div>'}</div>`;
       return `<div class="sv-sub">Visits &amp; visit notes</div>${history.slice(0, 6).map(vh).join('')}
         ${history.length > 6 ? `<details class="sv-hist"><summary>All ${history.length} visits</summary>${history.slice(6).map(vh).join('')}</details>` : ''}`; })() : ''}
+    ${svOffersHTML(o.notes)}
     ${notes ? `<div class="sv-sub">Office notes</div><div class="sv-notes">${esc(notes)}</div>` : ''}
   </div>`;
 }
@@ -10543,7 +10586,7 @@ function fdDetail(f) {
       <div class="cs-callwhy">“${esc(csDr(z.senders[0].d.name))} already sends us ${esc(fdLine(z.g))} — who handles yours today?”</div></div></div>`).join('')}</div>`;
 }
 
-function renderCrossSell() {
+function renderCrossSellV1() {   // the pre-DL62 page — kept for reference, no longer shown
   const el = document.getElementById('panel-crosssell'); if (!el) return;
   if (!getMaxDate()) { el.innerHTML = '<div class="empty-state">Load data first.</div>'; return; }
   const C = csCompute(), opps = csOpps(C), groups = csSupers(C, opps), doctors = csDoctors(opps), pracs = csPracs(C);
@@ -10833,6 +10876,238 @@ async function csLoadXlsx() {
   await new Promise((ok, bad) => { const sc = document.createElement('script'); sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
     sc.onload = ok; sc.onerror = () => bad(new Error('Could not load the Excel writer')); document.head.appendChild(sc); });
 }
+/* ══ CROSS SELLING (DL62) ═════════════════════════════════════════════════════
+   One question first: who do I talk to, and what do I offer them?
+   Every suggestion becomes one of three plain kinds —
+     ↩ Win back      they used to send it (stopped, or started then tapered off)
+     👥 Colleague    a doctor at their practice already sends it to us
+     📈 Like them    doctors who send what they send also send it
+   — with a confidence (High / Medium / Low) and one honest yearly value: the
+   likely yearly spend × how likely it is. One row per doctor: their single best
+   offer for the filters chosen; open the row for every offer and a talking point. */
+const XS = { view: 'list', kind: 'all', line: 'all', list: 'all', conf: 'all', q: '', sort: 'value', limit: 25, open: null, cat: '', popen: null, plimit: 25, pq: '' };
+const XS_KIND = {
+  winback:   { icon: '↩', label: 'Win back',          long: 'They used to send it' },
+  colleague: { icon: '👥', label: 'Colleague sends it', long: 'A colleague at their practice sends it' },
+  similar:   { icon: '📈', label: 'Doctors like them',  long: 'Doctors like them send it' },
+  digital:   { icon: '💻', label: 'Go digital',         long: 'Move them to digital' } };
+const XS_CONF_RANK = { High: 3, Medium: 2, Low: 1 };
+// every offer, per doctor, with capacity applied — cached per capacity / state / months
+function xsBuild(C) {
+  const ck = JSON.stringify(CS_CAP) + '|' + CS.state + '|' + CS.months;
+  if (C._xs && C._xs.ck === ck) return C._xs;
+  const M = csCapMap(C), byDoc = new Map(), md = getMaxDate();
+  const docOf = d => { let x = byDoc.get(d.id); if (!x) { x = { id: d.id, name: d.name, practice: d.main || d.practice || '', city: d.city || '', state: d.state || '', last: d.last || null,
+      rev: d.rev || 0, phone: d.phone || '', email: d.email || '', list: [] }; byDoc.set(d.id, x); } return x; };
+  csOpps(C).forEach(o => {
+    const ev = o.evidence || {}; let kind = o.type === 'lapsed' ? 'winback' : o.type, why, conf, how;
+    if (o.type === 'lapsed') { const last = ev.last ? new Date(ev.last) : null;
+      why = `Sent ${csK(ev.yearly)} of it a year — nothing since ${last ? csDay(last) : 'a while'}.`;
+      conf = last && (md - last) / 864e5 <= 240 ? 'High' : 'Medium'; how = `half of the ${csK(ev.yearly)} a year they used to send`; }
+    else if (o.type === 'colleague') { why = `${csDr(ev.colleague)} at ${ev.practice} sends ${csK(ev.colleagueRev)} a year of it.`; conf = 'High'; how = 'a likely share of what their colleague sends'; }
+    else if (o.type === 'similar') { why = o.p >= 0.95 ? `Nearly every doctor who sends ${ev.anchor} also sends it (${Math.round(o.p * 100)}%).` : `${Math.max(1, Math.round(o.p * 10))} in 10 doctors who send ${ev.anchor} also send it.`;
+      conf = o.p >= 0.55 ? 'High' : o.p >= 0.35 ? 'Medium' : 'Low'; how = `${Math.round(o.p * 100)}% likely × about ${csK(ev.typical)} a year that a doctor like them sends`; }
+    else { why = o.why || 'Their cases still come in on impressions.'; conf = 'Medium'; how = 'what similar doctors send once digital'; }
+    docOf(o.d).list.push({ kind, cat: o.cat, line: (M.get(o.cat) || {}).sup || '', group: (M.get(o.cat) || {}).group || '', value: o.value, conf, why, how, say: o.say || '' });
+  });
+  // a line they started and then tapered off → a win back (unless already covered by one in that line)
+  csFindingsCap().taper.forEach(f => {
+    if (CS.state !== 'all' && f.d.state !== CS.state) return;
+    const x = docOf(f.d); if (x.list.some(it => it.kind === 'winback' && it.group === f.line)) return;
+    const line = fdLine(f.line);   // lowercase, for sentences; the offer itself is named by its group ("Crowns")
+    x.list.push({ kind: 'winback', cat: f.line, line: csSuperOf({ group: f.line, cat: '' }) || '', group: f.line, value: 0.5 * f.value, conf: 'Medium',
+      why: `Sent ${f.early} ${line.toLowerCase()} cases in their first 90 days, ${f.recent} in the last 90.`, how: 'half of the yearly work they stopped sending',
+      say: `${csDr(f.d.name)} started sending us ${line.toLowerCase()} and then slowed right down — ask how those first cases went and what would bring that work back.` });
+  });
+  const Q = quietInfo();
+  const docs = [...byDoc.values()].map(x => {
+    const seen = new Map(); x.list.sort((a, b) => b.value - a.value).forEach(it => { if (!seen.has(it.cat)) seen.set(it.cat, it); });
+    x.list = [...seen.values()]; x.total = x.list.reduce((t, it) => t + it.value, 0);
+    x.tier = isGolden(x.id) ? 3 : isSilver(x.id) ? 2 : 1; x.quiet = Q.get(x.id) || null; return x; }).filter(x => x.list.length);
+  return (C._xs = { ck, docs });
+}
+// the offers that pass the filters; the doctor's best of them is their row
+function xsPass(it) {
+  return (XS.kind === 'all' || it.kind === XS.kind) && (XS.line === 'all' || it.line === XS.line) && (!XS.cat || it.cat === XS.cat)
+      && (XS.conf === 'all' || XS_CONF_RANK[it.conf] >= XS_CONF_RANK[XS.conf]);
+}
+function xsRows(B) {
+  const q = XS.q.trim().toLowerCase();
+  const rows = B.docs.map(x => { const m = x.list.filter(xsPass); return m.length ? { x, best: m[0], match: m } : null; }).filter(Boolean)
+    .filter(r => (XS.list === 'all' || (XS.list === 'golden' ? r.x.tier === 3 : XS.list === 'silver' ? r.x.tier === 2 : r.x.tier >= 2))
+              && (!q || (r.x.name + ' ' + r.x.practice + ' ' + r.x.city).toLowerCase().includes(q)));
+  const qr = r => { const l = r.x.quiet ? quietLevel(r.x.quiet.bd) : null; return l ? (QUIET_RANK[l[1]] || 0) : 0; };   // QUIET_LEVELS rows: [min, 'red'|…]
+  const by = { value: (a, b) => b.best.value - a.best.value,
+               priority: (a, b) => b.x.tier - a.x.tier || b.best.value - a.best.value,
+               confidence: (a, b) => XS_CONF_RANK[b.best.conf] - XS_CONF_RANK[a.best.conf] || b.best.value - a.best.value,
+               quiet: (a, b) => qr(b) - qr(a) || b.best.value - a.best.value }[XS.sort] || ((a, b) => b.best.value - a.best.value);
+  return rows.sort(by);
+}
+const xsKindChip = k => `<span class="xs-kind k-${k}">${XS_KIND[k].icon} ${esc(XS_KIND[k].label)}</span>`;
+const xsConf = c => `<span class="xs-conf c-${c}">${c}</span>`;
+function xsRowHTML(r, i) {
+  const x = r.x, b = r.best, open = XS.open === x.id, more = x.list.length - 1;
+  return `<div class="xs-row${open ? ' open' : ''}">
+    <button type="button" class="xs-main" data-id="${esc(x.id)}">
+      <span class="xs-rank">${i + 1}</span>
+      <span class="xs-doc"><b>${goldMark(x.id)}${esc(csDr(x.name))} ${quietMark(x.quiet)}</b><small>${esc(x.practice)}${x.city || x.state ? ' · ' + esc(csWhere(x)) : ''}</small></span>
+      <span class="xs-offer"><small>Offer</small><b>${esc(b.cat)}</b>${xsKindChip(b.kind)}</span>
+      <span class="xs-why">${esc(b.why)}</span>
+      <span class="xs-cf">${xsConf(b.conf)}</span>
+      <span class="xs-val" title="≈ ${esc(csUSD(b.value))} a year: ${esc(b.how)}">≈ ${csK(b.value)}<small>a year</small></span>
+      <span class="xs-more">${more > 0 ? '+' + more + ' ' : ''}${open ? '▴' : '▾'}</span>
+    </button>
+    ${open ? xsDetailHTML(r) : ''}</div>`;
+}
+function xsDetailHTML(r) {
+  const x = r.x, b = r.best;
+  return `<div class="xs-det">
+    <div class="xs-say"><div class="xs-lbl">What to say</div><div class="xs-quote">“${esc(b.say || b.why)}”</div><button type="button" class="btn-text xs-copy" data-say="${esc(b.say || b.why)}">⧉ Copy</button></div>
+    <div class="xs-lbl">Every offer for ${esc(csDr(x.name))} <span class="text-mut">· ≈ ${csK(x.total)} a year in all</span></div>
+    <table class="xs-tbl"><thead><tr><th>Offer</th><th>Kind</th><th>Why</th><th>Confidence</th><th class="num">≈ a year</th></tr></thead><tbody>
+      ${x.list.map(it => `<tr class="${xsPass(it) ? '' : 'xs-dim'}"><td><b>${esc(it.cat)}</b><div class="text-mut" style="font-size:11px">${esc(it.line)}</div></td><td>${xsKindChip(it.kind)}</td>
+        <td>${esc(it.why)}</td><td>${xsConf(it.conf)}</td><td class="num" title="${esc(it.how)}">${csK(it.value)}</td></tr>`).join('')}</tbody></table>
+    <div class="xs-facts">${x.last ? 'Last case ' + esc(csDay(x.last)) + ' · ' : ''}${csK(x.rev)} sent in the last ${CS.months} months${x.phone && sbPhone(x.phone) ? ' · <a href="tel:' + esc(String(x.phone).replace(/[^0-9+]/g, '')) + '">' + esc(sbPhone(x.phone)) + '</a>' : ''}
+      <button type="button" class="btn-text xs-dd" data-id="${esc(x.id)}">Doctor Detail ↗</button></div></div>`;
+}
+// ── By product: what to push, given what we have room for
+function xsProducts(B) {
+  const m = new Map();
+  B.docs.forEach(x => x.list.forEach(it => { if (XS.line !== 'all' && it.line !== XS.line) return;
+    const k = m.get(it.cat) || m.set(it.cat, { cat: it.cat, line: it.line, docs: 0, value: 0, high: 0, kinds: {} }).get(it.cat);
+    k.docs++; k.value += it.value; if (it.conf === 'High') k.high++; k.kinds[it.kind] = (k.kinds[it.kind] || 0) + 1; }));
+  return [...m.values()].sort((a, b) => b.value - a.value);
+}
+// ── By practice: offices where the work is split or a line is missing
+function xsPractices(C) {
+  const FD = csFindingsCap(), split = new Map(); FD.split.forEach(f => split.set(f.practice, f));
+  const q = XS.pq.trim().toLowerCase();
+  return csPracs(C).filter(x => !q || (x.name + ' ' + x.city).toLowerCase().includes(q)).map(x => ({ x, split: split.get(x.name) || null }));
+}
+function renderCrossSell() {
+  const el = document.getElementById('panel-crosssell'); if (!el) return;
+  if (!getMaxDate()) { el.innerHTML = '<div class="empty-state">Load data first.</div>'; return; }
+  const C = csCompute(), B = xsBuild(C);
+  const states = [...new Set(C.opps.map(o => o.d.state).concat(C.practices.map(x => x.state)).filter(Boolean))].sort();
+  const sel = (id, opts, cur) => `<select class="gf-select" id="${id}">${opts.map(([v, l]) => `<option value="${esc(v)}"${String(v) === String(cur) ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
+  // the summary strip: the whole picture for this state
+  const all = B.docs, tot = all.reduce((t, x) => t + x.total, 0), gd = all.filter(x => x.tier === 3).length, sv = all.filter(x => x.tier === 2).length;
+  // quick wins = doctors with a high-confidence offer (what "High only" shows), valued at their best one
+  const quick = all.map(x => x.list.find(it => it.conf === 'High')).filter(Boolean), byCat = new Map();
+  all.forEach(x => x.list.forEach(it => { const k = byCat.get(it.cat) || byCat.set(it.cat, { v: 0, n: 0, line: it.line }).get(it.cat); k.v += it.value; k.n++; }));
+  const topCat = [...byCat.entries()].sort((a, b) => b[1].v - a[1].v)[0];
+  const kpi = (label, value, sub, act) => `<div class="kpi${act ? ' xs-kpi-act" data-act="' + act : ''}"><div class="kpi-label">${label}</div><div class="kpi-value">${value}</div><div class="kpi-sub">${sub || ''}</div></div>`;
+  const capLine = CS_SUPERS.map(s => { const v = csCapGet('L:' + s); return `<span class="${v === 0 ? 'cap-off' : v < 100 ? 'cap-part' : ''}">${esc(s)} ${v}%</span>`; }).join(' · ');
+  const pill = (grp, v, label, cur) => `<button type="button" class="xs-pill${cur === v ? ' on' : ''}" data-g="${grp}" data-v="${esc(v)}">${label}</button>`;
+  const kinds = Object.keys(XS_KIND).filter(k => all.some(x => x.list.some(it => it.kind === k)));
+  el.innerHTML = `
+    <div class="section-header cs-hdr">
+      <div><div class="section-title">Cross Selling</div>
+        <div class="section-sub">Who to talk to, and what to offer them — every suggestion backed by what they, their colleagues and doctors like them actually send.</div></div>
+      <div class="section-actions cs-acts">
+        <label class="coach-f"><span>State</span>${sel('csState', [['all', 'All states']].concat(states.map(s => [s, s])), CS.state)}</label>
+        <label class="coach-f"><span>Based on</span>${sel('csMonths', [[12, 'Last 12 months'], [6, 'Last 6 months']], CS.months)}</label>
+        <button class="btn-text" id="csHowBtn">${CSV2.how ? 'Hide method' : 'How it’s worked out'}</button><button class="btn-text" id="csExport">⬇ Action plan (Excel)</button></div>
+    </div>
+    ${CSV2.how ? csHowHTML(C) : ''}
+    <div class="rmk-kpis">
+      ${kpi('Opportunity a year', '≈ ' + csK(tot), 'if each offer lands at its likely rate')}
+      ${kpi('Doctors to talk to', fmtN(all.length), (gd || sv) ? `${gd} ⭐ Golden · ${sv} 🥈 Silver` : '')}
+      ${kpi('Quick wins', fmtN(quick.length), 'doctors with a high-confidence offer · ≈ ' + csK(quick.reduce((t, it) => t + it.value, 0)) + ' a year', 'quick')}
+      ${kpi('Top product to push', topCat ? esc(topCat[0]) : '—', topCat ? `${fmtN(topCat[1].n)} doctors could add it · ≈ ${csK(topCat[1].v)} a year` : '', topCat ? 'top' : '')}
+    </div>
+    <details class="xs-cap"${CS.capOpen ? ' open' : ''}><summary>⚙️ Capacity — ${capLine} <span class="text-mut">· adjust</span></summary>${csCapHTML(C)}</details>
+    <div class="xs-views">${[['list', '🎯 Opportunities'], ['product', '📦 By product'], ['practice', '🏢 By practice']].map(([v, l]) => `<button type="button" class="xs-view${XS.view === v ? ' on' : ''}" data-view="${v}">${l}</button>`).join('')}</div>
+    <div class="card" id="xsBody"></div>`;
+  const body = document.getElementById('xsBody');
+  if (XS.view === 'list') {
+    const rows = xsRows(B);
+    body.innerHTML = `
+      <div class="xs-filters">
+        <div class="xs-fg"><span class="xs-fl">Kind</span>${pill('kind', 'all', 'All', XS.kind)}${kinds.map(k => pill('kind', k, XS_KIND[k].icon + ' ' + XS_KIND[k].label, XS.kind)).join('')}</div>
+        <div class="xs-fg"><span class="xs-fl">Line</span>${pill('line', 'all', 'All', XS.line)}${CS_SUPERS.map(s => pill('line', s, s + (csCapGet('L:' + s) === 0 ? ' ⏸' : ''), XS.line)).join('')}</div>
+        <div class="xs-fg"><span class="xs-fl">Doctors</span>${pill('list', 'all', 'All', XS.list)}${pill('list', 'gs', '⭐🥈 Golden & Silver', XS.list)}${pill('list', 'golden', '⭐ Golden', XS.list)}${pill('list', 'silver', '🥈 Silver', XS.list)}</div>
+        <div class="xs-fg"><span class="xs-fl">Confidence</span>${pill('conf', 'all', 'All', XS.conf)}${pill('conf', 'Medium', 'Medium +', XS.conf)}${pill('conf', 'High', 'High only', XS.conf)}</div>
+        <div class="xs-fg xs-fg2"><input class="gf-select xs-q" id="xsQ" placeholder="Search a doctor, practice or city…" value="${esc(XS.q)}">
+          <label class="coach-f"><span>Sort</span>${sel('xsSort', [['value', 'Biggest offer'], ['priority', 'Golden & Silver first'], ['quiet', 'Gone quiet first'], ['confidence', 'Most confident']], XS.sort)}</label>
+          ${XS.cat ? `<span class="xs-catf">Product: <b>${esc(XS.cat)}</b> <button type="button" class="btn-text" id="xsCatX">✕</button></span>` : ''}</div>
+      </div>
+      <div class="xs-head"><span>${fmtN(rows.length)} doctor${rows.length === 1 ? '' : 's'} · ≈ ${csK(rows.reduce((t, r) => t + r.best.value, 0))} a year in their best offers</span><span class="text-mut">Click a doctor for every offer and what to say</span></div>
+      <div class="xs-list">${rows.slice(0, XS.limit).map(xsRowHTML).join('') || '<div class="cs-empty">No offers match these filters.</div>'}</div>
+      ${rows.length > XS.limit ? `<button type="button" class="btn-text xs-morebtn" id="xsMore">Show ${Math.min(25, rows.length - XS.limit)} more of ${fmtN(rows.length - XS.limit)}</button>` : ''}`;
+    body.querySelectorAll('.xs-pill').forEach(b => b.onclick = () => { XS[b.dataset.g] = b.dataset.v; XS.limit = 25; XS.open = null; renderCrossSell(); });
+    let qt = null; const qEl = document.getElementById('xsQ');
+    qEl.oninput = () => { clearTimeout(qt); qt = setTimeout(() => { XS.q = qEl.value; XS.limit = 25; renderCrossSell(); const n = document.getElementById('xsQ'); if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); } }, 250); };
+    document.getElementById('xsSort').onchange = e => { XS.sort = e.target.value; renderCrossSell(); };
+    const cx = document.getElementById('xsCatX'); if (cx) cx.onclick = () => { XS.cat = ''; renderCrossSell(); };
+    body.querySelectorAll('.xs-main').forEach(b => b.onclick = () => { XS.open = XS.open === b.dataset.id ? null : b.dataset.id; renderCrossSell(); });
+    body.querySelectorAll('.xs-copy').forEach(b => b.onclick = e => { e.stopPropagation(); try { navigator.clipboard.writeText(b.dataset.say); toast('Copied'); } catch (er) {} });
+    body.querySelectorAll('.xs-dd').forEach(b => b.onclick = e => { e.stopPropagation(); APP.selectedDoctorId = b.dataset.id; switchTab('docdetail'); });
+    const more = document.getElementById('xsMore'); if (more) more.onclick = () => { XS.limit += 25; renderCrossSell(); };
+  } else if (XS.view === 'product') {
+    const P = xsProducts(B);
+    body.innerHTML = `
+      <div class="xs-filters"><div class="xs-fg"><span class="xs-fl">Line</span>${pill('line', 'all', 'All', XS.line)}${CS_SUPERS.map(s => pill('line', s, s + (csCapGet('L:' + s) === 0 ? ' ⏸' : ''), XS.line)).join('')}</div></div>
+      <div class="xs-head"><span>Which products to push — what we have room for, and how many doctors could add each</span><span class="text-mut">Click a product for its doctors</span></div>
+      <div class="rmk-wrap"><table class="rmk-tbl xs-ptbl"><thead><tr><th>Product</th><th>Line</th><th class="num">Doctors who could add it</th><th class="num">High confidence</th><th>Why they’d add it</th><th class="num">Capacity</th><th class="num">≈ a year</th></tr></thead><tbody>
+        ${P.map(k => `<tr class="xs-prow" data-cat="${esc(k.cat)}"><td><b>${esc(k.cat)}</b></td><td class="text-mut">${esc(k.line)}</td><td class="num">${fmtN(k.docs)}</td><td class="num">${fmtN(k.high)}</td>
+          <td>${Object.entries(k.kinds).sort((a, b) => b[1] - a[1]).map(([kk, n]) => `<span class="xs-kind k-${kk}">${XS_KIND[kk].icon} ${n}</span>`).join(' ')}</td>
+          <td class="num">${Math.round(csCapCat(C, k.cat) * 100)}%</td><td class="num"><b>${csK(k.value)}</b></td></tr>`).join('') || '<tr><td colspan="7" class="cs-empty">Nothing to push in this line.</td></tr>'}</tbody></table></div>`;
+    body.querySelectorAll('.xs-pill').forEach(b => b.onclick = () => { XS[b.dataset.g] = b.dataset.v; renderCrossSell(); });
+    body.querySelectorAll('.xs-prow').forEach(tr => tr.onclick = () => { XS.cat = tr.dataset.cat; XS.view = 'list'; XS.kind = 'all'; XS.conf = 'all'; XS.limit = 25; XS.open = null; renderCrossSell(); });
+  } else {
+    const R = xsPractices(C);
+    body.innerHTML = `
+      <div class="xs-filters"><div class="xs-fg xs-fg2"><input class="gf-select xs-q" id="xsPQ" placeholder="Search a practice or city…" value="${esc(XS.pq)}"></div></div>
+      <div class="xs-head"><span>${fmtN(R.length)} practices with room to grow — lines to add, doctors who stopped sending from here, and work split between colleagues</span><span class="text-mut">Click a practice for the detail</span></div>
+      <div class="xs-list">${R.slice(0, XS.plimit).map(({ x, split }, i) => { const open = XS.popen === x.name;
+        const bits = [x.add.length ? `➕ add ${x.add.slice(0, 2).map(a => esc(a.cat)).join(', ')}${x.add.length > 2 ? ' +' + (x.add.length - 2) : ''}` : '',
+                      x.back.length ? `↩ ${x.back.length} doctor${x.back.length === 1 ? '' : 's'} stopped sending from here` : '',
+                      split ? `👥 ${split.gaps.length} line${split.gaps.length === 1 ? '' : 's'} sent by one doctor, not the others` : '',
+                      x.low.length ? `📉 ${x.low.length} doctor${x.low.length === 1 ? '' : 's'} sending far less than colleagues` : ''].filter(Boolean);
+        return `<div class="xs-row${open ? ' open' : ''}"><button type="button" class="xs-main xs-pmain" data-p="${esc(x.name)}"><span class="xs-rank">${i + 1}</span>
+          <span class="xs-doc"><b>${esc(x.name)}</b><small>${esc(csWhere(x))} · ${x.active.length} active doctor${x.active.length === 1 ? '' : 's'}</small></span>
+          <span class="xs-pbits">${bits.map(t => `<span>${t}</span>`).join('')}</span><span class="xs-val">≈ ${csK(x.value)}<small>a year</small></span><span class="xs-more">${open ? '▴' : '▾'}</span></button>
+          ${open ? `<div class="xs-det">${csPracticeDetail(C, x)}</div>` : ''}</div>`; }).join('') || '<div class="cs-empty">No practices match.</div>'}</div>
+      ${R.length > XS.plimit ? `<button type="button" class="btn-text xs-morebtn" id="xsPMore">Show ${Math.min(25, R.length - XS.plimit)} more of ${fmtN(R.length - XS.plimit)}</button>` : ''}`;
+    let qt = null; const qEl = document.getElementById('xsPQ');
+    qEl.oninput = () => { clearTimeout(qt); qt = setTimeout(() => { XS.pq = qEl.value; XS.plimit = 25; renderCrossSell(); const n = document.getElementById('xsPQ'); if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); } }, 250); };
+    body.querySelectorAll('.xs-pmain').forEach(b => b.onclick = () => { XS.popen = XS.popen === b.dataset.p ? null : b.dataset.p; renderCrossSell(); });
+    const more = document.getElementById('xsPMore'); if (more) more.onclick = () => { XS.plimit += 25; renderCrossSell(); };
+  }
+  // header, views, capacity
+  document.getElementById('csState').onchange = e => { CS.state = e.target.value; XS.limit = 25; renderCrossSell(); };
+  document.getElementById('csMonths').onchange = e => { CS.months = +e.target.value; CS.cache = null; renderCrossSell(); };
+  document.getElementById('csHowBtn').onclick = () => { CSV2.how = !CSV2.how; renderCrossSell(); };
+  document.getElementById('csExport').onclick = () => csExport();
+  el.querySelectorAll('.xs-view').forEach(b => b.onclick = () => { XS.view = b.dataset.view; renderCrossSell(); });
+  el.querySelectorAll('.xs-kpi-act').forEach(k => k.onclick = () => {
+    if (k.dataset.act === 'quick') { XS.view = 'list'; XS.conf = 'High'; XS.kind = 'all'; XS.cat = ''; }
+    if (k.dataset.act === 'top' && topCat) { XS.view = 'list'; XS.cat = topCat[0]; XS.kind = 'all'; XS.conf = 'all'; }
+    XS.limit = 25; XS.open = null; renderCrossSell(); });
+  const cap = el.querySelector('.xs-cap'); if (cap) cap.addEventListener('toggle', () => { CS.capOpen = cap.open; });
+  csCapBind();
+}
+// up to three offers for an office: high / medium confidence first, one per product
+function xsOfficeOfferLines(ids, B) {
+  const byId = B._byId || (B._byId = new Map(B.docs.map(x => [x.id, x]))), items = [];
+  ids.forEach(id => { const x = byId.get(id); if (x) x.list.forEach(it => items.push({ x, it })); });
+  items.sort((a, b) => (XS_CONF_RANK[b.it.conf] >= 2) - (XS_CONF_RANK[a.it.conf] >= 2) || b.it.value - a.it.value);
+  const seen = new Set(), out = [];
+  for (const { x, it } of items) { if (seen.has(it.cat) || (it.conf === 'Low' && out.length)) continue; seen.add(it.cat); out.push({ x, it }); if (out.length === 3) break; }
+  const clean = t => String(t || '').replace(/\s*·\s*/g, ', ').replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+  return out.map(({ x, it }) => `${SB_OFFER_MARK} ${clean(it.cat)} · ${clean(csDr(x.name))} · ${clean(it.why)} · ≈${csK(it.value)}/yr · ${it.conf} · ${clean(it.say)}`);
+}
+// the Excel plan's first sheet: the same list — one row per offer
+function xsSheet() {
+  const C = csCompute(), B = xsBuild(C), out = [];
+  B.docs.slice().sort((a, b) => b.list[0].value - a.list[0].value).forEach((x, i) => x.list.forEach((it, j) => out.push({
+    Rank: i + 1, Doctor: csDr(x.name), List: x.tier === 3 ? 'Golden' : x.tier === 2 ? 'Silver' : '', Practice: x.practice, City: x.city, State: x.state,
+    'Best offer?': j === 0 ? 'Yes' : '', Offer: it.cat, Line: it.line, Kind: XS_KIND[it.kind].label, Why: it.why, Confidence: it.conf,
+    'Est. a year': Math.round(it.value), 'How the estimate works': it.how, 'What to say': it.say, Phone: x.phone, Email: x.email })));
+  return out;
+}
+
 function csPlanSheets() {
   const C = csCompute(), opps = csOpps(C), groups = csSupers(C, opps), doctors = csDoctors(opps), pracs = csPracs(C), r0 = n => Math.round(n || 0);
   const scope = CS.state === 'all' ? 'All states' : CS.state;
@@ -10885,6 +11160,7 @@ function csPlanSheets() {
       "This doctor's other work, 12 months": r0(l.P.rev), 'Colleagues send of it a year': r0(z.senderRev),
       Finding: `${csDr(l.d.name)} sends no ${fdLine(z.g)}; ${z.senders.map(x => csDr(x.d.name)).join(' and ')} at the same practice ${z.senders.length === 1 ? 'does' : 'do'}.`,
       'Talking point': `“${csDr(z.senders[0].d.name)} already sends us ${fdLine(z.g)} — who handles yours today?”` })))))]);
+  sheets.splice(1, 0, ['Opportunities', xsSheet()]);   // DL62: the same list as the page, one row per offer
   return sheets;
 }
 async function csExport(filter, name) {
@@ -13588,6 +13864,12 @@ const SB_GEO_KEY = 'labbridge_geo';
 const SB_STATUSES = ['Active', 'New Doctor', 'Winback', 'Falloff', 'Inactive'];
 const SB_PILL = { 'Active': 'sb-p-active', 'New Doctor': 'sb-p-new', 'Winback': 'sb-p-winback', 'Falloff': 'sb-p-falloff', 'Inactive': 'sb-p-inactive' };
 const SB_LAB_MARK = '📊 LAB:';
+/* 💡 OFFER lines (DL62): up to three cross-sell offers per office, written by the
+   sync beside the 📊 LAB lines and, like them, replaced on every sync — never
+   mixed into the rep's own notes. "💡 OFFER: product · Dr. name · why · ≈$X/yr ·
+   confidence · what to say". Salesly VDA118 shows them as "What to offer". */
+const SB_OFFER_MARK = '💡 OFFER:';
+const sbIsSys = l => { const t = String(l || '').trim(); return t.startsWith(SB_LAB_MARK) || t.startsWith(SB_OFFER_MARK); };
 const SB_BASE = { current: 'Active', new: 'New Doctor', falloff: 'Falloff', inactive: 'Inactive' };
 const BRIDGE = { data: null, stop: false, wanted: null };
 
@@ -14228,7 +14510,7 @@ function sbStatusLine(docRow, label) {
          (extra.length ? ' · ' + extra.join(' · ') : '');
 }
 function sbMergeNotes(existing, lines) {
-  const keep = String(existing || '').split('\n').filter(l => !l.trim().startsWith(SB_LAB_MARK)).join('\n').trim();
+  const keep = String(existing || '').split('\n').filter(l => !sbIsSys(l)).join('\n').trim();
   return lines.join('\n') + (keep ? ('\n' + keep) : '');
 }
 
@@ -14716,7 +14998,7 @@ async function sbMergeDupes() {
         // rep notes: append any non-LAB lines the winner doesn't already have
         const keepLines = String(keep[ci.notes] || '').split('\n');
         const have = new Set(keepLines.map(l => l.trim()).filter(Boolean));
-        String(lose[ci.notes] || '').split('\n').map(l => l.trim()).filter(l => l && !l.startsWith(SB_LAB_MARK) && !have.has(l)).forEach(l => keepLines.push(l));
+        String(lose[ci.notes] || '').split('\n').map(l => l.trim()).filter(l => l && !sbIsSys(l) && !have.has(l)).forEach(l => keepLines.push(l));
         keep[ci.notes] = keepLines.filter((l, i2, arr) => l.trim() || (i2 > 0 && arr[i2 - 1].trim())).join('\n').trim();
         // Never let a merged-away row's pending email flags survive onto the winner.
         ['starterKit','welcomeEmail','pricelist'].forEach(c=>{ if(ci[c]!=null){ lose[ci[c]]=''; } });
@@ -14891,6 +15173,8 @@ async function sbSync() {
       sbLog('Geocoded ' + need.filter(o => geo[sbGeoKey(o)]).length + '/' + need.length + (BRIDGE.stop ? ' (stopped early)' : ''), 'ok');
       stopBtn.style.display = 'none';
     }
+    // the cross-sell offers, worked out once for every state (capacity applies — a paused line is never offered)
+    let XB = null; try { const st = CS.state; CS.state = 'all'; XB = xsBuild(csCompute()); CS.state = st; } catch (e) { XB = null; }
     // merge
     let updated = 0, added = 0;
     const setIfBlank = (r, c, v) => { if (v && (!r[ci[c]] || String(r[ci[c]]).trim() === '')) r[ci[c]] = v; };
@@ -14900,6 +15184,7 @@ async function sbSync() {
       const lines = o.docs
         .slice().sort((a, b) => b.row.rev90 - a.row.rev90)
         .map(d => sbStatusLine(d.row, d.label));
+      if (XB) { try { lines.push(...xsOfficeOfferLines(o.docs.map(d => d.row.drId).filter(Boolean), XB)); } catch (e) {} }
       if (o._row >= 0) {
         const r = rows[o._row];
         r[ci.notes] = sbMergeNotes(r[ci.notes], lines);
@@ -17054,7 +17339,7 @@ const SLF = (() => {
     }
     return out;
   }
-  function stripLab(nts){ if(!nts)return ""; return String(nts).split("\n").filter(l=>!/LAB:\s*[A-Za-z]/i.test(l)).join("\n").replace(/^\n+|\n+$/g,""); }
+  function stripLab(nts){ if(!nts)return ""; return String(nts).split("\n").filter(l=>!/(?:LAB|OFFER):\s*[A-Za-z]/i.test(l)).join("\n").replace(/^\n+|\n+$/g,""); }
   function labLines(nts){ if(!nts)return ""; return String(nts).split("\n").filter(l=>/LAB:\s*[A-Za-z]/i.test(l)).join("\n"); }
   function isImport(o){ return !!labStatus(o)||String((o&&o.id)||"").charAt(0)==="b"; }
   function isVisited(o){
@@ -17823,6 +18108,7 @@ function pmLvDetail(o) {
     ${labLines.length ? `<div class="pm-lvsec">Lab</div>${labLines.map(l => `<div class="pm-lvline">${esc(l.replace(/^.*?LAB:\s*/i, ''))}</div>`).join('')}` : ''}
     ${vis.length ? `<div class="pm-lvsec">Recent visits &amp; notes</div>${vis.map(v => { const h = PM_HEAT.find(x => x[0] === v.color);
         return `<div class="pm-lvline">${h ? `<i style="background:${h[2]}"></i>` : ''}<b>${esc(pmDay(v.date))}</b>${v.rep ? ' · ' + esc(v.rep) : ''}${v.note ? `<div class="pm-lvvn">${esc(v.note)}</div>` : ''}</div>`; }).join('')}` : ''}
+    ${svOffersHTML(o.notes, 'pm-lvsec')}
     ${other ? `<div class="pm-lvsec">Office notes</div><div class="pm-lvline pm-lvnote">${esc(other.slice(0, 500))}</div>` : ''}
     <div class="pm-lvact"><button type="button" class="crm-save" data-crm="${esc(o.id)}">📝 Log call / email / visit</button>${pmHasPos(o) ? `<button type="button" class="btn-text" data-lvmap="${esc(o.id)}">🗺 Show on map</button>` : '<span class="text-mut">No map position yet</span>'}
       ${addr ? `<a class="btn-text" href="https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(addr)}" target="_blank" rel="noopener">Directions ↗</a>` : ''}</div></div>`;
