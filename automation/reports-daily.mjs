@@ -9,7 +9,14 @@
 //  complete.
 //
 //  Never sends twice in a day: if reports for the same day were already stored
-//  this morning (after 10:55), it stops. Recipients are the ones from the last
+//  this morning (after 10:55), it stops.
+//
+//  Only sends a day that HAPPENED: if yesterday (Chicago) had no invoicing — a
+//  Monday (yesterday was Sunday), the day after a holiday, any day the lab was
+//  closed — nothing goes out. And if yesterday looks INCOMPLETE (well below a
+//  normal day: the morning upload or the API pull hasn't fully landed), the
+//  reports are HELD — nothing is sent and the run fails so GitHub emails you;
+//  upload the full day, then press "Send now" on the Reports tab. Recipients are the ones from the last
 //  push made in the dashboard (falling back to REPORT_RECIPIENTS).
 //
 //  THE REPO IS PUBLIC: this prints dates and counts only — never addresses or
@@ -18,7 +25,8 @@
 //  Environment:
 //    DASHBOARD_URL, AUTOMATION_EMAIL, AUTOMATION_PASSWORD   required
 //    REPORT_RECIPIENTS   used only when no push has ever stored recipients
-//    FORCE=1             run whatever the time, even if already sent today
+//    FORCE=1             run whatever the time, even if already sent today, even
+//                        on a no-data day or with an incomplete day
 //    DRY_RUN=1           build the reports, send nothing
 // ════════════════════════════════════════════════════════════════════════════
 import { chromium } from 'playwright';
@@ -31,12 +39,8 @@ const chicago = d => new Date((d || new Date()).toLocaleString('en-US', { timeZo
 const ymd = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 const FORCE = env.FORCE === '1', DRY = env.DRY_RUN === '1';
 
-// the business day before today, Chicago time (Friday on a Monday)
-function previousBusinessDay(now) {
-  const d = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  do d.setDate(d.getDate() - 1); while (d.getDay() === 0 || d.getDay() === 6);
-  return ymd(d);
-}
+// yesterday, Chicago time — the only day the morning reports may describe
+function yesterdayOf(now) { const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1); return ymd(d); }
 
 const now = env.TEST_NOW ? new Date(env.TEST_NOW) : chicago();   // TEST_NOW: tests only
 const hhmm = now.getHours() + ':' + String(now.getMinutes()).padStart(2, '0');
@@ -75,10 +79,16 @@ try {
   await page.waitForTimeout(2000);
 
   const info = await page.evaluate(() => ({ lines: APP.raw.length, latest: isoDate(getMaxDate()), day: isoDate(rpReportDay()) }));
-  const expected = previousBusinessDay(now);
+  const yesterday = yesterdayOf(now);
   log(`Loaded ${info.lines.toLocaleString()} invoice lines · latest date in the data ${info.latest} · reporting on ${info.day}`);
-  if (info.day !== expected) log(`  ⚠ The last complete day in the data is ${info.day}, not ${expected} — the reports will say so in their subject lines.`);
+  // 1. only a day that happened: no invoicing yesterday (Monday, holiday, closed) → no reports today
+  if (info.day !== yesterday && !FORCE) {
+    log(`No invoicing on ${yesterday} (${new Date(yesterday + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long' })}) — the last day with data is ${info.day}. No reports go out today.`);
+    process.exit(0);
+  }
   const thin = await page.evaluate(() => { const x = rpIncompleteCheck(); return x ? { day: Math.round(x.day), typical: Math.round(x.typical) } : null; });
+  // 2. hold an incomplete day rather than send numbers that look like a collapse
+  if (thin && !FORCE) fail(`HELD — ${info.day} looks incomplete: $${thin.day.toLocaleString()} invoiced vs about $${thin.typical.toLocaleString()} on a typical day. Nothing was sent. Upload the full day (+ Add Data), then press "Send now" on the Reports tab.`);
   if (thin) log(`  ⚠ ${info.day} looks incomplete: $${thin.day.toLocaleString()} invoiced vs about $${thin.typical.toLocaleString()} on a typical day — the reports carry a warning. Check the Pilot pull.`);
 
   // already sent today?
@@ -116,6 +126,9 @@ try {
   if (!/✓ Sent/.test(out)) fail('sending:\n' + mask(out).split('\n').filter(l => /✗|error|fail/i.test(l)).join('\n'));
   const routed = out.split('\n').filter(l => /^\s*•/.test(l)), skipped = routed.filter(l => /no recipient/i.test(l)).length, n = routed.length - skipped;
   log(`✓ Sent ${n} report${n === 1 ? '' : 's'} for ${info.day}${skipped ? ` (${skipped} with no recipients, skipped)` : ''}.${pageErrors ? ` (${pageErrors} page warning${pageErrors === 1 ? '' : 's'} along the way)` : ''}`);
+  // Resend can refuse a single report while the rest go out — say so plainly
+  const refused = out.split('\n').filter(l => /✗ not sent/.test(l));
+  if (refused.length) log(`  ⚠ ${refused.length} report${refused.length === 1 ? ' was' : 's were'} refused by Resend:\n` + mask(refused.join('\n')));
 } finally {
   await browser.close();
 }
