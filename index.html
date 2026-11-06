@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.11.05-DL45</title>
+<title>Lab Sales Dashboard v2026.11.05-DL46</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -184,6 +184,15 @@ html, body {
 .sv-daylist { display: flex; flex-direction: column; gap: 10px; min-width: 0; margin-top: 14px; }
 .sv-dupe-note { color: #a16207; }
 /* ── COACH ── */
+/* the Remakes tab */
+.rmk-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 18px; }
+.rmk-kpis .kpi-value { font-size: 22px; } .rmk-kpis .kpi-sub { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.rmk-wrap { overflow-x: auto; } .rmk-tbl { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.rmk-tbl th { text-align: left; font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--mut); padding: 7px 10px; border-bottom: 1px solid var(--border); cursor: pointer; white-space: nowrap; user-select: none; }
+.rmk-tbl th.on { color: var(--accent-ink); } .rmk-tbl th.on::after { content: ' ↕'; }
+.rmk-tbl td { padding: 7px 10px; border-bottom: 1px solid var(--border); color: var(--dim); } .rmk-tbl td b { color: var(--ink); }
+.rmk-tbl .num { text-align: right; font-variant-numeric: tabular-nums; } .rmk-tbl tr.clk { cursor: pointer; } .rmk-tbl tr.clk:hover td { background: var(--card-2); }
+.rmk-more { margin-top: 8px; }
 /* recent remakes */
 .rm-reasons { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
 .rm-chip { font-size: 12px; background: #fef2f2; color: #991b1b; border-radius: 999px; padding: 3px 10px; } .rm-chip b { margin-left: 4px; }
@@ -1441,6 +1450,7 @@ tr.cs-open td { background: var(--card-2); white-space: normal; cursor: default;
       <button class="tab-btn" data-tab="docdetail">🔍 Doctor Detail</button>
       <button class="tab-btn" data-tab="prodgrid">📦 Product Grid</button>
       <button class="tab-btn" data-tab="proddetail">📈 Product Detail</button>
+      <button class="tab-btn" data-tab="remakes">🔁 Remakes</button>
       <button class="tab-btn" data-tab="svgrid">🚗 Sales Visits</button>
       <button class="tab-btn" data-tab="svdetail">📅 Sales Visit Detail</button>
       <button class="tab-btn" data-tab="status">📋 Retention</button>
@@ -1504,6 +1514,7 @@ tr.cs-open td { background: var(--card-2); white-space: normal; cursor: default;
     <div class="tab-panel" id="panel-sales"></div>
     <div class="tab-panel" id="panel-docgrid"></div>
     <div class="tab-panel" id="panel-golden"></div>
+    <div class="tab-panel" id="panel-remakes"></div>
     <div class="tab-panel" id="panel-silver"></div>
     <div class="tab-panel" id="panel-docdetail"></div>
     <div class="tab-panel" id="panel-empgrid"></div>
@@ -1840,6 +1851,17 @@ function bridgeLabel(product, tooth, scannerShown) {
   return base.replace(/^analog\s+/i, '') + ' - Bridge';
 }
 
+/* BALANCE FORWARDS (Magic Touch Balance, 3Shape Balance, Balance Forward) are
+   account carry-overs, not sales: they're dropped as the data loads, so no
+   figure counts them. The database and Export All keep them. */
+const BALANCE_FWD_RE = /\bbalance\b/i;
+/* MAIN PRODUCTS — what a remake can be. Shipping, fees and charges, rush fees,
+   reprocessing / processing lines, Misc, and tools returned for credit aren't
+   products: they're left out of remakes AND of the units a remake rate is
+   divided by, everywhere. */
+const NON_MAIN_RE = /\bshipping\b|\bfees?\b|\bcharge\b|\brush\b|\bmisc\b|reprocessing|\bprocessing\b|return for full credit/i;
+const isMainProduct = name => !!String(name || '').trim() && !NON_MAIN_RE.test(String(name));
+
 function normalizeScanner(raw) {
   if (!raw) return 'Unknown';
   const s = String(raw).toUpperCase().trim();
@@ -1909,7 +1931,7 @@ const APP = {
 
 /* Bump when normalization logic changes, so it's possible to tell at a glance
    (bottom of the Avg Turnaround card) which build a browser is running. */
-const BUILD_ID = 'DL45 · 2026-11-05';
+const BUILD_ID = 'DL46 · 2026-11-05';
 
 const DB_NAME = 'LabOpsCache';
 const DB_STORE = 'datasets';
@@ -2574,6 +2596,7 @@ function normalizeRecords(rows) {
     const bridgeAs = bridgeLabel(product, fv(r, F.tooth), normalizeScanner(fv(r, F.scanner)));
     const productOrig = bridgeAs ? product : '';
     if (bridgeAs) product = canonLabel(bridgeAs);
+    if (BALANCE_FWD_RE.test(product)) continue;   // balance forwards aren't sales
     const netCost = parseFloat(fv(r, F.netCost)) || 0;
     /* UNITS SHIPPED.
        Two things were inflating this. First, `|| 1` turned a legitimate
@@ -2684,7 +2707,11 @@ function normalizeRecords(rows) {
       scanner: normalizeScanner(fv(r, F.scanner)),
       // Legacy header is Transaction_type, Query Studio uses Transaction_Type
       transactionType: fv(r, F.transactionType) || '',
-      remake,
+      // remakes count on MAIN products only (not shipping, fees, processing…)
+      remake: remake && isMainProduct(product),
+      remakeAny: remake,                  // the raw flag, as the file has it
+      mainProduct: isMainProduct(product),
+      rmQty: isMainProduct(product) ? qty : 0,   // the units a remake rate is divided by
       productRemake,
       remakeReason: canonRemakeReason(fv(r, F.remakeReason)),
       // Full original wording, kept for case-level tables and exports
@@ -2978,6 +3005,7 @@ function aggKPIs() {
        data this reads ~6.6% where the old per-case figure read ~5.2%, because
        remakes skew toward multi-unit cases. */
     const remakeUnits = data.reduce((s, r) => s + (r.remake ? (r.qty || 0) : 0), 0);
+    const rmUnitsAll = data.reduce((s, r) => s + (r.rmQty || 0), 0);
     const onHoldCount = countCases(data.filter(r => r.onHold));
     const doctors = new Set(data.map(r => r.drId)).size;
     const products = new Set(data.map(r => r.product)).size;
@@ -3001,7 +3029,7 @@ function aggKPIs() {
         const h = v.length >> 1;
         return v.length % 2 ? v[h] : (v[h - 1] + v[h]) / 2;
       })(),
-      remakeRate: totalUnits ? remakeUnits / totalUnits : 0,
+      remakeRate: rmUnitsAll ? remakeUnits / rmUnitsAll : 0,   // main products only
       remakeCount,
       remakeUnits,
       onHoldRate: totalCases ? onHoldCount / totalCases : 0,
@@ -3054,7 +3082,7 @@ function aggByDoctor() {
       addCase(d.caseSet, r.caseKey);
       d.revenue += r.netCost;
       d.units += r.qty;
-      d.uAll = (d.uAll || 0) + (r.qty || 0); if (r.remake) { addCase(d.remakeSet, r.caseKey); d.remakeUnits = (d.remakeUnits || 0) + (r.qty || 0); }
+      d.uAll = (d.uAll || 0) + (r.rmQty || 0); if (r.remake) { addCase(d.remakeSet, r.caseKey); d.remakeUnits = (d.remakeUnits || 0) + (r.qty || 0); }
       if (r.anchorDate) {
         if (!d.firstDate || r.anchorDate < d.firstDate) d.firstDate = r.anchorDate;
         if (!d.lastDate || r.anchorDate > d.lastDate) d.lastDate = r.anchorDate;
@@ -3109,7 +3137,7 @@ function aggByProduct() {
       addCase(p.caseSet, r.caseKey);
       p.revenue += r.netCost;
       p.units += r.qty;
-      p.uAll = (p.uAll || 0) + (r.qty || 0); if (r.remake) { addCase(p.remakeSet, r.caseKey); p.remakeUnits = (p.remakeUnits || 0) + (r.qty || 0); }
+      p.uAll = (p.uAll || 0) + (r.rmQty || 0); if (r.remake) { addCase(p.remakeSet, r.caseKey); p.remakeUnits = (p.remakeUnits || 0) + (r.qty || 0); }
       p.doctors.add(r.drId);
       addTat(p, r);
       otAdd(p, r, r.onTimeStatus, ['ontimeCases', 'onTimeEarly', 'onTimeOnTime', 'onTimeLate']);   // each case once per product
@@ -3144,7 +3172,7 @@ function aggByMonth() {
       m.revenue += r.netCost;
       addCase(m.caseSet, r.caseKey);
       m.units += r.qty;          // the "Units" series on the overview chart
-      m.uAll = (m.uAll || 0) + (r.qty || 0); if (r.remake) { addCase(m.remakeSet, r.caseKey); m.remakeUnits = (m.remakeUnits || 0) + (r.qty || 0); }
+      m.uAll = (m.uAll || 0) + (r.rmQty || 0); if (r.remake) { addCase(m.remakeSet, r.caseKey); m.remakeUnits = (m.remakeUnits || 0) + (r.qty || 0); }
     }
     for (const m of map.values()) { m.cases = m.caseSet.size; m.remakes = m.remakeSet.size; }
     // Drop sparse months (under 10 records) — these are typically stray rows with
@@ -3170,7 +3198,7 @@ function aggByState() {
       }
       s.revenue += r.netCost;
       addCase(s.caseSet, r.caseKey);
-      s.uAll = (s.uAll || 0) + (r.qty || 0); if (r.remake) { addCase(s.remakeSet, r.caseKey); s.remakeUnits = (s.remakeUnits || 0) + (r.qty || 0); }
+      s.uAll = (s.uAll || 0) + (r.rmQty || 0); if (r.remake) { addCase(s.remakeSet, r.caseKey); s.remakeUnits = (s.remakeUnits || 0) + (r.qty || 0); }
       s.doctors.add(r.drId);
     }
     return Array.from(map.values()).map(s => ({
@@ -4092,6 +4120,7 @@ function renderTab(tab, force) {
     case 'crosssell': renderCrossSell(); break;
     case 'sales':     renderSalesHub(); break;
     case 'docgrid':   renderDoctorGrid(); break;
+    case 'remakes':   renderRemakes(); break;
     case 'golden':    renderDoctorGrid('golden'); break;
     case 'silver':    renderDoctorGrid('silver'); break;
     case 'docdetail': renderDoctorDetail(); break;
@@ -5616,7 +5645,7 @@ function seriesTrends(cacheKey, keyOf) {
     const W = r.anchorDate >= w.lastStart ? x.L : r.anchorDate >= w.prevStart ? x.P : null;
     if (W === x.L) x.last += r.netCost || 0; else if (W === x.P) x.prev += r.netCost || 0;
     if (W) {   // the same rules as the grids: remakes by unit; turnaround once per case, 0–200 days
-      W.u += r.qty || 0; if (r.remake) W.r += r.qty || 0;
+      W.u += r.rmQty || 0; if (r.remake) W.r += r.qty || 0;
       if (r.caseKey && r.tat != null && r.tat >= 0 && r.tat <= 200 && !W.seen.has(r.caseKey)) { W.seen.add(r.caseKey); W.ts += r.tat; W.tn++; }
     }
   }
@@ -5685,7 +5714,7 @@ function ddRemakesHTML(drId) {
     if (r.drId !== drId || !r.anchorDate || r.anchorDate > end) continue;
     if (r.remake && (!lastEver || r.anchorDate > lastEver.anchorDate)) lastEver = r;
     if (r.anchorDate <= from) continue;
-    units += r.qty || 0;
+    units += r.rmQty || 0;
     if (!r.remake) continue;
     rUnits += r.qty || 0;
     const k = (r.caseNo || r.caseKey || '') + '|' + (r.product || '');
@@ -6192,7 +6221,7 @@ function renderDoctorDetail() {
   const caseCount = countCases(cases);
   const remakes = countCases(cases.filter(r => r.remake));
   const remakeUnitsK = cases.reduce((s, r) => s + (r.remake ? (r.qty || 0) : 0), 0);
-  const allUnitsK    = cases.reduce((s, r) => s + (r.qty || 0), 0);
+  const allUnitsK    = cases.reduce((s, r) => s + (r.rmQty || 0), 0);   // main products
   const onHold = cases.filter(r => r.onHold).length;
   // Average turnaround (received → invoiced) across this doctor's valid cases
   // Median is the headline; held cases make the mean unrepresentative
@@ -6231,7 +6260,7 @@ function renderDoctorDetail() {
     if (!m) { m = { key: r.anchorMonth, revenue: 0, caseSet: new Set(), cases: 0, remakeSet: new Set(), remakes: 0, tatSum: 0, tatN: 0,
                     otEarly: 0, otOnTime: 0, otLate: 0, otTotal: 0 }; mmap.set(r.anchorMonth, m); }
     m.revenue += r.netCost; addCase(m.caseSet, r.caseKey); m.cases = m.caseSet.size;
-    m.uAll = (m.uAll || 0) + (r.qty || 0); if (r.remake) { addCase(m.remakeSet, r.caseKey); m.remakes = m.remakeSet.size; m.remakeUnits = (m.remakeUnits || 0) + (r.qty || 0); }
+    m.uAll = (m.uAll || 0) + (r.rmQty || 0); if (r.remake) { addCase(m.remakeSet, r.caseKey); m.remakes = m.remakeSet.size; m.remakeUnits = (m.remakeUnits || 0) + (r.qty || 0); }
     addTat(m, r);
     otAdd(m, r, r.caseOnTime, ['otTotal', 'otEarly', 'otOnTime', 'otLate']);   // each case once
   }
@@ -6603,7 +6632,7 @@ function computeDoctorStatus(asOf) {
     d.totalCases = d._caseSet.size;
     d.totalRev += r.netCost;
     d.totalUnits += r.qty;
-    d.uAll = (d.uAll || 0) + (r.qty || 0); if (r.remake) { if (!d._remakeSet) d._remakeSet = new Set(); addCase(d._remakeSet, r.caseKey); d.remakes = d._remakeSet.size; d.remakeUnits = (d.remakeUnits || 0) + (r.qty || 0); }
+    d.uAll = (d.uAll || 0) + (r.rmQty || 0); if (r.remake) { if (!d._remakeSet) d._remakeSet = new Set(); addCase(d._remakeSet, r.caseKey); d.remakes = d._remakeSet.size; d.remakeUnits = (d.remakeUnits || 0) + (r.qty || 0); }
     if (r.caseKey) { tallyPractice(d.practices, r.practice, r.anchorDate); noteContact(d.contacts, r); }
     // Per-practice case timeline for THIS doctor (the Karan Varma fix): each
     // practice accumulates only the cases billed under it, so its status reflects
@@ -6615,7 +6644,7 @@ function computeDoctorStatus(asOf) {
         let pd = d.practiceDates.get(pk);
         if (!pd) { pd = { name: pnRaw, dates: [], caseSet: new Set(), cases: 0, rev: 0, units: 0, remakeSet: new Set(), remakes: 0, tatSum: 0, tatN: 0 }; d.practiceDates.set(pk, pd); }
         addCase(pd.caseSet, r.caseKey); pd.cases = pd.caseSet.size; pd.rev += r.netCost; pd.units += r.qty;
-        pd.uAll = (pd.uAll || 0) + (r.qty || 0); if (r.remake) { addCase(pd.remakeSet, r.caseKey); pd.remakes = pd.remakeSet.size; pd.remakeUnits = (pd.remakeUnits || 0) + (r.qty || 0); }
+        pd.uAll = (pd.uAll || 0) + (r.rmQty || 0); if (r.remake) { addCase(pd.remakeSet, r.caseKey); pd.remakes = pd.remakeSet.size; pd.remakeUnits = (pd.remakeUnits || 0) + (r.qty || 0); }
         addTat(pd, r);
         if (r.anchorDate && r.caseKey) pd.dates.push(r.anchorDate);
       }
@@ -8829,13 +8858,14 @@ const cxPlural = (label, n) => { const w = label.toLowerCase(); return n === 1 ?
 
 // all the measures for a set of lines, with the dashboard's own helpers
 function cxCompute(rows) {
-  let units = 0, rev = 0, remU = 0, remDisc = 0, early = 0, ontime = 0, late = 0;
+  let units = 0, rev = 0, remU = 0, rmUnits = 0, remDisc = 0, early = 0, ontime = 0, late = 0;
   const drs = new Set(), prs = new Set(), prods = new Set(), caseVal = new Map(), remC = new Set(), holdC = new Map(), otB = {};
   for (const r of rows) {
     units += r.qty || 0; rev += r.netCost || 0;
     if (r.drId) drs.add(r.drId); if (r.practice) prs.add(r.practice);
     if (String(r.product || '').trim()) prods.add(r.product);
     if (r.caseKey) caseVal.set(r.caseKey, (caseVal.get(r.caseKey) || 0) + (r.netCost || 0));
+    rmUnits += r.rmQty || 0;
     if (r.remake) { remU += r.qty || 0; if (r.caseKey) remC.add(r.caseKey); }
     remDisc += Math.abs(r.remakeDiscount || 0);
     if (r.onHold && r.caseKey) holdC.set(r.caseKey, Math.max(holdC.get(r.caseKey) || 0, r.daysOnHold || 0));
@@ -8848,7 +8878,7 @@ function cxCompute(rows) {
     cases, units, revenue: rev, lines: rows.length,
     avgCase: cases ? rev / cases : null, medianCase: medianOf([...caseVal.values()]), unitPrice: units ? rev / units : null,
     doctors: drs.size, practices: prs.size, products: prods.size,
-    remakeRate: units ? remU / units : null, remakeUnits: remU, remakeCases: remC.size, remakeDisc: remDisc,
+    remakeRate: rmUnits ? remU / rmUnits : null, remakeUnits: remU, remakeCases: remC.size, remakeDisc: remDisc,
     holdRate: cases ? holdC.size / cases : null, holdCases: holdC.size, holdDays: hd.length ? hd.reduce((a, b) => a + b, 0) / hd.length : null,
     tatMedian: medianOf(tv), tatAvg: tv.length ? tv.reduce((a, b) => a + b, 0) / tv.length : null,
     tatP90: tv.length ? tv[Math.min(tv.length - 1, Math.floor(0.9 * tv.length))] : null,
@@ -11128,6 +11158,161 @@ async function renderEmployeeDetail() {
 }
 
 /* ═══════════════════════════════════════════════════════════════
+   🔁 REMAKES — main products only (no shipping, fees, processing or
+   balance forwards). Follows the date range and the state/group filters;
+   the rate is compared with the same-length period just before.
+   ═══════════════════════════════════════════════════════════════ */
+function rmkRollup(rows) {
+  const o = { units: 0, remade: 0, cases: new Set(), remCases: new Set(), disc: 0, docs: new Set(),
+              byCat: new Map(), byProd: new Map(), byReason: new Map(), byDoc: new Map(), byMonth: new Map(), lines: new Map() };
+  const get = (m, k, init) => m.get(k) || m.set(k, init()).get(k);
+  const unit = () => ({ units: 0, rem: 0, cases: new Set(), reasons: {} });
+  for (const r of rows) {
+    if (!r || !r.mainProduct) continue;
+    const q = r.rmQty || 0, cat = r.productCat || 'Other';
+    o.units += q; if (r.caseKey) o.cases.add(r.caseKey);
+    const c = get(o.byCat, cat, unit), p = get(o.byProd, r.product, () => ({ ...unit(), cat }));
+    const d = r.drId ? get(o.byDoc, r.drId, () => ({ ...unit(), name: r.drName, practice: r.practice || '' })) : null;
+    const m = r.anchorDate ? get(o.byMonth, monthKey(r.anchorDate), () => ({ units: 0, rem: 0 })) : null;
+    c.units += q; p.units += q; if (d) d.units += q; if (m) m.units += q;
+    if (!r.remake) continue;
+    const why = r.remakeReason || 'No reason given';
+    o.remade += q; if (r.caseKey) o.remCases.add(r.caseKey); if (r.drId) o.docs.add(r.drId); o.disc += Math.abs(r.remakeDiscount || 0);
+    [c, p, d].forEach(x => { if (!x) return; x.rem += q; if (r.caseKey) x.cases.add(r.caseKey); x.reasons[why] = (x.reasons[why] || 0) + q; });
+    if (m) m.rem += q;
+    const rs = get(o.byReason, why, () => ({ rem: 0, cases: new Set(), prods: {}, docs: new Set() }));
+    rs.rem += q; if (r.caseKey) rs.cases.add(r.caseKey); rs.prods[r.product] = (rs.prods[r.product] || 0) + q; if (r.drId) rs.docs.add(r.drId);
+    const L = get(o.lines, (r.caseNo || r.caseKey) + '|' + r.product, () => ({ date: r.anchorDate, caseNo: r.caseNo || '', drId: r.drId, name: r.drName, practice: r.practice || '', product: r.product, reason: '', qty: 0 }));
+    L.qty += q; if (r.anchorDate && (!L.date || r.anchorDate > L.date)) L.date = r.anchorDate; if (!L.reason && r.remakeReason) L.reason = r.remakeReason;
+  }
+  return o;
+}
+const rmkTop = obj => { const e = Object.entries(obj || {}).sort((a, b) => b[1] - a[1])[0]; return e ? e[0] : ''; };
+const rmkPct = v => v == null ? '—' : (v * 100).toFixed(1) + '%';
+// sortable tables: click a header to sort, again to reverse
+const RMK_T = {};
+function rmkTable(id, cols, rows, sortKey, limit) {
+  RMK_T[id] = { cols, rows, key: sortKey, dir: -1, limit, all: false };
+  return `<div class="rmk-wrap"><table class="rmk-tbl" id="${id}"><thead><tr>${cols.map(c => `<th data-k="${c.k}" class="${c.num ? 'num' : ''}" title="Sort">${c.l}</th>`).join('')}</tr></thead><tbody></tbody></table></div>` +
+    (limit && rows.length > limit ? `<button class="btn-text rmk-more" data-t="${id}">Show all ${rows.length.toLocaleString()}</button>` : '');
+}
+function rmkDraw(id) {
+  const T = RMK_T[id], tb = document.querySelector('#' + id + ' tbody'); if (!T || !tb) return;
+  const col = T.cols.find(c => c.k === T.key) || T.cols[0], val = c => x => (c.x ? c.x(x) : x[c.k]);
+  const v = val(col);
+  const list = T.rows.slice().sort((a, b) => { const A = v(a), B = v(b);
+    return (typeof A === 'string' || typeof B === 'string' ? String(A || '').localeCompare(String(B || '')) : ((A ?? -1e15) - (B ?? -1e15))) * T.dir; });
+  tb.innerHTML = list.slice(0, T.all || !T.limit ? list.length : T.limit).map(x =>
+    `<tr${x._dr ? ` class="clk" data-dr="${esc(x._dr)}" title="Open Doctor Detail"` : ''}>${T.cols.map(c => `<td class="${c.num ? 'num' : ''}">${c.f ? c.f(x) : esc(String(val(c)(x) ?? ''))}</td>`).join('')}</tr>`).join('');
+  document.querySelectorAll('#' + id + ' th').forEach(th => th.classList.toggle('on', th.dataset.k === T.key));
+  tb.querySelectorAll('tr.clk').forEach(tr => tr.addEventListener('click', () => { APP.selectedDoctorId = tr.dataset.dr; switchTab('docdetail'); }));
+}
+function rmkSections(R) {
+  const n = v => fmtN(Math.round(v || 0));
+  const reasonsCell = o => { const t = rmkTop(o); return t ? esc(t) : '<span class="text-mut">—</span>'; };
+  const types = [...R.byCat.entries()].filter(([, c]) => c.units > 0).map(([k, c]) => ({ name: k, units: c.units, rem: c.rem, rate: c.units ? c.rem / c.units : null, cases: c.cases.size, reasons: c.reasons }));
+  const prods = [...R.byProd.entries()].filter(([, p]) => p.rem > 0).map(([k, p]) => ({ name: k, cat: p.cat, units: p.units, rem: p.rem, rate: p.units ? p.rem / p.units : null, cases: p.cases.size, reasons: p.reasons }));
+  const reasons = [...R.byReason.entries()].map(([k, x]) => ({ name: k, rem: x.rem, share: R.remade ? x.rem / R.remade : 0, cases: x.cases.size, docs: x.docs.size,
+    prods: Object.entries(x.prods).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([pn, u]) => pn + ' (' + fmtN(u) + ')').join(' · ') }));
+  const docs = [...R.byDoc.entries()].filter(([, d]) => d.rem > 0).map(([id, d]) => ({ _dr: id, name: d.name, practice: d.practice, units: d.units, rem: d.rem, rate: d.units ? d.rem / d.units : null, cases: d.cases.size, reasons: d.reasons }));
+  const lines = [...R.lines.values()].map(l => ({ ...l, _dr: l.drId }));
+  return { types, prods, reasons, docs, lines, cols: {
+    types: [{ k: 'name', l: 'Product type' }, { k: 'units', l: 'Units', num: 1, f: x => n(x.units) }, { k: 'rem', l: 'Remade units', num: 1, f: x => n(x.rem) },
+            { k: 'rate', l: 'Remake rate', num: 1, f: x => rmkPct(x.rate) }, { k: 'cases', l: 'Remake cases', num: 1, f: x => n(x.cases) }, { k: 'top', l: 'Top reason', x: x => rmkTop(x.reasons), f: x => reasonsCell(x.reasons) }],
+    prods: [{ k: 'name', l: 'Product', f: x => `<b>${esc(x.name)}</b>` }, { k: 'cat', l: 'Type' }, { k: 'units', l: 'Units', num: 1, f: x => n(x.units) }, { k: 'rem', l: 'Remade units', num: 1, f: x => n(x.rem) },
+            { k: 'rate', l: 'Remake rate', num: 1, f: x => rmkPct(x.rate) }, { k: 'cases', l: 'Remake cases', num: 1, f: x => n(x.cases) }, { k: 'top', l: 'Top reason', x: x => rmkTop(x.reasons), f: x => reasonsCell(x.reasons) }],
+    reasons: [{ k: 'name', l: 'Reason', f: x => `<b>${esc(x.name)}</b>` }, { k: 'rem', l: 'Remade units', num: 1, f: x => n(x.rem) }, { k: 'share', l: 'Share', num: 1, f: x => rmkPct(x.share) },
+              { k: 'cases', l: 'Cases', num: 1, f: x => n(x.cases) }, { k: 'docs', l: 'Doctors', num: 1, f: x => n(x.docs) }, { k: 'prods', l: 'Products most remade for it' }],
+    docs: [{ k: 'name', l: 'Doctor', f: x => `${goldMark(x._dr)}<b>${esc(x.name)}</b> ${quietMark(quietInfo().get(x._dr))}` }, { k: 'practice', l: 'Practice' }, { k: 'units', l: 'Units', num: 1, f: x => n(x.units) },
+           { k: 'rem', l: 'Remade units', num: 1, f: x => n(x.rem) }, { k: 'rate', l: 'Remake rate', num: 1, f: x => rmkPct(x.rate) }, { k: 'cases', l: 'Remake cases', num: 1, f: x => n(x.cases) },
+           { k: 'top', l: 'Top reason', x: x => rmkTop(x.reasons), f: x => reasonsCell(x.reasons) }],
+    lines: [{ k: 'date', l: 'Date', x: x => x.date ? +x.date : 0, f: x => x.date ? esc(fmtDateShort(x.date)) : '—' }, { k: 'name', l: 'Doctor', f: x => `${goldMark(x._dr)}<b>${esc(x.name || '')}</b>` },
+            { k: 'product', l: 'Product remade' }, { k: 'reason', l: 'Reason', f: x => x.reason ? esc(x.reason) : '<span class="text-mut">No reason given</span>' },
+            { k: 'qty', l: 'Units', num: 1, f: x => n(x.qty) }, { k: 'caseNo', l: 'Case' }] } };
+}
+function renderRemakes() {
+  const el = document.getElementById('panel-remakes');
+  const rows = APP.filtered || [];
+  if (!rows.length) { el.innerHTML = '<div class="empty-state"><div class="empty-icon">🔁</div>No data in this view.</div>'; return; }
+  const R = rmkRollup(rows);
+  let lo = null, hi = null; rows.forEach(r => { if (r.anchorDate) { if (!lo || r.anchorDate < lo) lo = r.anchorDate; if (!hi || r.anchorDate > hi) hi = r.anchorDate; } });
+  const span = lo && hi ? (hi - lo) + 864e5 : 0;
+  let P = span ? rmkRollup(rawByGroupState().filter(r => r.anchorDate && r.anchorDate < lo && r.anchorDate >= new Date(+lo - span))) : null;
+  if (P && !P.units) P = null;   // nothing before this range (e.g. "All") — no comparison
+  const rate = R.units ? R.remade / R.units : 0, pRate = P && P.units ? P.remade / P.units : null;
+  const caseRate = R.cases.size ? R.remCases.size / R.cases.size : 0, pCaseRate = P && P.cases.size ? P.remCases.size / P.cases.size : null;
+  const top = [...R.byReason.entries()].sort((a, b) => b[1].rem - a[1].rem)[0];
+  const ptsBadge = (now, before) => { if (before == null) return ''; const d = (now - before) * 100; const cls = d > 0.3 ? 'bad' : d < -0.3 ? 'good' : 'flat';
+    return `<span class="chg ${cls}" title="vs ${rmkPct(before)} in the ${Math.round(span / 864e5)} days before">${d > 0.05 ? '▲' : d < -0.05 ? '▼' : ''} ${Math.abs(d).toFixed(1)} pts</span>`; };
+  const S = rmkSections(R);
+  const kpi = (label, value, sub) => `<div class="kpi"><div class="kpi-label">${label}</div><div class="kpi-value">${value}</div><div class="kpi-sub">${sub || ''}</div></div>`;
+  el.innerHTML = `
+    <div class="section-header">
+      <div>
+        <div class="section-title">🔁 Remakes</div>
+        <div class="section-sub">Main products only — shipping, fees, processing lines and balance forwards are left out. ${lo ? esc(fmtDateShort(lo)) + ' – ' + esc(fmtDateShort(hi)) : ''} · follows the date range and filters.</div>
+      </div>
+      <div class="section-actions"><button class="btn-text" id="rmkXlsx">⬇ Excel report</button></div>
+    </div>
+    <div class="rmk-kpis">
+      ${kpi('Remake rate', rmkPct(rate), `remade units ÷ units ${ptsBadge(rate, pRate)}`)}
+      ${kpi('Remade units', fmtN(R.remade), `of ${fmtN(R.units)} units${P ? ` · ${fmtN(P.remade)} before` : ''}`)}
+      ${kpi('Remake cases', fmtN(R.remCases.size), `${rmkPct(caseRate)} of ${fmtN(R.cases.size)} cases ${ptsBadge(caseRate, pCaseRate)}`)}
+      ${kpi('Credits given', fmtUSD(R.disc), 'remake discounts')}
+      ${kpi('Doctors with a remake', fmtN(R.docs.size), `of ${fmtN(R.byDoc.size)} sending`)}
+      ${kpi('Top reason', top ? esc(top[0]) : '—', top ? `${fmtN(top[1].rem)} units · ${rmkPct(R.remade ? top[1].rem / R.remade : 0)} of remakes` : '')}
+    </div>
+    <div class="card mb20"><div class="chart-title">Remakes by month — remade units (bars) and remake rate (line)</div><div class="chart-wrap"><canvas id="rmkTrend"></canvas></div></div>
+    <div class="card mb20"><div class="chart-title">By product type</div>${rmkTable('rmkT', S.cols.types, S.types, 'rem', 0)}</div>
+    <div class="card mb20"><div class="chart-title">By product <small class="text-mut">· products with at least one remake</small></div>${rmkTable('rmkP', S.cols.prods, S.prods, 'rem', 25)}</div>
+    <div class="card mb20"><div class="chart-title">By reason</div>${rmkTable('rmkR', S.cols.reasons, S.reasons, 'rem', 0)}</div>
+    <div class="card mb20"><div class="chart-title">By doctor <small class="text-mut">· click a doctor for their detail</small></div>${rmkTable('rmkD', S.cols.docs, S.docs, 'rem', 25)}</div>
+    <div class="card mb20"><div class="chart-title">Latest remakes</div>${rmkTable('rmkL', S.cols.lines, S.lines, 'date', 25)}</div>`;
+  ['rmkT', 'rmkP', 'rmkR', 'rmkD', 'rmkL'].forEach(rmkDraw);
+  el.querySelectorAll('.rmk-tbl th').forEach(th => th.addEventListener('click', () => {
+    const id = th.closest('table').id, T = RMK_T[id]; if (T.key === th.dataset.k) T.dir *= -1; else { T.key = th.dataset.k; T.dir = th.classList.contains('num') || th.dataset.k === 'date' ? -1 : 1; } rmkDraw(id); }));
+  el.querySelectorAll('.rmk-more').forEach(b => b.addEventListener('click', () => { const T = RMK_T[b.dataset.t]; T.all = !T.all; b.textContent = T.all ? 'Show fewer' : 'Show all ' + T.rows.length.toLocaleString(); rmkDraw(b.dataset.t); }));
+  // the monthly chart
+  const months = [...R.byMonth.entries()].sort((a, b) => a[0] < b[0] ? -1 : 1);
+  makeChart('rmkTrend', { type: 'bar', data: { labels: months.map(([k]) => { const [y, m] = k.split('-').map(Number); return new Date(y, m - 1, 1).toLocaleDateString('en-US', { month: 'short', year: '2-digit' }); }),
+    datasets: [{ type: 'line', label: 'Remake rate %', data: months.map(([, m]) => m.units ? +(m.rem / m.units * 100).toFixed(2) : null), borderColor: '#dc2626', backgroundColor: '#dc2626', yAxisID: 'y1', tension: .25, pointRadius: 3, order: 1 },
+               { label: 'Remade units', data: months.map(([, m]) => m.rem), backgroundColor: '#fecaca', borderRadius: 4, yAxisID: 'y', order: 2 }] },
+    options: { scales: { y: { beginAtZero: true, title: { display: true, text: 'Remade units' } }, y1: { beginAtZero: true, position: 'right', grid: { drawOnChartArea: false }, ticks: { callback: v => v + '%' } } } } });
+  document.getElementById('rmkXlsx').addEventListener('click', ev => xlDownload(() => rmkWorkbook(R, S, lo, hi, { rate, pRate, caseRate }), 'remakes.xlsx', ev.currentTarget));
+}
+// the Excel report: a summary, then one sheet per table
+async function rmkWorkbook(R, S, lo, hi, k) {
+  const ExcelJS = await loadExcelJS(), wb = new ExcelJS.Workbook(); wb.creator = 'Lab Sales Dashboard'; wb.created = new Date();
+  const range = lo ? fmtDateShort(lo) + ' – ' + fmtDateShort(hi) : '';
+  const sheet = (name, title, heads, rows) => {
+    const ws = wb.addWorksheet(name); ws.columns = heads.map(h => ({ width: h[1] }));
+    let r = xlTitle(ws, title, 'Main products only (no shipping, fees, processing or balance forwards) · ' + range, null);
+    xlHeader(ws, r, heads.map(h => h[0]));
+    rows.forEach(vals => { r++; const row = ws.getRow(r); row.values = vals.map(v => v == null ? null : v);
+      heads.forEach((h, i) => { if (h[2]) row.getCell(i + 1).numFmt = h[2]; }); });
+    ws.autoFilter = { from: { row: 4, column: 1 }, to: { row: 4, column: heads.length } };
+    return ws;
+  };
+  { const ws = wb.addWorksheet('Summary'); ws.columns = [{ width: 30 }, { width: 18 }];
+    let r = xlTitle(ws, 'Remakes', 'Main products only (no shipping, fees, processing or balance forwards) · ' + range, null);
+    xlHeader(ws, r, ['Measure', 'Value']);
+    [['Remake rate (units)', k.rate, '0.0%'], ['Remake rate, period before', k.pRate, '0.0%'], ['Remade units', R.remade, '#,##0'], ['Units (main products)', R.units, '#,##0'],
+     ['Remake cases', R.remCases.size, '#,##0'], ['Case remake rate', k.caseRate, '0.0%'], ['Credits given', R.disc, '$#,##0'], ['Doctors with a remake', R.docs.size, '#,##0']]
+      .forEach(([l, v, f]) => { r++; const row = ws.getRow(r); row.values = [l, v]; row.getCell(2).numFmt = f; row.getCell(1).font = { bold: true }; }); }
+  sheet('By product type', 'Remakes by product type', [['Product type', 34], ['Units', 11, '#,##0'], ['Remade units', 13, '#,##0'], ['Remake rate', 12, '0.0%'], ['Remake cases', 13, '#,##0'], ['Top reason', 36]],
+    S.types.sort((a, b) => b.rem - a.rem).map(x => [x.name, x.units, x.rem, x.rate, x.cases, rmkTop(x.reasons)]));
+  sheet('By product', 'Remakes by product', [['Product', 52], ['Type', 28], ['Units', 11, '#,##0'], ['Remade units', 13, '#,##0'], ['Remake rate', 12, '0.0%'], ['Remake cases', 13, '#,##0'], ['Top reason', 36]],
+    S.prods.sort((a, b) => b.rem - a.rem).map(x => [x.name, x.cat, x.units, x.rem, x.rate, x.cases, rmkTop(x.reasons)]));
+  sheet('By reason', 'Remakes by reason', [['Reason', 36], ['Remade units', 13, '#,##0'], ['Share', 9, '0.0%'], ['Cases', 9, '#,##0'], ['Doctors', 9, '#,##0'], ['Products most remade for it', 80]],
+    S.reasons.sort((a, b) => b.rem - a.rem).map(x => [x.name, x.rem, x.share, x.cases, x.docs, x.prods]));
+  sheet('By doctor', 'Remakes by doctor', [['Doctor', 28], ['Practice', 36], ['Golden / Silver', 14], ['Units', 11, '#,##0'], ['Remade units', 13, '#,##0'], ['Remake rate', 12, '0.0%'], ['Remake cases', 13, '#,##0'], ['Top reason', 36]],
+    S.docs.sort((a, b) => b.rem - a.rem).map(x => [x.name, x.practice, isGolden(x._dr) ? 'Golden' : isSilver(x._dr) ? 'Silver' : '', x.units, x.rem, x.rate, x.cases, rmkTop(x.reasons)]));
+  sheet('Remakes', 'Every remake (one row per case and product)', [['Date', 12, 'm/d/yyyy'], ['Doctor', 28], ['Practice', 36], ['Product remade', 52], ['Reason', 36], ['Units', 9, '#,##0'], ['Case', 14]],
+    S.lines.sort((a, b) => (b.date || 0) - (a.date || 0)).map(x => [x.date ? new Date(Date.UTC(x.date.getFullYear(), x.date.getMonth(), x.date.getDate())) : null, x.name || '', x.practice || '', x.product, x.reason || 'No reason given', x.qty, x.caseNo]));
+  return wb;
+}
+
+/* ═══════════════════════════════════════════════════════════════
    TAB 6: PRODUCT GRID
    ═══════════════════════════════════════════════════════════════ */
 
@@ -11287,7 +11472,7 @@ function renderProductDetail() {
   const caseCount = countCases(cases);
   const remakes = countCases(cases.filter(r => r.remake));
   const remakeUnitsK = cases.reduce((s, r) => s + (r.remake ? (r.qty || 0) : 0), 0);
-  const allUnitsK    = cases.reduce((s, r) => s + (r.qty || 0), 0);
+  const allUnitsK    = cases.reduce((s, r) => s + (r.rmQty || 0), 0);   // main products
   const sample = cases[0];
 
   // Monthly: revenue, units, remake%, tat — use shared valid-month list
@@ -11299,7 +11484,7 @@ function renderProductDetail() {
     if (!m) { m = { key: r.anchorMonth, revenue: 0, units: 0, caseSet: new Set(), cases: 0, remakeSet: new Set(), remakes: 0, tatSum: 0, tatN: 0,
                     otEarly: 0, otOnTime: 0, otLate: 0, otTotal: 0 }; mmap.set(r.anchorMonth, m); }
     m.revenue += r.netCost; m.units += r.qty; addCase(m.caseSet, r.caseKey); m.cases = m.caseSet.size;
-    m.uAll = (m.uAll || 0) + (r.qty || 0); if (r.remake) { addCase(m.remakeSet, r.caseKey); m.remakes = m.remakeSet.size; m.remakeUnits = (m.remakeUnits || 0) + (r.qty || 0); }
+    m.uAll = (m.uAll || 0) + (r.rmQty || 0); if (r.remake) { addCase(m.remakeSet, r.caseKey); m.remakes = m.remakeSet.size; m.remakeUnits = (m.remakeUnits || 0) + (r.qty || 0); }
     addTat(m, r);
     otAdd(m, r, r.onTimeStatus, ['otTotal', 'otEarly', 'otOnTime', 'otLate']);   // each case once
   }
@@ -11879,7 +12064,7 @@ function aggByCity() {
       m.set(key, o);
     }
     o.revenue += r.netCost; addCase(o._cs, r.caseKey); o.cases = o._cs.size;
-    o.uAll = (o.uAll || 0) + (r.qty || 0); if (r.remake) { addCase(o._rs, r.caseKey); o.remakes = o._rs.size; o.remakeUnits = (o.remakeUnits || 0) + (r.qty || 0); }
+    o.uAll = (o.uAll || 0) + (r.rmQty || 0); if (r.remake) { addCase(o._rs, r.caseKey); o.remakes = o._rs.size; o.remakeUnits = (o.remakeUnits || 0) + (r.qty || 0); }
     if (r.drId) o._drs.add(r.drId);
   }
   const arr = [];
@@ -14115,7 +14300,7 @@ function rpAdd(b, r) {
   // `rows` is the distinct CASE count (named rows for backwards compatibility)
   addCase(b.caseSet, r.caseKey);
   b.rows = b.caseSet.size;
-  b.uAll = (b.uAll || 0) + (r.qty || 0); if (r.remake) { addCase(b.remakeSet, r.caseKey); b.remakes = b.remakeSet.size; b.remakeUnits = (b.remakeUnits || 0) + (r.qty || 0); }
+  b.uAll = (b.uAll || 0) + (r.rmQty || 0); if (r.remake) { addCase(b.remakeSet, r.caseKey); b.remakes = b.remakeSet.size; b.remakeUnits = (b.remakeUnits || 0) + (r.qty || 0); }
   addTat(b, r);
 }
 function rpMetrics(b) {
