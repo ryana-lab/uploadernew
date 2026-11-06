@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.11.05-DL49</title>
+<title>Lab Sales Dashboard v2026.11.06-DL50</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -1883,7 +1883,24 @@ const BALANCE_FWD_RE = /\bbalance\b/i;
    products: they're left out of remakes AND of the units a remake rate is
    divided by, everywhere. */
 const NON_MAIN_RE = /\bshipping\b|\bfees?\b|\bcharge\b|\brush\b|\bmisc\b|reprocessing|\bprocessing\b|return for full credit/i;
-const isMainProduct = name => !!String(name || '').trim() && !NON_MAIN_RE.test(String(name));
+/* …and ANCILLARY items aren't what a remake is about either: models & dies,
+   add-ons and options (patient name, pink porcelain, anodization, staining,
+   alloy, metal occlusal, clasps, mesh…), parts and stock components (analogs,
+   extra screws, locators, housings, stock abutments, impression/reduction
+   copings), and steps and services (diagnostic waxups, try-ins, jigs, putty
+   matrices, "fit crown to…", milled rests, consultations, visits, scans, files).
+   Restorations and appliances stay — crowns, bridges, veneers, abutments,
+   implant crowns, temps, dentures, partials, flippers, guards, retainers, trays,
+   posts, and repairs / relines. ("Analog Vitality … Bridge" is a real bridge:
+   only Digital / Locator / Implant / Lab analog PARTS are left out.) */
+const ANCILLARY_RE = new RegExp([
+  '\\bmodels?\\b', '\\bdies?\\b',
+  '(digital|locator|implant|lab) analog\\b', '\\bjigs?\\b', 'try[\\s-]?in\\b', 'waxup', 'consultation', 'anodization', 'custom staining', 'pink porcelain', '^alloy$',
+  'metal occlusal', 'angled screw channel', 'clasps \\(pair\\)', 'metal mesh', 'lingual bar', '\\blabor\\b', 'housings?\\b', 'in office visit', 'in lab scan',
+  '\\.stl\\b', 'file generation', 'premium department', 'patient name', 'fit crown to', 'milled rest', 'putty matrix', 'temp guide', 'acid etching',
+  'reduction coping', 'impression coping', '^stock\\b', 'extra (implant )?screw', 'extra locator', 'scan body'
+].join('|'), 'i');
+const isMainProduct = name => { const n = String(name || '').trim(); return !!n && !NON_MAIN_RE.test(n) && !ANCILLARY_RE.test(n); };
 
 function normalizeScanner(raw) {
   if (!raw) return 'Unknown';
@@ -1954,7 +1971,7 @@ const APP = {
 
 /* Bump when normalization logic changes, so it's possible to tell at a glance
    (bottom of the Avg Turnaround card) which build a browser is running. */
-const BUILD_ID = 'DL49 · 2026-11-05';
+const BUILD_ID = 'DL50 · 2026-11-06';
 
 const DB_NAME = 'LabOpsCache';
 const DB_STORE = 'datasets';
@@ -11317,7 +11334,7 @@ function renderRemakes() {
     <div class="section-header">
       <div>
         <div class="section-title">🔁 Remakes</div>
-        <div class="section-sub">Main products only (no shipping, fees, processing or balance forwards) · ${lo ? esc(fmtDateShort(lo)) + ' – ' + esc(fmtDateShort(hi)) : ''} · follows the date range and filters</div>
+        <div class="section-sub">Main products only — no models, add-ons, parts, try-ins, shipping or fees · ${lo ? esc(fmtDateShort(lo)) + ' – ' + esc(fmtDateShort(hi)) : ''} · follows the date range and filters</div>
       </div>
       <div class="section-actions"><button class="btn-text" id="rmkXlsx">⬇ Excel report</button></div>
     </div>
@@ -11439,7 +11456,7 @@ async function rmkWorkbook(R, S, lo, hi, k) {
   const range = lo ? fmtDateShort(lo) + ' – ' + fmtDateShort(hi) : '';
   const sheet = (name, title, heads, rows) => {
     const ws = wb.addWorksheet(name); ws.columns = heads.map(h => ({ width: h[1] }));
-    let r = xlTitle(ws, title, 'Main products only (no shipping, fees, processing or balance forwards) · ' + range, null);
+    let r = xlTitle(ws, title, 'Main products only — no models, add-ons, parts, try-ins, shipping or fees · ' + range, null);
     xlHeader(ws, r, heads.map(h => h[0]));
     rows.forEach(vals => { r++; const row = ws.getRow(r); row.values = vals.map(v => v == null ? null : v);
       heads.forEach((h, i) => { if (h[2]) row.getCell(i + 1).numFmt = h[2]; }); });
@@ -11447,7 +11464,7 @@ async function rmkWorkbook(R, S, lo, hi, k) {
     return ws;
   };
   { const ws = wb.addWorksheet('Summary'); ws.columns = [{ width: 30 }, { width: 18 }];
-    let r = xlTitle(ws, 'Remakes', 'Main products only (no shipping, fees, processing or balance forwards) · ' + range, null);
+    let r = xlTitle(ws, 'Remakes', 'Main products only — no models, add-ons, parts, try-ins, shipping or fees · ' + range, null);
     xlHeader(ws, r, ['Measure', 'Value']);
     [['Remake rate (units)', k.rate, '0.0%'], ['Remake rate, period before', k.pRate, '0.0%'], ['Remade units', R.remade, '#,##0'], ['Units (main products)', R.units, '#,##0'],
      ['Remake cases', R.remCases.size, '#,##0'], ['Case remake rate', k.caseRate, '0.0%'], ['Credits given', R.disc, '$#,##0'], ['Doctors with a remake', R.docs.size, '#,##0']]
