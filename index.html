@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.11.09-DL64</title>
+<title>Lab Sales Dashboard v2026.11.09-DL65</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -2074,7 +2074,7 @@ const APP = {
 
 /* Bump when normalization logic changes, so it's possible to tell at a glance
    (bottom of the Avg Turnaround card) which build a browser is running. */
-const BUILD_ID = 'DL64 · 2026-11-09';
+const BUILD_ID = 'DL65 · 2026-11-09';
 
 const DB_NAME = 'LabOpsCache';
 const DB_STORE = 'datasets';
@@ -15576,6 +15576,15 @@ function rpCell(curM, prevM, metric) {
 /* "See Dashboard →" — opens the dashboard on the report's own tab (…/#golden).
    Only when the report is built from the dashboard's web address. */
 function rpDashUrl() { try { return /^https?:$/.test(location.protocol) ? location.origin + location.pathname : ''; } catch (e) { return ''; } }
+/* DL65: emails stay small — a long list shows its top rows and then this line,
+   which opens the matching tab, instead of carrying every row (hidden "Show the
+   remaining…" blocks made the Customer report alone 4 MB). */
+function rpMoreLink(n, noun, tab) {
+  const u = rpDashUrl();
+  return '<div style="' + RP_F + 'margin-top:8px;font-size:12.5px;color:#475569;padding:8px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px">+ ' +
+    Number(n).toLocaleString() + ' more ' + esc(noun) +
+    (u ? ' — <a href="' + esc(u + (tab ? '#' + tab : '')) + '" style="color:#0f8b99;font-weight:700;text-decoration:none">see them all in the dashboard →</a>' : ' — see them all in the dashboard') + '</div>';
+}
 function rpDashBtn(tab) {
   const u = rpDashUrl(); if (!u) return '';
   return '<a href="' + esc(u + (tab ? '#' + tab : '')) + '" style="display:inline-block;margin-top:12px;background:#0f8b99;color:#ffffff;text-decoration:none;font-weight:700;font-size:13px;padding:9px 18px;border-radius:8px">See Dashboard →</a>';
@@ -15703,21 +15712,14 @@ function rpEntitySection(p, entities, entityNoun) {
 
   let h = '<div style="' + RP_F + 'font-size:15px;font-weight:800;color:#0f172a;margin:20px 0 8px">' + p.label + ' — per ' + entityNoun +
     ' <span style="font-weight:500;font-size:11px;color:#64748b">(' + rpWindowNote(p) +
-    (rest.length ? ' · top ' + p.cap + ' of ' + list.length + ' by |Δ revenue| — full list below' : '') + ')</span></div>';
+    (rest.length ? ' · top ' + p.cap + ' of ' + list.length + ' by |Δ revenue| — the rest in the dashboard' : '') + ')</span></div>';
   if (!shown.length) return h + '<div style="' + RP_F + 'font-size:12px;color:#64748b;font-style:italic;margin-bottom:6px">No activity in this window.</div>';
 
   h += tableOf(shown);
 
   if (rest.length) {
-    // The remainder used to be discarded. It now lives in a collapsed block.
-    // NOTE: <details> is ignored by Outlook and some webmail — there the block
-    // simply renders already-open, which still shows the complete list.
-    h += '<details style="' + RP_F + 'margin-top:8px">' +
-      '<summary style="cursor:pointer;font-size:12px;font-weight:700;color:#18818b;padding:8px 12px;' +
-      'background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;list-style:none">' +
-      '▸ Show the remaining ' + rest.length + ' ' + entityNoun.toLowerCase() + (rest.length === 1 ? '' : 's') +
-      ' (' + list.length + ' total)</summary>' +
-      '<div style="margin-top:8px">' + tableOf(rest) + '</div></details>';
+    const noun = entityNoun.toLowerCase() + (rest.length === 1 ? '' : 's');
+    h += rpMoreLink(rest.length, noun, /client/i.test(entityNoun) ? 'docgrid' : /product/i.test(entityNoun) ? 'prodgrid' : '');
   }
   return h;
 }
@@ -15902,7 +15904,7 @@ function rpBuildStatusReport() {
     '<tr>' + ['Doctor', 'Practice', 'Location', 'Last case', 'Days since', 'Rev (90d)'].map(t =>
       '<th style="text-align:left;padding:7px 12px;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:#64748b;border-bottom:1px solid #e2e8f0">' + t + '</th>').join('') + '</tr>' +
     list.map(rpDocRow).join('') + '</table>';
-  const ROSTER_CAP = 100;
+  const ROSTER_CAP = 25;   // DL65: was 100 — the rest are a link away
   const rpRosterRow = d =>
     '<tr><td style="padding:5px 10px;border-bottom:1px solid #f1f5f9;font-size:12px"><b style="color:#0f172a">' + dia(d) + esc(d.name) + '</b>' + quietMarkEmail(RQ0.get(d.drId)) + '</td>' +
     '<td style="padding:5px 10px;border-bottom:1px solid #f1f5f9;font-size:12px">' + esc(d.practice || '—') + '</td>' +
@@ -15981,7 +15983,8 @@ function rpBuildStatusReport() {
     const roster = inCat.slice(0, ROSTER_CAP);
     if (roster.length) {
       h += '<div style="' + RP_F + 'font-size:12px;font-weight:700;color:#0f172a;margin:10px 0 4px">Everyone in this category' +
-        (inCat.length > ROSTER_CAP ? ' <span style="font-weight:500;color:#64748b">(top ' + ROSTER_CAP + ' of ' + inCat.length + ' by 90-day revenue — the full list is in the dashboard\'s Bridge master CSV)</span>' : '') + '</div>' + rpRosterTable(roster);
+        (inCat.length > ROSTER_CAP ? ' <span style="font-weight:500;color:#64748b">(top ' + ROSTER_CAP + ' of ' + inCat.length + ' by 90-day revenue)</span>' : '') + '</div>' + rpRosterTable(roster) +
+        (inCat.length > ROSTER_CAP ? rpMoreLink(inCat.length - ROSTER_CAP, 'doctors in this category', 'status') : '');
     }
   });
 
@@ -16257,14 +16260,7 @@ function rpEmpSection(w, rows) {
 
   h += tableOf(shown);
 
-  if (rest.length) {
-    h += '<details style="' + RP_F + 'margin-top:8px">' +
-      '<summary style="cursor:pointer;font-size:12px;font-weight:700;color:#18818b;padding:8px 12px;' +
-      'background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;list-style:none">' +
-      '▸ Show the remaining ' + rest.length + ' ' + (rest.length === 1 ? 'person' : 'people') +
-      ' (' + list.length + ' total)</summary>' +
-      '<div style="margin-top:8px">' + tableOf(rest) + '</div></details>';
-  }
+  if (rest.length) h += rpMoreLink(rest.length, rest.length === 1 ? 'person' : 'people', 'empgrid');
   return h;
 }
 
@@ -16597,7 +16593,9 @@ function rpListBody(G, icon, label, rosterCap) {
   const call = docs.filter(d => quietRank(Q.get(d.drId)) > 0)
     .sort((a, b) => quietRank(Q.get(b.drId)) - quietRank(Q.get(a.drId)) || Q.get(a.drId).bd - Q.get(b.drId).bd);
   h += sec('Needs a call — ' + call.length, 'every ' + label + ' doctor showing a !, red first; within each colour, the most recent to cross the line first');
-  h += call.length ? table(heads, call.map(fullRow)) : nil('Every ' + label + ' doctor has sent a case in the last 5 business days.');
+  const lTab = /silver/i.test(label) ? 'silver' : 'golden', CALL_CAP = 25;
+  h += call.length ? table(heads, call.slice(0, CALL_CAP).map(fullRow)) + (call.length > CALL_CAP ? rpMoreLink(call.length - CALL_CAP, label + ' doctors needing a call', lTab) : '')
+                   : nil('Every ' + label + ' doctor has sent a case in the last 5 business days.');
 
   // 4. everyone, by status
   h += sec('Everyone — by status', rosterCap ? 'top ' + rosterCap + ' per status by 90-day revenue — everyone is on the ' + label + ' tab' : '');
@@ -16606,7 +16604,8 @@ function rpListBody(G, icon, label, rosterCap) {
     if (!list.length) return;
     const shown = rosterCap ? list.slice(0, rosterCap) : list;
     h += '<div style="' + F + 'font-size:13px;font-weight:800;color:#0f172a;margin:12px 0 6px">' + chip(k) + ' ' + list.length + ' doctor' + (list.length === 1 ? '' : 's') +
-      (shown.length < list.length ? ' <span style="font-weight:500;color:#64748b">(top ' + shown.length + ' shown)</span>' : '') + '</div>' + table(heads, shown.map(fullRow));
+      (shown.length < list.length ? ' <span style="font-weight:500;color:#64748b">(top ' + shown.length + ' shown)</span>' : '') + '</div>' + table(heads, shown.map(fullRow)) +
+      (shown.length < list.length ? rpMoreLink(list.length - shown.length, label + ' doctors', lTab) : '');
   });
   const missing = G.size - docs.length;
   if (missing > 0) h += nil(missing + ' ' + label + ' doctor' + (missing === 1 ? ' has' : 's have') + ' no cases in the current state/group filters.');
@@ -16614,7 +16613,7 @@ function rpListBody(G, icon, label, rosterCap) {
 }
 function rpBuildGoldenReport() {
   return rpHead('⭐ Golden &amp; 🥈 Silver List Report', 'Your Golden and Silver doctors — where each one stands, who moved, and who needs a call', rpReportDay(), 'golden') +
-    rpIncompleteNote() + quietKeyEmail() + rpListBody(goldenIds(), '⭐', 'Golden List', 0) + rpListBody(silverIds(), '🥈', 'Silver List', 40);
+    rpIncompleteNote() + quietKeyEmail() + rpListBody(goldenIds(), '⭐', 'Golden List', 25) + rpListBody(silverIds(), '🥈', 'Silver List', 15);
 }
 
 /* ══ 🔁 DAILY REMAKES REPORT — the Remakes tab as an email ════════════════════
@@ -16916,7 +16915,7 @@ function renderReports() {
 
     <div class="card">
       <div class="sb-card-title"><span class="sb-stepnum">2</span> Preview</div>
-      <div class="sb-hint">Exactly what lands in the inbox. Per-entity tables are sorted by biggest revenue swing. Each period shows the <b>top 25</b>, with the rest in an expandable <b>Show the remaining…</b> block — so the full client and product lists are always reachable.</div>
+      <div class="sb-hint">Exactly what lands in the inbox. Per-entity tables are sorted by biggest revenue swing; each list shows its <b>top 25</b>, then a link to see the rest in the dashboard — so emails stay small enough to open quickly on a phone.</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn-text" id="rpPrevDoc">📋 Customer report</button>
         <button class="btn-text" id="rpPrevProd">📦 Product report</button>
