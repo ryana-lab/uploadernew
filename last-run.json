@@ -1,17 +1,21 @@
 {
-  "ran_at": "2026-11-09T17:03:31.559Z",
+  "ran_at": "2026-11-09T22:26:54.526Z",
   "ok": true,
-  "dry_run": true,
+  "dry_run": false,
   "days": [
     "2026-11-07",
     "2026-11-08",
     "2026-11-09"
   ],
   "invoices": {
-    "fetched": 10
+    "fetched": 289,
+    "loaded": 289,
+    "updated": 0,
+    "removed": 0
   },
   "production": {
-    "fetched": 603
+    "fetched": 2153,
+    "loaded": 2153
   },
   "production_days": [
     "2026-10-27",
