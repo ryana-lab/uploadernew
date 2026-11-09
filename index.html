@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.11.09-DL69</title>
+<title>Lab Sales Dashboard v2026.11.09-DL71</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -2081,7 +2081,7 @@ const APP = {
 
 /* Bump when normalization logic changes, so it's possible to tell at a glance
    (bottom of the Avg Turnaround card) which build a browser is running. */
-const BUILD_ID = 'DL69 · 2026-11-09';
+const BUILD_ID = 'DL71 · 2026-11-09';
 
 const DB_NAME = 'LabOpsCache';
 const DB_STORE = 'datasets';
@@ -2784,7 +2784,7 @@ function rmkApply(rows) {
     // DL68: a PRODUCT's own base — every unit of it made, riding along with a crown or not
     // (rmQty, the lab-wide base, counts only what a case's remake would count)
     r.rmUnitsP = r.caseKey && rmkTier(r) ? (r.rmQtyRaw > 0 ? r.rmQtyRaw : (r.qty || 0)) : 0;
-    r.remake = false; r.rmQty = 0; r.rmRem = 0; r.rmOther = null; r.rmOtherU = 0; r.rmMain = false; r.rmDisc = 0; r.remakeType = null;
+    r.remake = false; r.rmQty = 0; r.rmRem = 0; r.rmRemP = 0; r.rmOther = null; r.rmOtherU = 0; r.rmMain = false; r.rmDisc = 0; r.remakeType = null;
     if (r.caseKey) (byCase.get(r.caseKey) || byCase.set(r.caseKey, []).get(r.caseKey)).push(r);
   });
   byCase.forEach(lines => {
@@ -2808,6 +2808,12 @@ function rmkApply(rows) {
     if (why) main.remakeReason = why;
     const type = rmkTypeOf(why);
     main.rmDisc = lines.reduce((t, r) => t + Math.abs(r.remakeDiscount || 0), 0);   // credits from every line of the case
+    /* DL70: a PRODUCT's own remakes are read exactly as the data marks them — every line the
+       software marks remade counts toward its own product (since Aug 2026, where specific items
+       are ticked, those items). The lab-wide and doctor counts stay one per restoration (below). */
+    if (type === 'lab') (ticked.length ? ticked : lines.filter(r => r.remakeRaw && rmkTier(r) > 0)).forEach(r => {
+      const q = r.rmUnitsP || r.rmQtyRaw || r.qty || 0; r.rmRemP = r.remakeQty > 0 && r.remakeQty < q ? r.remakeQty : q;
+      if (why) r.remakeReason = why; r.remakeType = type; });
     redone.forEach(r => {
       if (why) r.remakeReason = why; r.remakeType = type;
       const q = r.rmQtyRaw > 0 ? r.rmQtyRaw : (r.qty || 0);
@@ -3467,7 +3473,7 @@ function aggByProduct() {
       addCase(p.caseSet, r.caseKey);
       p.revenue += r.netCost;
       p.units += r.qty;
-      p.uAll = (p.uAll || 0) + (r.rmUnitsP || 0); if (r.remake) { addCase(p.remakeSet, r.caseKey); p.remakeUnits = (p.remakeUnits || 0) + (r.rmRem || 0); }
+      p.uAll = (p.uAll || 0) + (r.rmUnitsP || 0); if (r.rmRemP > 0) { addCase(p.remakeSet, r.caseKey); p.remakeUnits = (p.remakeUnits || 0) + r.rmRemP; }   // DL70: as marked
       p.doctors.add(r.drId);
       addTat(p, r);
       otAdd(p, r, r.onTimeStatus, ['ontimeCases', 'onTimeEarly', 'onTimeOnTime', 'onTimeLate']);   // each case once per product
@@ -5963,7 +5969,7 @@ function bizWindows(end, n) {
   return { lastStart, prevStart, end: new Date(end.getFullYear(), end.getMonth(), end.getDate(), 23, 59, 59) };
 }
 const tw0 = () => ({ u: 0, r: 0, ts: 0, tn: 0, seen: new Set() });
-function seriesTrends(cacheKey, keyOf, unitsOf) {   // unitsOf: the remake-rate base (products: every unit of the product)
+function seriesTrends(cacheKey, keyOf, unitsOf, remOf) {   // unitsOf: the remake-rate base (products: every unit of the product)
   if (APP.derived && APP.derived[cacheKey]) return APP.derived[cacheKey];
   const out = { by: new Map(), months: [], win: null }, md = getMaxDate(); if (!md) return out;
   const w = bizWindows(md, 30), monthEnd = new Date(md.getFullYear(), md.getMonth() + 1, 0).getDate() === md.getDate();
@@ -5976,7 +5982,7 @@ function seriesTrends(cacheKey, keyOf, unitsOf) {   // unitsOf: the remake-rate 
     const W = r.anchorDate >= w.lastStart ? x.L : r.anchorDate >= w.prevStart ? x.P : null;
     if (W === x.L) x.last += r.netCost || 0; else if (W === x.P) x.prev += r.netCost || 0;
     if (W) {   // the same rules as the grids: remakes by unit; turnaround once per case, 0–200 days
-      W.u += (unitsOf ? unitsOf(r) : r.rmQty) || 0; if (r.remake) W.r += r.rmRem || 0;
+      W.u += (unitsOf ? unitsOf(r) : r.rmQty) || 0; W.r += (remOf ? remOf(r) : (r.remake ? r.rmRem : 0)) || 0;
       if (r.caseKey && r.tat != null && r.tat >= 0 && r.tat <= 200 && !W.seen.has(r.caseKey)) { W.seen.add(r.caseKey); W.ts += r.tat; W.tn++; }
     }
   }
@@ -5993,7 +5999,7 @@ function seriesTrends(cacheKey, keyOf, unitsOf) {   // unitsOf: the remake-rate 
   return out;
 }
 const drTrends = () => { const t = seriesTrends('drTrends', r => r.drId); t.byDr = t.by; return t; };
-const prodTrends = () => seriesTrends('prodTrends', r => r.product, r => r.rmUnitsP);
+const prodTrends = () => seriesTrends('prodTrends', r => r.product, r => r.rmUnitsP, r => r.rmRemP);
 const EMPTY_TREND = () => ({ m: new Array(12).fill(0), last: 0, prev: 0, pct: null, delta: 0, L: { u: 0, r: 0, ts: 0, tn: 0 }, P: { u: 0, r: 0, ts: 0, tn: 0 },
                              remL: null, remP: null, remD: null, tatL: null, tatP: null, tatD: null });
 const prodTrendOf = name => prodTrends().by.get(name) || EMPTY_TREND();
@@ -9331,7 +9337,7 @@ const CX_D_ORDER = Object.keys(CX_D);
 const cxPlural = (label, n) => { const w = label.toLowerCase(); return n === 1 ? w : /[^aeiou]y$/.test(w) ? w.slice(0, -1) + 'ies' : /(s|x|ch|sh)$/.test(w) ? w + 'es' : w + 's'; };
 
 // all the measures for a set of lines, with the dashboard's own helpers
-function cxCompute(rows) {
+function cxCompute(rows, perProduct) {   // perProduct: a product / product-type row — remakes read as marked (DL70)
   let units = 0, rev = 0, remU = 0, rmUnits = 0, remDisc = 0, early = 0, ontime = 0, late = 0;
   const drs = new Set(), prs = new Set(), prods = new Set(), caseVal = new Map(), remC = new Set(), holdC = new Map(), otB = {};
   for (const r of rows) {
@@ -9339,8 +9345,8 @@ function cxCompute(rows) {
     if (r.drId) drs.add(r.drId); if (r.practice) prs.add(r.practice);
     if (String(r.product || '').trim()) prods.add(r.product);
     if (r.caseKey) caseVal.set(r.caseKey, (caseVal.get(r.caseKey) || 0) + (r.netCost || 0));
-    rmUnits += r.rmQty || 0;
-    if (r.remake) { remU += r.rmRem || 0; if (r.caseKey) remC.add(r.caseKey); }
+    rmUnits += (perProduct ? r.rmUnitsP : r.rmQty) || 0;
+    { const ru = perProduct ? (r.rmRemP || 0) : (r.remake ? (r.rmRem || 0) : 0); if (ru > 0) { remU += ru; if (r.caseKey) remC.add(r.caseKey); } }
     remDisc += Math.abs(r.remakeDiscount || 0);
     if (r.onHold && r.caseKey) holdC.set(r.caseKey, Math.max(holdC.get(r.caseKey) || 0, r.daysOnHold || 0));
     otAdd(otB, r, r.caseOnTime, ['t', 'e', 'o', 'l']);   // each case once
@@ -9411,7 +9417,7 @@ function cxExplore(tpl, p) {
   const measures = (tpl.builder ? [p.m1, p.m2, p.m3, p.m4] : tpl.measures).filter((m, i, a) => m && CX_M[m] && a.indexOf(m) === i);
   if (!measures.length) return { headline: 'Pick at least one measure.', cols: [], rows: [], how: [], file: 'coach' };
   const rows = cxRows(p, dim, ctx), R = coachRange(p), sel = coachProdSel(p.product);
-  const total = cxCompute(rows);
+  const total = cxCompute(rows, !!(p.product && p.product !== 'any'));   // one product asked about → its own rate
   const groups = new Map();
   for (const r of rows) {
     const k = D.key(r, ctx); if (k === '' || k == null) continue;
@@ -9423,7 +9429,7 @@ function cxExplore(tpl, p) {
   const minN = +(p.min || tpl.min || 0), minOn = CX_M[sortBy].rate || ['tatMedian', 'tatAvg', 'tatP90', 'holdDays', 'avgCase', 'medianCase', 'unitPrice'].includes(sortBy);
   const minField = /^tat|onTime|late/.test(sortBy) ? 'cases' : (/remake|unitPrice/.test(sortBy) ? 'units' : 'cases');
   let out = [...groups.values()].map(g => {
-    const m = cxCompute(g.rows), row = { _k: g.key, dim: D.show ? D.show(g.key, g) : g.key };
+    const m = cxCompute(g.rows, dim === 'product' || dim === 'category'), row = { _k: g.key, dim: D.show ? D.show(g.key, g) : g.key };
     if (dim === 'doctor') row.practice = [...g.practices.entries()].sort((a, b) => b[1] - a[1]).map(x => x[0])[0] || '';
     measures.forEach(k => row[k] = m[k]);
     row._cases = m.cases; row._units = m.units;
@@ -12108,12 +12114,16 @@ function rmkRollup(rows) {
     const d = r.drId ? get(o.byDoc, r.drId, () => ({ ...unit(), name: r.drName, practice: r.practice || '' })) : null;
     const m = r.anchorDate ? get(o.byMonth, monthKey(r.anchorDate), () => ({ units: 0, rem: 0 })) : null;
     c.units += qp; p.units += qp; if (d) d.units += q; if (m) m.units += q;   // a product / type: its own units; a doctor / month: the lab's
+    const qpr = r.rmRemP || 0;   // DL70: a product / type — remade as the data marks each line
+    if (qpr > 0) { const wp = String(r.remakeReason || '').trim(), sp = rmkSpecific(wp);
+      [c, p].forEach(x => { x.rem += qpr; if (r.caseKey) x.cases.add(r.caseKey); if (sp) x.reasons[wp] = (x.reasons[wp] || 0) + qpr;
+        x.prods[r.product] = (x.prods[r.product] || 0) + qpr; if (r.anchorDate && (!x.last || r.anchorDate > x.last)) x.last = r.anchorDate; }); }
     if (!r.remake) continue;
     const qr = r.rmRem || 0;   // DL67: the units being redone
     const why = String(r.remakeReason || '').trim(), spec = rmkSpecific(why);
     o.remade += qr; if (r.caseKey) o.remCases.add(r.caseKey); if (r.drId) o.docs.add(r.drId); o.disc += r.rmDisc != null ? r.rmDisc : Math.abs(r.remakeDiscount || 0);
     if (!spec) o.vague += qr;
-    [c, p, d].forEach(x => { if (!x) return; x.rem += qr; if (r.caseKey) x.cases.add(r.caseKey); if (spec) x.reasons[why] = (x.reasons[why] || 0) + qr;
+    [d].forEach(x => { if (!x) return; x.rem += qr; if (r.caseKey) x.cases.add(r.caseKey); if (spec) x.reasons[why] = (x.reasons[why] || 0) + qr;
       x.prods[r.product] = (x.prods[r.product] || 0) + qr; if (r.anchorDate && (!x.last || r.anchorDate > x.last)) x.last = r.anchorDate; });
     if (m) m.rem += qr;
     if (spec) { const rs = get(o.byReason, why, () => ({ rem: 0, cases: new Set(), prods: {}, docs: new Set() }));
@@ -12215,7 +12225,7 @@ function renderRemakes() {
     <div class="section-header">
       <div>
         <div class="section-title">🔁 Remakes</div>
-        <div class="section-sub"><b>Remade units</b> = on each case marked Remake, the items ticked “Product Remake” — or, if none are ticked, the case’s primary units (restorations; else parts; else additionals — never shipping or fees). <b>Rate</b> = remade units ÷ units: overall and per doctor on primary units, per product on every unit of that product · only the lab’s remakes count; doctor-side and adjustments are shown, not counted · ${lo ? esc(fmtDateShort(lo)) + ' – ' + esc(fmtDateShort(hi)) : ''} · follows the date range — “All” is the full dataset</div>
+        <div class="section-sub"><b>Overall &amp; per doctor:</b> remade units ÷ units, one per restoration — on each case marked Remake, the items ticked “Product Remake”, or if none are ticked the case’s primary units (a crown + abutment + model remake = 1). <b>Per product:</b> read exactly as the data marks it — every line marked remade counts toward its own product, ÷ every unit of that product made · only the lab’s remakes count; doctor-side and adjustments are shown, not counted · ${lo ? esc(fmtDateShort(lo)) + ' – ' + esc(fmtDateShort(hi)) : ''} · “All” is the full dataset</div>
       </div>
       <div class="section-actions"><button class="btn-text" id="rmkXlsx">⬇ Excel report</button></div>
     </div>
@@ -12841,9 +12851,9 @@ function renderProductDetail() {
   const totalRev = cases.reduce((s,r) => s + r.netCost, 0);
   const totalUnits = cases.reduce((s,r) => s + r.qty, 0);
   const caseCount = countCases(cases);
-  const remakes = countCases(cases.filter(r => r.remake));
-  const remakeUnitsK = cases.reduce((s, r) => s + (r.remake ? (r.rmRem || 0) : 0), 0);
-  const allUnitsK    = cases.reduce((s, r) => s + (r.rmQty || 0), 0);   // main products
+  const remakes = countCases(cases.filter(r => r.rmRemP > 0));   // DL70: as marked
+  const remakeUnitsK = cases.reduce((s, r) => s + (r.rmRemP || 0), 0);
+  const allUnitsK    = cases.reduce((s, r) => s + (r.rmUnitsP || 0), 0);   // main products
   const sample = cases[0];
 
   // Monthly: revenue, units, remake%, tat — use shared valid-month list
@@ -12855,7 +12865,7 @@ function renderProductDetail() {
     if (!m) { m = { key: r.anchorMonth, revenue: 0, units: 0, caseSet: new Set(), cases: 0, remakeSet: new Set(), remakes: 0, tatSum: 0, tatN: 0,
                     otEarly: 0, otOnTime: 0, otLate: 0, otTotal: 0 }; mmap.set(r.anchorMonth, m); }
     m.revenue += r.netCost; m.units += r.qty; addCase(m.caseSet, r.caseKey); m.cases = m.caseSet.size;
-    m.uAll = (m.uAll || 0) + (r.rmUnitsP || 0); if (r.remake) { addCase(m.remakeSet, r.caseKey); m.remakes = m.remakeSet.size; m.remakeUnits = (m.remakeUnits || 0) + (r.rmRem || 0); }
+    m.uAll = (m.uAll || 0) + (r.rmUnitsP || 0); if (r.rmRemP > 0) { addCase(m.remakeSet, r.caseKey); m.remakes = m.remakeSet.size; m.remakeUnits = (m.remakeUnits || 0) + r.rmRemP; }
     addTat(m, r);
     otAdd(m, r, r.onTimeStatus, ['otTotal', 'otEarly', 'otOnTime', 'otLate']);   // each case once
   }
@@ -15681,7 +15691,7 @@ function rpAdd(b, r, perProduct) {
   // `rows` is the distinct CASE count (named rows for backwards compatibility)
   addCase(b.caseSet, r.caseKey);
   b.rows = b.caseSet.size;
-  b.uAll = (b.uAll || 0) + ((perProduct ? r.rmUnitsP : r.rmQty) || 0); if (r.remake) { addCase(b.remakeSet, r.caseKey); b.remakes = b.remakeSet.size; b.remakeUnits = (b.remakeUnits || 0) + (r.rmRem || 0); }
+  b.uAll = (b.uAll || 0) + ((perProduct ? r.rmUnitsP : r.rmQty) || 0); { const ru = perProduct ? (r.rmRemP || 0) : (r.remake ? (r.rmRem || 0) : 0); if (ru > 0) { addCase(b.remakeSet, r.caseKey); b.remakes = b.remakeSet.size; b.remakeUnits = (b.remakeUnits || 0) + ru; } }
   addTat(b, r);
 }
 function rpMetrics(b) {
