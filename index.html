@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.11.06-DL63</title>
+<title>Lab Sales Dashboard v2026.11.09-DL64</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -225,6 +225,17 @@ html, body {
 .rm-tbl td { padding: 7px 10px; border-bottom: 1px solid var(--border); color: var(--dim); } .rm-tbl td b { color: var(--ink); }
 .rm-tbl .num { text-align: right; font-variant-numeric: tabular-nums; } .rm-tbl tr.rm-fresh td { background: #fff7f7; }
 .rm-more summary { cursor: pointer; color: var(--accent-ink); font-weight: 600; font-size: 12.5px; margin-top: 8px; }
+/* Employee Grid: dates and charts */
+.eg-dates { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 0 0 10px; padding: 10px 12px; background: var(--card); border: 1px solid var(--border); border-radius: 12px; }
+.eg-dates .coach-f { margin-left: 4px; } .eg-span { font-size: 12px; margin-left: auto; }
+.eg-chip { display: inline-block; margin-left: 8px; font-size: 12px; background: var(--accent-soft); color: var(--accent-ink); border-radius: 999px; padding: 2px 10px; }
+.dr-grid.eg-chartmode { display: block; }
+.eg-mrow { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 12px; }
+.eg-cgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; } .eg-wide { grid-column: 1 / -1; } @media (max-width: 1000px) { .eg-cgrid { grid-template-columns: 1fr; } }
+.eg-cc { padding: 14px 16px; } .eg-pie { height: 240px; position: relative; }
+.eg-legend { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 14px; margin-top: 12px; font-size: 12px; }
+.eg-lg { display: grid; grid-template-columns: 10px 1fr auto 34px; gap: 6px; align-items: center; } .eg-lg i { width: 10px; height: 10px; border-radius: 3px; }
+.eg-lg span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); } .eg-lg b { font-variant-numeric: tabular-nums; } .eg-lg small { color: var(--mut); text-align: right; }
 /* Churn type */
 .ch-type { display: flex; gap: 10px; align-items: flex-start; padding: 9px 12px; border-radius: 10px; margin: 12px 0 0; font-size: 13px; color: var(--dim); }
 .ch-type b { color: var(--ink); } .ch-ti { font-size: 18px; line-height: 1.2; }
@@ -2063,7 +2074,7 @@ const APP = {
 
 /* Bump when normalization logic changes, so it's possible to tell at a glance
    (bottom of the Avg Turnaround card) which build a browser is running. */
-const BUILD_ID = 'DL63 · 2026-11-06';
+const BUILD_ID = 'DL64 · 2026-11-09';
 
 const DB_NAME = 'LabOpsCache';
 const DB_STORE = 'datasets';
@@ -11227,6 +11238,112 @@ function csHowHTML(C) {
 }
 
 
+/* ══ EMPLOYEE GRID: dates and charts (DL64) ════════════════════════════════════
+   The production report runs on its own dates, so the grid has its own date bar,
+   counted back from the LATEST PRODUCTION DAY (not the invoice data the top bar
+   is built on). "Use the top bar's dates" copies the main calendar in one click.
+   The range is shared with Employee Detail (both read prodInRange). */
+const EG = { view: 'cards', measure: 'units', preset: 'all' };
+const EG_MEASURE = { units: { label: 'Units', col: 'total_units' }, cases: { label: 'Cases', col: 'cases_touched' }, tasksDone: { label: 'Tasks completed', col: 'tasks_completed' } };
+const egIso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+// production days arrive as YYYY-MM-DD (database) or MM/DD/YYYY (CSV) — prodDate reads both
+const prodIso = v => { const d = prodDate(v); return d ? egIso(d) : null; };
+function prodSpan() { const d = PROD.rows.map(r => prodIso(r.scan_in_date)).filter(Boolean).sort(); return d.length ? [d[0], d[d.length - 1]] : [null, null]; }
+function egPreset(k) {
+  const [lo, hi] = prodSpan(); if (!hi) return ['', ''];
+  const L = new Date(hi + 'T12:00:00'), y = L.getFullYear(), m = L.getMonth(), dow = (L.getDay() + 6) % 7;   // Monday-start weeks
+  const day = (yy, mm, dd) => egIso(new Date(yy, mm, dd));
+  switch (k) {
+    case 'latest':   return [hi, hi];
+    case 'week':     return [day(y, m, L.getDate() - dow), hi];
+    case 'lastweek': return [day(y, m, L.getDate() - dow - 7), day(y, m, L.getDate() - dow - 1)];
+    case 'month':    return [day(y, m, 1), hi];
+    case 'lastmonth':return [day(y, m - 1, 1), day(y, m, 0)];
+    case '30':       return [day(y, m, L.getDate() - 29), hi];
+    case '90':       return [day(y, m, L.getDate() - 89), hi];
+    default:         return ['', ''];
+  }
+}
+const EG_PRESETS = [['latest', 'Latest day'], ['week', 'This week'], ['lastweek', 'Last week'], ['month', 'This month'], ['lastmonth', 'Last month'], ['30', 'Last 30 days'], ['90', 'Last 90 days'], ['all', 'All']];
+const egFmtD = s => s ? new Date(s + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+function prodRangeLabel() { return !PROD.from && !PROD.to ? 'All production days' : PROD.from === PROD.to ? egFmtD(PROD.from) : egFmtD(PROD.from) + ' – ' + egFmtD(PROD.to); }
+function egDateBarHTML() {
+  const [lo, hi] = prodSpan();
+  return `<div class="eg-dates">
+    <span class="xs-fl">Dates</span>
+    ${EG_PRESETS.map(([k, l]) => `<button type="button" class="xs-pill${EG.preset === k ? ' on' : ''}" data-egp="${k}">${l}</button>`).join('')}
+    <label class="coach-f"><span>From</span><input type="date" class="gf-select" id="egFrom" value="${esc(PROD.from || '')}" min="${esc(lo || '')}" max="${esc(hi || '')}"></label>
+    <label class="coach-f"><span>To</span><input type="date" class="gf-select" id="egTo" value="${esc(PROD.to || '')}" min="${esc(lo || '')}" max="${esc(hi || '')}"></label>
+    <button type="button" class="btn-text" id="egTop" title="Copy the From / To dates from the calendar at the top of the page">📅 Use the top bar’s dates</button>
+    <span class="text-mut eg-span">${esc(prodRangeLabel())}${hi ? ' · latest production day ' + esc(egFmtD(hi)) : ''}</span></div>`;
+}
+function egBindDates() {
+  const set = (f, t, preset) => { PROD.from = f || ''; PROD.to = t || ''; EG.preset = preset; renderEmployeeGrid(); };
+  document.querySelectorAll('[data-egp]').forEach(b => b.onclick = () => { const [f, t] = egPreset(b.dataset.egp); set(f, t, b.dataset.egp); });
+  const F = document.getElementById('egFrom'), T = document.getElementById('egTo');
+  F.onchange = () => set(F.value, T.value || F.value, 'custom'); T.onchange = () => set(F.value || T.value, T.value, 'custom');
+  document.getElementById('egTop').onclick = () => {
+    const f = (document.getElementById('gfFrom') || {}).value || '', t = (document.getElementById('gfTo') || {}).value || '';
+    set(f, t, f || t ? 'custom' : 'all');
+  };
+}
+// the production rows behind the charts: dates, department and search applied
+function egChartRows() {
+  const q = PROD.query;
+  return PROD.rows.filter(r => prodInRange(r) && String(r.employee || '').trim()
+    && (PROD.dept === 'all' || r.department === PROD.dept)
+    && (!q || String(r.employee).toLowerCase().includes(q) || String(r.product_name || '').toLowerCase().includes(q)));
+}
+const EG_COLORS = ['#0ea5b7', '#7c3aed', '#f59e0b', '#ef4444', '#10b981', '#3b82f6', '#ec4899', '#84cc16', '#f97316', '#6366f1', '#14b8a6', '#a855f7'];
+function egDestroyCharts() { (PROD._charts || []).forEach(c => { try { c.destroy(); } catch (e) {} }); PROD._charts = []; }
+function drawEGCharts() {
+  const host = document.getElementById('egGrid'); if (!host) return;
+  egDestroyCharts();
+  const rows = egChartRows(), M = EG_MEASURE[EG.measure], val = r => prodNum(r[M.col]);
+  const byEmp = new Map(), byDept = new Map();
+  rows.forEach(r => { const e = String(r.employee).trim(), v = val(r); byEmp.set(e, (byEmp.get(e) || 0) + v); const d = r.department || '—'; byDept.set(d, (byDept.get(d) || 0) + v); });
+  const total = [...byEmp.values()].reduce((a, b) => a + b, 0);
+  if (!rows.length || !total) { host.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><div class="empty-icon">📊</div>No production in this range.</div>'; return; }
+  // the ranked list follows the sort buttons (units / cases / per day …) from the cards
+  const ranked = egFiltered().map(e => [e.employee, byEmp.get(e.employee) || 0]).filter(x => x[1] > 0);
+  const top = [...byEmp.entries()].sort((a, b) => b[1] - a[1]), pie = top.slice(0, 10), rest = top.slice(10).reduce((t, x) => t + x[1], 0);
+  if (rest > 0) pie.push(['Everyone else (' + (top.length - 10) + ')', rest]);
+  const depts = [...byDept.entries()].sort((a, b) => b[1] - a[1]);
+  // over time: daily for ranges up to 45 days, otherwise weekly (Mondays); stacked by the top 6 people
+  const days = [...new Set(rows.map(r => prodIso(r.scan_in_date)).filter(Boolean))].sort();
+  const weekly = days.length > 45, bucket = s => { if (!weekly) return s; const d = new Date(s + 'T12:00:00'); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return egIso(d); };
+  const buckets = [...new Set(days.map(bucket))].sort(), top6 = top.slice(0, 6).map(x => x[0]);
+  const series = new Map(top6.concat(['Everyone else']).map(n => [n, new Map()]));
+  rows.forEach(r => { const di = prodIso(r.scan_in_date); if (!di) return; const e = String(r.employee).trim(), k = top6.includes(e) ? e : 'Everyone else', b = bucket(di);
+    series.get(k).set(b, (series.get(k).get(b) || 0) + val(r)); });
+  const fmt = v => EG.measure === 'units' ? Math.round(v).toLocaleString() : Math.round(v).toLocaleString();
+  const legend = (list, tot) => list.map(([n, v], i) => `<div class="eg-lg"><i style="background:${EG_COLORS[i % EG_COLORS.length]}"></i><span>${esc(n)}</span><b>${fmt(v)}</b><small>${tot ? Math.round(v / tot * 100) : 0}%</small></div>`).join('');
+  host.innerHTML = `
+    <div class="eg-charts" style="grid-column:1/-1">
+      <div class="eg-mrow"><span class="xs-fl">Measure</span>${Object.entries(EG_MEASURE).map(([k, m]) => `<button type="button" class="xs-pill${EG.measure === k ? ' on' : ''}" data-egm="${k}">${m.label}</button>`).join('')}
+        <span class="text-mut" style="margin-left:auto;font-size:12px">${esc(prodRangeLabel())} · ${fmt(total)} ${esc(M.label.toLowerCase())} · ${top.length} people</span></div>
+      <div class="eg-cgrid">
+        <div class="card eg-cc"><div class="chart-title">Share of output — by person</div><div class="eg-pie"><canvas id="egPie1"></canvas></div><div class="eg-legend">${legend(pie, total)}</div></div>
+        <div class="card eg-cc"><div class="chart-title">Share of output — by department</div><div class="eg-pie"><canvas id="egPie2"></canvas></div><div class="eg-legend">${legend(depts, total)}</div></div>
+        <div class="card eg-cc eg-wide"><div class="chart-title">${esc(M.label)} by person <small class="text-mut">· in the order of the sort buttons above</small></div><div style="height:${Math.max(220, ranked.length * 22 + 40)}px"><canvas id="egBar"></canvas></div></div>
+        <div class="card eg-cc eg-wide"><div class="chart-title">${esc(M.label)} over time <small class="text-mut">· ${weekly ? 'by week (Mon–Sun)' : 'by day'} · the top 6 people, everyone else together</small></div><div style="height:300px"><canvas id="egTime"></canvas></div></div>
+      </div></div>`;
+  host.querySelectorAll('[data-egm]').forEach(b => b.onclick = () => { EG.measure = b.dataset.egm; drawEGCharts(); });
+  if (typeof Chart === 'undefined') return;
+  const ink = getComputedStyle(document.documentElement).getPropertyValue('--mut').trim() || '#64748b';
+  const pieCfg = list => ({ type: 'doughnut', data: { labels: list.map(x => x[0]), datasets: [{ data: list.map(x => Math.round(x[1])), backgroundColor: list.map((x, i) => EG_COLORS[i % EG_COLORS.length]), borderWidth: 1 }] },
+    options: { maintainAspectRatio: false, cutout: '55%', plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => ` ${c.label}: ${fmt(c.parsed)} (${Math.round(c.parsed / total * 100)}%)` } } } } });
+  PROD._charts.push(new Chart(document.getElementById('egPie1'), pieCfg(pie)), new Chart(document.getElementById('egPie2'), pieCfg(depts)));
+  PROD._charts.push(new Chart(document.getElementById('egBar'), { type: 'bar', data: { labels: ranked.map(x => x[0]), datasets: [{ data: ranked.map(x => Math.round(x[1])), backgroundColor: '#0ea5b7', borderRadius: 4 }] },
+    options: { indexAxis: 'y', maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: ink } }, y: { ticks: { color: ink, autoSkip: false } } },
+      onClick: (ev, el) => { if (el && el.length) { PROD.employee = ranked[el[0].index][0]; switchTab('empdetail'); } } } }));
+  const lbl = b => new Date(b + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  PROD._charts.push(new Chart(document.getElementById('egTime'), { type: 'bar',
+    data: { labels: buckets.map(b => (weekly ? 'wk ' : '') + lbl(b)), datasets: [...series.entries()].filter(([, m]) => m.size).map(([n, m], i) => ({ label: n, data: buckets.map(b => Math.round(m.get(b) || 0)),
+      backgroundColor: n === 'Everyone else' ? '#cbd5e1' : EG_COLORS[i % EG_COLORS.length], stack: 's' })) },
+    options: { maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: ink, boxWidth: 12 } } }, scales: { x: { stacked: true, ticks: { color: ink } }, y: { stacked: true, ticks: { color: ink } } } } }));
+}
+
 async function renderEmployeeGrid() {
   const el = document.getElementById('panel-empgrid');
   el.innerHTML = '<div class="empty-state"><div class="empty-icon">⏳</div>Loading production data…</div>';
@@ -11235,14 +11352,14 @@ async function renderEmployeeGrid() {
   if (!all.length) return prodEmptyState(el, 'Employee Grid');
 
   const depts = Array.from(new Set(PROD.rows.map(r => r.department).filter(Boolean))).sort();
-  const dates = PROD.rows.map(r => r.scan_in_date).filter(Boolean).sort();
-  const span  = dates.length ? dates[0] + ' → ' + dates[dates.length-1] : '';
+  const span  = prodRangeLabel();
+  egDestroyCharts();
 
   el.innerHTML = `
     <div class="section-header">
       <div>
         <div class="section-title">Employee Grid</div>
-        <div class="section-sub">${all.length} people${span ? ' · ' + esc(span) : ''} · ${PROD.rows.length.toLocaleString()} production rows.</div>
+        <div class="section-sub">${all.length} people · ${esc(span)} · ${PROD.rows.filter(prodInRange).length.toLocaleString()} production rows.</div>
       </div>
       <div class="section-actions">
         <button class="btn-text" id="egReload">↻ Reload</button>
@@ -11251,18 +11368,16 @@ async function renderEmployeeGrid() {
       </div>
     </div>
 
+    ${egDateBarHTML()}
     <div class="filter-bar">
-      <div class="search-wrap"><input type="text" class="search-input" id="egQuery" placeholder="Search people or products…"></div>
+      <div class="pill-group" id="egView"><button class="pill${EG.view === 'cards' ? ' active' : ''}" data-v="cards">🗂 Cards</button><button class="pill${EG.view === 'charts' ? ' active' : ''}" data-v="charts">📊 Charts</button></div>
+      <div class="search-wrap"><input type="text" class="search-input" id="egQuery" placeholder="Search people or products…" value="${esc(PROD.query || '')}"></div>
       <select class="gf-select" id="egDept">
         <option value="all">All departments</option>
-        ${depts.map(d => `<option value="${esc(d)}">${esc(d)}</option>`).join('')}
+        ${depts.map(d => `<option value="${esc(d)}"${PROD.dept === d ? ' selected' : ''}>${esc(d)}</option>`).join('')}
       </select>
       <div class="pill-group" id="egSort">
-        <button class="pill active" data-sort="units">Units</button>
-        <button class="pill" data-sort="cases">Cases</button>
-        <button class="pill" data-sort="unitsPerDay">Units / day</button>
-        <button class="pill" data-sort="unitsPerCase">Units / case</button>
-        <button class="pill" data-sort="donePct">Completed %</button>
+        ${[['units', 'Units'], ['cases', 'Cases'], ['unitsPerDay', 'Units / day'], ['unitsPerCase', 'Units / case'], ['donePct', 'Completed %']].map(([k, l]) => `<button class="pill${PROD.sort === k ? ' active' : ''}" data-sort="${k}">${l}</button>`).join('')}
       </div>
       <div class="text-mut" style="font-size:12px;margin-left:auto" id="egCount"></div>
     </div>
@@ -11276,6 +11391,8 @@ async function renderEmployeeGrid() {
     b.classList.add('active'); PROD.sort = b.dataset.sort; drawEGrid();
   }));
   document.getElementById('egReload').addEventListener('click', async () => { await prodLoadAll(true); renderEmployeeGrid(); });
+  document.querySelectorAll('#egView .pill').forEach(b => b.addEventListener('click', () => { EG.view = b.dataset.v; renderEmployeeGrid(); }));
+  egBindDates();
   document.getElementById('egXlsx').addEventListener('click', ev =>
     xlDownload(() => xlTeamWorkbook(egFiltered()), 'employee-production.xlsx', ev.currentTarget));
   document.getElementById('egExport').addEventListener('click', () => {
@@ -11307,6 +11424,8 @@ function drawEGrid() {
   const list = egFiltered();
   const cnt = document.getElementById('egCount');
   if (cnt) cnt.textContent = `${list.length} people · ${list.reduce((s,e)=>s+e.units,0).toLocaleString()} units`;
+  if (EG.view === 'charts') { const g = document.getElementById('egGrid'); if (g) g.classList.add('eg-chartmode'); return drawEGCharts(); }
+  { const g = document.getElementById('egGrid'); if (g) g.classList.remove('eg-chartmode'); egDestroyCharts(); }
   const grid = document.getElementById('egGrid');
   if (!grid) return;
   if (!list.length) {
@@ -11654,7 +11773,8 @@ async function renderEmployeeDetail() {
     <div class="section-header">
       <div>
         <div class="section-title">${esc(e.employee)}</div>
-        <div class="section-sub">${esc(e.dept)} · ${esc(e.station)} · ${e.dayCount} day${e.dayCount===1?'':'s'} of production.</div>
+        <div class="section-sub">${esc(e.dept)} · ${esc(e.station)} · ${e.dayCount} day${e.dayCount===1?'':'s'} of production.
+          ${PROD.from || PROD.to ? `<span class="eg-chip">📅 ${esc(prodRangeLabel())} · <a href="#" id="edDatesAll">show all dates</a></span>` : ''}</div>
       </div>
       <div class="section-actions">
         <select class="gf-select" id="edPick">
@@ -11761,6 +11881,7 @@ async function renderEmployeeDetail() {
       </table>
     </div>`;
 
+  { const a = document.getElementById('edDatesAll'); if (a) a.onclick = ev => { ev.preventDefault(); PROD.from = ''; PROD.to = ''; EG.preset = 'all'; renderEmployeeDetail(); }; }
   document.getElementById('edPick').addEventListener('change', ev => { PROD.employee = ev.target.value; renderEmployeeDetail(); });
   document.querySelectorAll('.ed-dayrow').forEach(tr => tr.addEventListener('click', () => {
     const k = openKey(tr.dataset.day);
