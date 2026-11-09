@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.11.09-DL66</title>
+<title>Lab Sales Dashboard v2026.11.09-DL67</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -2081,7 +2081,7 @@ const APP = {
 
 /* Bump when normalization logic changes, so it's possible to tell at a glance
    (bottom of the Avg Turnaround card) which build a browser is running. */
-const BUILD_ID = 'DL66 · 2026-11-09';
+const BUILD_ID = 'DL67 · 2026-11-09';
 
 const DB_NAME = 'LabOpsCache';
 const DB_STORE = 'datasets';
@@ -2729,7 +2729,7 @@ async function settingsSave(key, obj) {
 }
 const settingsSaidHow = how => how === 'shared' ? 'saved for everyone' : 'saved on this computer only — sign in on the Salesly Bridge tab to share it';
 
-/* ══ REMAKES: one per case, and only the lab's (DL66) ══════════════════════════
+/* ══ REMAKES: the restorations actually redone, and only the lab's (DL66–67) ══
    • ONE REMAKE PER CASE. The lab software flags every line of a remade case, so a
      crown + abutment + analog + model + rest case counted several times, and a
      28-unit case back to add one contact counted 28. Now each case has one MAIN
@@ -2757,32 +2757,53 @@ function rmkTypeOf(why) {
   if (RMK_DOC_RE.test(k)) return 'doctor';
   return 'lab';
 }
-const RMK_COMPONENT_CATS = new Set(['Implant Components', 'Copings', 'Posts & Cores']);
+/* DL67: REMADE UNITS = the restorations being redone, at their own quantity.
+   Teeth match quantities on 96% of crown & bridge lines, so a remade line's quantity
+   is the units really redone — three crowns are 3, a whole 11-unit bridge is 11, one
+   crown out of a big case is 1. Parts of a restoration (abutment, coping, post,
+   Ti-base, screw) don't add units — unless the remake is only that part. Models,
+   analogs, rests, shipping and fees never count (they aren't main products). */
+const RMK_COMP_RE = /\babutment\b|\bcoping\b|\bposts?\b|\bcores?\b|ti[- ]?base|\bscrews?\b(?!-retained)|\bsleeve/i;
+const RMK_RESTO_RE = /crown|bridge|screw[- ]retained|hybrid|denture|partial|veneer|inlay|onlay|flipper|night ?guard|retainer|splint|full arch|temp/i;
+const rmkIsPart = name => RMK_COMP_RE.test(name || '') && !RMK_RESTO_RE.test(name || '');
+/* …and when nothing else on the case was remade, the ADDITIONALS count — a model,
+   try-in, jig, waxup or add-on remade on its own is a real remake. Shipping, fees,
+   charges, rush, reprocessing and balance lines never count.
+   Order within a remade case: restorations → parts → additionals. */
+const rmkTier = r => {
+  if (!r.product || !((r.rmQtyRaw || r.qty || 0) > 0)) return 0;
+  if (r.mainProduct) return rmkIsPart(r.product) ? 2 : 1;
+  return ANCILLARY_RE.test(r.product) && !NON_MAIN_RE.test(r.product) && !/\bbalance\b/i.test(r.product) ? 3 : 0;
+};
 function rmkApply(rows) {
   const byCase = new Map();
   rows.forEach(r => {
     if (r.remakeRaw == null) r.remakeRaw = !!r.remake;            // the lab software's own flag, kept
     if (r.rmQtyRaw == null) r.rmQtyRaw = r.rmQty || 0;
     if (r.remakeReasonOrig == null) r.remakeReasonOrig = r.remakeReason || '';   // the line's own reason, never overwritten
-    r.remake = false; r.rmQty = 0; r.rmRem = 0; r.rmOther = null; r.rmMain = false; r.rmDisc = 0; r.remakeType = null;
+    r.remake = false; r.rmQty = 0; r.rmRem = 0; r.rmOther = null; r.rmOtherU = 0; r.rmMain = false; r.rmDisc = 0; r.remakeType = null;
     if (r.caseKey) (byCase.get(r.caseKey) || byCase.set(r.caseKey, []).get(r.caseKey)).push(r);
   });
   byCase.forEach(lines => {
-    let main = null, best = -Infinity;
-    lines.forEach(r => { if (!r.mainProduct || !(r.rmQtyRaw > 0)) return;
-      const score = (RMK_COMPONENT_CATS.has(r.productCat || '') ? 0 : 1e9) + (r.netCost || 0);
-      if (score > best) { best = score; main = r; } });
-    if (!main) return;
-    main.rmQty = 1; main.rmMain = true;                           // the case, counted once
+    const tiers = [[], [], [], []]; lines.forEach(r => { const t = rmkTier(r); if (t) tiers[t].push(r); });
+    const counted = tiers[1].length ? tiers[1] : tiers[2].length ? tiers[2] : tiers[3];   // restorations → parts → additionals
+    if (!counted.length) return;
+    counted.forEach(r => { r.rmQty = r.rmQtyRaw > 0 ? r.rmQtyRaw : (r.qty || 0); });   // units: each counted line's own quantity
+    const main = counted.reduce((a, b) => ((b.netCost || 0) > (a.netCost || 0) ? b : a));   // the lead line: the case's reason, type and credits
+    main.rmMain = true;
     if (!lines.some(r => r.remakeRaw)) return;
     // the case's reason: the main product's own, else the first specific one on another flagged line
     let why = String(main.remakeReasonOrig || '').trim();
     if (!rmkSpecific(why)) { const x = lines.find(r => r.remakeRaw && rmkSpecific(r.remakeReasonOrig)); if (x) why = String(x.remakeReasonOrig).trim(); }
     lines.forEach(r => { r.remakeReason = r.remakeReasonOrig; });
     if (why) main.remakeReason = why;
-    main.remakeType = rmkTypeOf(why);
+    const type = rmkTypeOf(why);
     main.rmDisc = lines.reduce((t, r) => t + Math.abs(r.remakeDiscount || 0), 0);   // credits from every line of the case
-    if (main.remakeType === 'lab') { main.remake = true; main.rmRem = 1; } else main.rmOther = main.remakeType;
+    counted.forEach(r => {
+      if (why) r.remakeReason = why; r.remakeType = type;
+      const u = r.remakeQty > 0 && r.remakeQty < r.rmQty ? r.remakeQty : r.rmQty;   // the software's remake quantity, if it says fewer
+      if (type === 'lab') { r.remake = true; r.rmRem = u; } else { r.rmOther = type; r.rmOtherU = u; }
+    });
   });
   return rows;
 }
@@ -2796,7 +2817,7 @@ function rmkReapply() {
 // remakes in these rows that DON'T count — doctor-side and adjustments
 function rmkNotCounted(rows) {
   const o = { doctor: 0, adjustment: 0, reasons: new Map() };
-  rows.forEach(r => { if (!r.rmOther) return; o[r.rmOther]++; const k = String(r.remakeReason || '').trim() || '(no reason)'; o.reasons.set(k, (o.reasons.get(k) || 0) + 1); });
+  rows.forEach(r => { if (!r.rmOther) return; const u = r.rmOtherU || 0; o[r.rmOther] += u; const k = String(r.remakeReason || '').trim() || '(no reason)'; o.reasons.set(k, (o.reasons.get(k) || 0) + u); });
   return o;
 }
 
@@ -3006,7 +3027,7 @@ function normalizeRecords(rows) {
       // Legacy header is Transaction_type, Query Studio uses Transaction_Type
       transactionType: fv(r, F.transactionType) || '',
       // remakes count on MAIN products only (not shipping, fees, processing…)
-      remake: remake && isMainProduct(product),
+      remake,   // DL67: the software's own flag on every line — rmkApply (below) decides which lines count
       remakeAny: remake,                  // the raw flag, as the file has it
       mainProduct: isMainProduct(product),
       rmQty: isMainProduct(product) ? qty : 0,   // the units a remake rate is divided by
@@ -6029,7 +6050,7 @@ function ddRemakesHTML(drId) {
   const tbl = rows => `<div class="rm-wrap"><table class="rm-tbl"><thead><tr><th>Date</th><th>Case</th><th>Product remade</th><th>Reason</th><th class="num">Units</th></tr></thead><tbody>${rows.map(row).join('')}</tbody></table></div>`;
   return `<div class="card mb20 rm-card">
     <div class="c30-h"><div class="chart-title" style="margin:0">🔁 Recent remakes — last 90 days</div>
-      <small>${list.length ? `${fmtN(rUnits)} remake${rUnits === 1 ? '' : 's'} of ${fmtN(units)} cases (${units ? (rUnits / units * 100).toFixed(1) : '0.0'}%)` : ''}${nFresh ? ` <span class="rm-new">${nFresh} in the last 2 weeks</span>` : ''}</small></div>
+      <small>${list.length ? `${fmtN(rUnits)} remade unit${rUnits === 1 ? '' : 's'} of ${fmtN(units)} (${units ? (rUnits / units * 100).toFixed(1) : '0.0'}%)` : ''}${nFresh ? ` <span class="rm-new">${nFresh} in the last 2 weeks</span>` : ''}</small></div>
     ${!list.length
       ? `<div class="text-mut" style="font-size:13px">No remakes in the last 90 days.${lastEver ? ` The last one was ${esc(fmtDateShort(lastEver.anchorDate))}: ${esc(lastEver.product || '—')}${lastEver.remakeReason ? ' — ' + esc(lastEver.remakeReason) : ''}.` : ' None in the data.'}</div>`
       : `<div class="rm-reasons">${top.map(([k, n]) => `<span class="rm-chip">${esc(k)} <b>${fmtN(n)}</b></span>`).join('')}</div>
@@ -6659,7 +6680,7 @@ function renderDoctorDetail() {
       <div class="kpi"><div class="kpi-label">Revenue (filtered)</div><div class="kpi-value">${fmtUSDFull(totalRev)}</div></div>
       <div class="kpi"><div class="kpi-label">Cases</div><div class="kpi-value">${fmtN(caseCount)}</div><div class="kpi-sub">${fmtN(totalUnits)} units</div></div>
       <div class="kpi"><div class="kpi-label">Avg Case</div><div class="kpi-value">${fmtUSDFull(caseCount ? totalRev/caseCount : 0)}</div></div>
-      <div class="kpi"><div class="kpi-label">Remake Rate</div><div class="kpi-value">${fmtPct(allUnitsK ? remakeUnitsK/allUnitsK : 0)}</div><div class="kpi-sub">${fmtN(remakeUnitsK)} of ${fmtN(allUnitsK)} cases · one per case</div></div>
+      <div class="kpi"><div class="kpi-label">Remake Rate</div><div class="kpi-value">${fmtPct(allUnitsK ? remakeUnitsK/allUnitsK : 0)}</div><div class="kpi-sub">${fmtN(remakeUnitsK)} of ${fmtN(allUnitsK)} units</div></div>
       <div class="kpi"><div class="kpi-label">Avg Turnaround</div><div class="kpi-value">${ddTat == null ? '—' : ddTat.toFixed(1) + '<span class="sup">days</span>'}</div><div class="kpi-sub">entry → invoiced · 90% within ${fmtTat(tatP90(tatValues(cases)))} days${tatExclHolds() ? ' · hold days excluded' : ''}<br>${tatToggleHTML()}</div></div>
       ${onTimeKpiHTML(ddOnTime)}
       <div class="kpi"><div class="kpi-label">On Hold</div><div class="kpi-value">${onHold}</div><div class="kpi-sub">cases delayed</div></div>
@@ -12070,7 +12091,7 @@ function rmkRollup(rows) {
   const get = (m, k, init) => m.get(k) || m.set(k, init()).get(k);
   const unit = () => ({ units: 0, rem: 0, cases: new Set(), reasons: {}, prods: {}, last: null });
   for (const r of rows) {
-    if (!r || !r.mainProduct) continue;
+    if (!r || !(r.rmQty > 0)) continue;   // DL67: the counted lines — restorations, else parts, else additionals
     const q = r.rmQty || 0, cat = r.productCat || 'Other';
     o.units += q; if (r.caseKey) o.cases.add(r.caseKey);
     const c = get(o.byCat, cat, unit), p = get(o.byProd, r.product, () => ({ ...unit(), cat }));
@@ -12078,16 +12099,17 @@ function rmkRollup(rows) {
     const m = r.anchorDate ? get(o.byMonth, monthKey(r.anchorDate), () => ({ units: 0, rem: 0 })) : null;
     c.units += q; p.units += q; if (d) d.units += q; if (m) m.units += q;
     if (!r.remake) continue;
+    const qr = r.rmRem || 0;   // DL67: the units being redone
     const why = String(r.remakeReason || '').trim(), spec = rmkSpecific(why);
-    o.remade += q; if (r.caseKey) o.remCases.add(r.caseKey); if (r.drId) o.docs.add(r.drId); o.disc += r.rmDisc != null ? r.rmDisc : Math.abs(r.remakeDiscount || 0);
-    if (!spec) o.vague += q;
-    [c, p, d].forEach(x => { if (!x) return; x.rem += q; if (r.caseKey) x.cases.add(r.caseKey); if (spec) x.reasons[why] = (x.reasons[why] || 0) + q;
-      x.prods[r.product] = (x.prods[r.product] || 0) + q; if (r.anchorDate && (!x.last || r.anchorDate > x.last)) x.last = r.anchorDate; });
-    if (m) m.rem += q;
+    o.remade += qr; if (r.caseKey) o.remCases.add(r.caseKey); if (r.drId) o.docs.add(r.drId); o.disc += r.rmDisc != null ? r.rmDisc : Math.abs(r.remakeDiscount || 0);
+    if (!spec) o.vague += qr;
+    [c, p, d].forEach(x => { if (!x) return; x.rem += qr; if (r.caseKey) x.cases.add(r.caseKey); if (spec) x.reasons[why] = (x.reasons[why] || 0) + qr;
+      x.prods[r.product] = (x.prods[r.product] || 0) + qr; if (r.anchorDate && (!x.last || r.anchorDate > x.last)) x.last = r.anchorDate; });
+    if (m) m.rem += qr;
     if (spec) { const rs = get(o.byReason, why, () => ({ rem: 0, cases: new Set(), prods: {}, docs: new Set() }));
-      rs.rem += q; if (r.caseKey) rs.cases.add(r.caseKey); rs.prods[r.product] = (rs.prods[r.product] || 0) + q; if (r.drId) rs.docs.add(r.drId); }
+      rs.rem += qr; if (r.caseKey) rs.cases.add(r.caseKey); rs.prods[r.product] = (rs.prods[r.product] || 0) + qr; if (r.drId) rs.docs.add(r.drId); }
     const L = get(o.lines, (r.caseNo || r.caseKey) + '|' + r.product, () => ({ date: r.anchorDate, caseNo: r.caseNo || '', caseKey: r.caseKey, drId: r.drId, name: r.drName, practice: r.practice || '', product: r.product, reason: '', qty: 0 }));
-    L.qty += q; if (r.anchorDate && (!L.date || r.anchorDate > L.date)) L.date = r.anchorDate; if (!L.reason && spec) L.reason = why;
+    L.qty += qr; if (r.anchorDate && (!L.date || r.anchorDate > L.date)) L.date = r.anchorDate; if (!L.reason && spec) L.reason = why;
   }
   // the calendar: each day's remakes, grouped by case
   o.byDay = new Map();
@@ -12127,11 +12149,11 @@ function rmkSections(R) {
     rate: d.units ? d.rem / d.units : null, cases: d.cases.size, reasons: d.reasons, prods: d.prods, last: d.last }));
   const lines = [...R.lines.values()];
   return { types, prods, reasons, docs, lines, cols: {
-    types: [{ k: 'name', l: 'Product type', f: x => `<b>${esc(x.name)}</b>` }, { k: 'rem', l: 'Remakes', num: 1, f: x => n(x.rem) }, { k: 'units', l: 'Units', num: 1, f: x => n(x.units) },
+    types: [{ k: 'name', l: 'Product type', f: x => `<b>${esc(x.name)}</b>` }, { k: 'rem', l: 'Remade units', num: 1, f: x => n(x.rem) }, { k: 'units', l: 'Units', num: 1, f: x => n(x.units) },
             { k: 'rate', l: 'Remake rate', num: 1, f: x => rmkPct(x.rate) }, { k: 'cases', l: 'Remade cases', num: 1, f: x => n(x.cases) }, { k: 'top', l: 'Top reason', x: x => rmkTop(x.reasons), f: x => top(x.reasons) }],
-    prods: [{ k: 'name', l: 'Product', f: x => `<b>${esc(x.name)}</b><div class="rmk-sub">${esc(x.cat)}</div>` }, { k: 'rem', l: 'Remakes', num: 1, f: x => n(x.rem) }, { k: 'units', l: 'Units', num: 1, f: x => n(x.units) },
+    prods: [{ k: 'name', l: 'Product', f: x => `<b>${esc(x.name)}</b><div class="rmk-sub">${esc(x.cat)}</div>` }, { k: 'rem', l: 'Remade units', num: 1, f: x => n(x.rem) }, { k: 'units', l: 'Units', num: 1, f: x => n(x.units) },
             { k: 'rate', l: 'Remake rate', num: 1, f: x => rmkPct(x.rate) }, { k: 'cases', l: 'Remade cases', num: 1, f: x => n(x.cases) }, { k: 'top', l: 'Top reason', x: x => rmkTop(x.reasons), f: x => top(x.reasons) }],
-    reasons: [{ k: 'name', l: 'Reason', f: x => `<b>${esc(x.name)}</b>` }, { k: 'rem', l: 'Remakes', num: 1, f: x => n(x.rem) }, { k: 'share', l: 'Share', num: 1, f: x => rmkPct(x.share) },
+    reasons: [{ k: 'name', l: 'Reason', f: x => `<b>${esc(x.name)}</b>` }, { k: 'rem', l: 'Remade units', num: 1, f: x => n(x.rem) }, { k: 'share', l: 'Share', num: 1, f: x => rmkPct(x.share) },
               { k: 'cases', l: 'Cases', num: 1, f: x => n(x.cases) }, { k: 'docs', l: 'Doctors', num: 1, f: x => n(x.docs) }, { k: 'prods', l: 'Products most remade for it', f: x => `<span class="rmk-sub">${esc(x.prods)}</span>` }] } };
 }
 const RMK = { month: null, day: null, view: 'doctors', dsort: 'rem', q: '', limit: 24, R: null, S: null, rk: null };
@@ -12183,17 +12205,17 @@ function renderRemakes() {
     <div class="section-header">
       <div>
         <div class="section-title">🔁 Remakes</div>
-        <div class="section-sub">One remake per case, on its main product · only the lab’s remakes count — doctor-side and adjustments are shown, not counted · ${lo ? esc(fmtDateShort(lo)) + ' – ' + esc(fmtDateShort(hi)) : ''} · follows the date range and filters</div>
+        <div class="section-sub">Remade units = what was actually redone, at its own quantity: the restorations — or, when only a part or an additional (a model, try-in, jig…) was remade, that · parts and additionals riding along with a remade crown don’t count, nor do shipping and fees · only the lab’s remakes count; doctor-side and adjustments are shown, not counted · ${lo ? esc(fmtDateShort(lo)) + ' – ' + esc(fmtDateShort(hi)) : ''} · follows the date range and filters</div>
       </div>
       <div class="section-actions"><button class="btn-text" id="rmkXlsx">⬇ Excel report</button></div>
     </div>
     <div class="rmk-kpis">
-      ${kpi('Remake rate', rmkPct(rate), `remakes ÷ cases — one per case ${ptsBadge(rate, pRate)}`)}
-      ${kpi('Remakes', fmtN(R.remade), `of ${fmtN(R.units)} cases${P ? ` · ${fmtN(P.remade)} the period before` : ''} · the lab’s only`)}
-      ${kpi('Not counted', fmtN(NC.doctor + NC.adjustment), `🩺 ${fmtN(NC.doctor)} doctor-side · 🔧 ${fmtN(NC.adjustment)} adjustments`)}
+      ${kpi('Remake rate', rmkPct(rate), `remade units ÷ units — the lab’s only ${ptsBadge(rate, pRate)}`)}
+      ${kpi('Remade units', fmtN(R.remade), `of ${fmtN(R.units)} units · ${fmtN(R.remCases.size)} cases${P ? ` · ${fmtN(P.remade)} the period before` : ''}`)}
+      ${kpi('Not counted', fmtN(NC.doctor + NC.adjustment), `units · 🩺 ${fmtN(NC.doctor)} doctor-side · 🔧 ${fmtN(NC.adjustment)} adjustments`)}
       ${kpi('Credits given', fmtUSD(R.disc), 'remake discounts')}
       ${kpi('Doctors with a remake', fmtN(R.docs.size), `of ${fmtN(R.byDoc.size)} sending`)}
-      ${kpi('Top reason', topR ? esc(topR[0]) : '—', topR ? `${fmtN(topR[1].rem)} cases · ${rmkPct(spec ? topR[1].rem / spec : 0)} of remakes with a reason` : '')}
+      ${kpi('Top reason', topR ? esc(topR[0]) : '—', topR ? `${fmtN(topR[1].rem)} units · ${rmkPct(spec ? topR[1].rem / spec : 0)} of remakes with a reason` : '')}
     </div>
     ${rmkTypesHTML(rows)}
     <div class="card mb20" id="rmkCalCard"></div>
@@ -12201,7 +12223,7 @@ function renderRemakes() {
       <div class="rmk-viewbar">
         <div class="pill-group" id="rmkViews">${[['doctors', 'Doctors'], ['products', 'Products'], ['types', 'Product types'], ['reasons', 'Reasons'], ['trend', 'Trend']]
           .map(([k, l]) => `<button class="pill${RMK.view === k ? ' active' : ''}" data-v="${k}">${l}</button>`).join('')}</div>
-        <span class="rmk-note">${R.vague ? `${fmtN(R.vague)} remakes (${rmkPct(R.remade ? R.vague / R.remade : 0)}) have no specific reason — they count, but aren’t shown as a reason` : ''}</span>
+        <span class="rmk-note">${R.vague ? `${fmtN(R.vague)} remade units (${rmkPct(R.remade ? R.vague / R.remade : 0)}) have no specific reason — they count, but aren’t shown as a reason` : ''}</span>
       </div>
       <div id="rmkView"></div>
     </div>`;
@@ -12267,7 +12289,7 @@ function rmkPaintView() {
     const card = x => `<div class="rmk-dcard" data-dr="${esc(x._dr)}" title="Open Doctor Detail">
         <div class="rmk-dname">${goldMark(x._dr)}${esc(x.name)} ${quietMark(quietInfo().get(x._dr))}</div>
         <div class="rmk-sub">${esc(x.practice || '—')}</div>
-        <div class="rmk-dstats"><div><b>${fmtN(x.rem)}</b><small>remakes</small></div><div><b>${rmkPct(x.rate)}</b><small>of ${fmtN(x.units)} cases</small></div>
+        <div class="rmk-dstats"><div><b>${fmtN(x.rem)}</b><small>remade units</small></div><div><b>${rmkPct(x.rate)}</b><small>of ${fmtN(x.units)} units</small></div>
           <div><b>${fmtN(x.cases)}</b><small>cases</small></div><div><b>${x.last ? esc(fmtDateShort(x.last)) : '—'}</b><small>last remake</small></div></div>
         <div class="rmk-dline"><span>Remade:</span> ${Object.entries(x.prods).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([pn, u]) => `${esc(pn)} <b>${fmtN(u)}</b>`).join(' · ')}</div>
         ${rmkTopN(x.reasons, 2).length ? `<div class="rmk-dline"><span>Why:</span> ${rmkTopN(x.reasons, 2).map(([k, u]) => `<span class="rm-chip">${esc(k)} <b>${fmtN(u)}</b></span>`).join(' ')}</div>` : ''}
@@ -12290,8 +12312,8 @@ function rmkPaintView() {
     const months = [...R.byMonth.entries()].sort((a, b) => a[0] < b[0] ? -1 : 1);
     makeChart('rmkTrend', { type: 'bar', data: { labels: months.map(([k]) => { const [yy, mm] = k.split('-').map(Number); return new Date(yy, mm - 1, 1).toLocaleDateString('en-US', { month: 'short', year: '2-digit' }); }),
       datasets: [{ type: 'line', label: 'Remake rate %', data: months.map(([, x]) => x.units ? +(x.rem / x.units * 100).toFixed(2) : null), borderColor: '#dc2626', backgroundColor: '#dc2626', yAxisID: 'y1', tension: .25, pointRadius: 3, order: 1 },
-                 { label: 'Remakes', data: months.map(([, x]) => x.rem), backgroundColor: '#fecaca', borderRadius: 4, yAxisID: 'y', order: 2 }] },
-      options: { scales: { y: { beginAtZero: true, title: { display: true, text: 'Remakes' } }, y1: { beginAtZero: true, position: 'right', grid: { drawOnChartArea: false }, ticks: { callback: v => v + '%' } } } } });
+                 { label: 'Remade units', data: months.map(([, x]) => x.rem), backgroundColor: '#fecaca', borderRadius: 4, yAxisID: 'y', order: 2 }] },
+      options: { scales: { y: { beginAtZero: true, title: { display: true, text: 'Remade units' } }, y1: { beginAtZero: true, position: 'right', grid: { drawOnChartArea: false }, ticks: { callback: v => v + '%' } } } } });
     return;
   }
   const map = { products: ['rmkP', S.cols.prods, S.prods, 25], types: ['rmkT', S.cols.types, S.types, 0], reasons: ['rmkR', S.cols.reasons, S.reasons, 0] }[RMK.view];
@@ -12314,20 +12336,20 @@ async function rmkWorkbook(R, S, lo, hi, k) {
     return ws;
   };
   { const ws = wb.addWorksheet('Summary'); ws.columns = [{ width: 30 }, { width: 18 }];
-    let r = xlTitle(ws, 'Remakes', 'Main products only — no models, add-ons, parts, try-ins, shipping or fees · ' + range, null);
+    let r = xlTitle(ws, 'Remade units', 'Main products only — no models, add-ons, parts, try-ins, shipping or fees · ' + range, null);
     xlHeader(ws, r, ['Measure', 'Value']);
-    [['Remake rate (one per case)', k.rate, '0.0%'], ['Remake rate, period before', k.pRate, '0.0%'], ['Remakes', R.remade, '#,##0'], ['Cases (main products)', R.units, '#,##0'],
+    [['Remake rate (units)', k.rate, '0.0%'], ['Remake rate, period before', k.pRate, '0.0%'], ['Remade units', R.remade, '#,##0'], ['Units (main products)', R.units, '#,##0'],
      ['Remake cases', R.remCases.size, '#,##0'], ['Case remake rate', k.caseRate, '0.0%'], ['Credits given', R.disc, '$#,##0'], ['Doctors with a remake', R.docs.size, '#,##0']]
       .forEach(([l, v, f]) => { r++; const row = ws.getRow(r); row.values = [l, v]; row.getCell(2).numFmt = f; row.getCell(1).font = { bold: true }; }); }
-  sheet('By product type', 'Remakes by product type', [['Product type', 34], ['Cases', 11, '#,##0'], ['Remakes', 13, '#,##0'], ['Remake rate', 12, '0.0%'], ['Remake cases', 13, '#,##0'], ['Top reason', 36]],
+  sheet('By product type', 'Remakes by product type', [['Product type', 34], ['Units', 11, '#,##0'], ['Remade units', 13, '#,##0'], ['Remake rate', 12, '0.0%'], ['Remake cases', 13, '#,##0'], ['Top reason', 36]],
     S.types.sort((a, b) => b.rem - a.rem).map(x => [x.name, x.units, x.rem, x.rate, x.cases, rmkTop(x.reasons)]));
-  sheet('By product', 'Remakes by product', [['Product', 52], ['Type', 28], ['Cases', 11, '#,##0'], ['Remakes', 13, '#,##0'], ['Remake rate', 12, '0.0%'], ['Remake cases', 13, '#,##0'], ['Top reason', 36]],
+  sheet('By product', 'Remakes by product', [['Product', 52], ['Type', 28], ['Units', 11, '#,##0'], ['Remade units', 13, '#,##0'], ['Remake rate', 12, '0.0%'], ['Remake cases', 13, '#,##0'], ['Top reason', 36]],
     S.prods.sort((a, b) => b.rem - a.rem).map(x => [x.name, x.cat, x.units, x.rem, x.rate, x.cases, rmkTop(x.reasons)]));
-  sheet('By reason', 'Remakes by reason', [['Reason', 36], ['Remakes', 13, '#,##0'], ['Share', 9, '0.0%'], ['Cases', 9, '#,##0'], ['Doctors', 9, '#,##0'], ['Products most remade for it', 80]],
+  sheet('By reason', 'Remakes by reason', [['Reason', 36], ['Remade units', 13, '#,##0'], ['Share', 9, '0.0%'], ['Cases', 9, '#,##0'], ['Doctors', 9, '#,##0'], ['Products most remade for it', 80]],
     S.reasons.sort((a, b) => b.rem - a.rem).map(x => [x.name, x.rem, x.share, x.cases, x.docs, x.prods]));
-  sheet('By doctor', 'Remakes by doctor', [['Doctor', 28], ['Practice', 36], ['Golden / Silver', 14], ['Cases', 11, '#,##0'], ['Remakes', 13, '#,##0'], ['Remake rate', 12, '0.0%'], ['Remake cases', 13, '#,##0'], ['Top reason', 36]],
+  sheet('By doctor', 'Remakes by doctor', [['Doctor', 28], ['Practice', 36], ['Golden / Silver', 14], ['Units', 11, '#,##0'], ['Remade units', 13, '#,##0'], ['Remake rate', 12, '0.0%'], ['Remake cases', 13, '#,##0'], ['Top reason', 36]],
     S.docs.sort((a, b) => b.rem - a.rem).map(x => [x.name, x.practice, isGolden(x._dr) ? 'Golden' : isSilver(x._dr) ? 'Silver' : '', x.units, x.rem, x.rate, x.cases, rmkTop(x.reasons)]));
-  sheet('Remakes', 'Every remake (one row per case and product) · Reason blank = no specific reason recorded', [['Date', 12, 'm/d/yyyy'], ['Doctor', 28], ['Practice', 36], ['Product remade', 52], ['Reason', 36], ['Units', 9, '#,##0'], ['Case', 14]],
+  sheet('Remade units', 'Every remake (one row per case and product) · Reason blank = no specific reason recorded', [['Date', 12, 'm/d/yyyy'], ['Doctor', 28], ['Practice', 36], ['Product remade', 52], ['Reason', 36], ['Units', 9, '#,##0'], ['Case', 14]],
     S.lines.sort((a, b) => (b.date || 0) - (a.date || 0)).map(x => [x.date ? new Date(Date.UTC(x.date.getFullYear(), x.date.getMonth(), x.date.getDate())) : null, x.name || '', x.practice || '', x.product, x.reason || '', x.qty, x.caseNo]));
   return wb;
 }
@@ -12356,7 +12378,7 @@ const CH_TYPE = {
   established: { icon: '🏛', label: 'Established & lost' } };
 const CH_REASON = {
   newprod:  { icon: '🆕', label: 'Remake on a product new to them' },
-  remake:   { icon: '🔁', label: 'Remakes' },
+  remake:   { icon: '🔁', label: 'Remade units' },
   tat:      { icon: '🐢', label: 'Turnaround got worse' },
   hold:     { icon: '⏸', label: 'Cases kept going on hold' },
   price:    { icon: '💲', label: 'Price went up' },
@@ -12394,7 +12416,7 @@ function chWindow(rows, from, to) {
     if (r.tat != null && r.tat >= 0 && r.tat <= 200 && c.tat == null) c.tat = r.tat;
     if (r.anchorDate > c.t) c.t = r.anchorDate;
     W.rev += r.netCost || 0;
-    if (r.mainProduct) { W.units += r.rmQty || 0; c.products.add(r.product); }
+    if (r.rmQty > 0) { W.units += r.rmQty; c.products.add(r.product); }
     if (r.remake) { W.remU += r.rmRem || 0; c.rem = true; W.rem.push({ t: r.anchorDate, product: r.product, cat: r.productCat, reason: rmkSpecific(r.remakeReason) ? r.remakeReason : '', qty: r.rmRem || 0 }); }
     if (r.onHold) { c.hold = true; W.held.add(r.caseKey); W.holdDays += r.daysOnHold || 0; }
     if (r.mainProduct && r.productCat && (r.qty || 0) > 0 && (r.netCost || 0) > 0) { const k = W.cats.get(r.productCat) || { u: 0, $: 0 }; k.u += r.qty; k.$ += r.netCost; W.cats.set(r.productCat, k);
@@ -12889,7 +12911,7 @@ function renderProductDetail() {
       <div class="kpi"><div class="kpi-label">Cases</div><div class="kpi-value">${fmtN(caseCount)}</div></div>
       <div class="kpi"><div class="kpi-label">Units</div><div class="kpi-value">${fmtN(totalUnits)}</div></div>
       <div class="kpi"><div class="kpi-label">Avg Unit $</div><div class="kpi-value">${fmtUSDFull(totalUnits ? totalRev/totalUnits : 0)}</div></div>
-      <div class="kpi"><div class="kpi-label">Remake Rate</div><div class="kpi-value">${fmtPct(allUnitsK ? remakeUnitsK/allUnitsK : 0)}</div><div class="kpi-sub">${fmtN(remakeUnitsK)} of ${fmtN(allUnitsK)} cases · one per case</div></div>
+      <div class="kpi"><div class="kpi-label">Remake Rate</div><div class="kpi-value">${fmtPct(allUnitsK ? remakeUnitsK/allUnitsK : 0)}</div><div class="kpi-sub">${fmtN(remakeUnitsK)} of ${fmtN(allUnitsK)} units</div></div>
       ${onTimeKpiHTML(pdOnTime)}
     </div>
 
@@ -16818,26 +16840,26 @@ function rpBuildRemakesReport() {
     return '<div style="font-size:11.5px;font-weight:700;color:' + c + '">' + (d > 0 ? '▲ +' : d < 0 ? '▼ −' : '±') + fmtN(Math.abs(d)) + ' vs ' + fmtN(before) + '</div>'; };
   const dayLbl = rpDayLabel(day);
 
-  let h = rpHead('🔁 Daily Remakes Report', 'Main products only — remake rate, every case remade, and what is driving it', day, 'remakes') + rpIncompleteNote();
+  let h = rpHead('🔁 Daily Remakes Report', 'What was actually redone — remake rate, every case remade, and what is driving it', day, 'remakes') + rpIncompleteNote();
 
   // 1. at a glance
   h += sec('At a glance', 'each period vs the one before it');
   const per = [['Day', dayLbl + ' vs the business day before', W.day], ['Week', 'last 7 business days vs prior 7', W.week], ['Month', 'last 30 business days vs prior 30', W.month]];
-  h += table(['Period', 'Remake rate', 'Remakes', 'Cases remade', 'Credits given'], per.map(([l, sub, [a, b]]) =>
+  h += table(['Period', 'Remake rate', 'Remade units', 'Cases remade', 'Credits given'], per.map(([l, sub, [a, b]]) =>
     '<tr>' + td('<b style="color:#0f172a">' + l + '</b><div style="font-size:11px;color:#64748b">' + sub + '</div>') +
     td('<b style="font-size:15px;color:#0f172a">' + pct(rate(a)) + '</b>' + ptsChg(rate(a), rate(b))) +
-    td('<b style="font-size:15px;color:#0f172a">' + fmtN(a.remade) + '</b>' + numChg(a.remade, b.remade) + '<div style="font-size:11px;color:#64748b">of ' + fmtN(a.units) + ' cases</div>') +
+    td('<b style="font-size:15px;color:#0f172a">' + fmtN(a.remade) + '</b>' + numChg(a.remade, b.remade) + '<div style="font-size:11px;color:#64748b">of ' + fmtN(a.units) + ' units</div>') +
     td('<b style="font-size:15px;color:#0f172a">' + fmtN(a.remCases.size) + '</b>' + numChg(a.remCases.size, b.remCases.size)) +
     td('<b style="font-size:15px;color:#0f172a">' + fmtUSD(a.disc) + '</b>') + '</tr>'));
 
   { const nc = rmkNotCounted(rowsIn(0, 29));
-    if (nc.doctor + nc.adjustment) h += '<div style="' + F + 'font-size:12px;color:#475569;margin:6px 0 4px">Not counted against the lab (last 30 business days): 🩺 <b>' + fmtN(nc.doctor) + '</b> doctor-side · 🔧 <b>' + fmtN(nc.adjustment) + '</b> adjustments. One remake per case, on its main product.</div>'; }
+    if (nc.doctor + nc.adjustment) h += '<div style="' + F + 'font-size:12px;color:#475569;margin:6px 0 4px">Not counted against the lab (last 30 business days): 🩺 <b>' + fmtN(nc.doctor) + '</b> doctor-side · 🔧 <b>' + fmtN(nc.adjustment) + '</b> adjustments. Remade units are what was actually redone — the restorations, or a part or model remade on its own.</div>'; }
   // 2. every case remade on the report day
   const D = W.day[0], cases = new Map();
   D.lines.forEach(L => { const k = L.caseKey || L.caseNo || (L.drId + '|' + L.product);
     const c = cases.get(k) || cases.set(k, { caseNo: L.caseNo, drId: L.drId, name: L.name, practice: L.practice, items: [] }).get(k); c.items.push(L); });
   const list = [...cases.values()].sort((a, b) => b.items.reduce((t, x) => t + x.qty, 0) - a.items.reduce((t, x) => t + x.qty, 0));
-  h += sec('Remakes on ' + dayLbl + ' — ' + list.length + ' case' + (list.length === 1 ? '' : 's') + ', ' + fmtN(D.remade) + ' remakes');
+  h += sec('Remakes on ' + dayLbl + ' — ' + list.length + ' case' + (list.length === 1 ? '' : 's') + ', ' + fmtN(D.remade) + ' units');
   h += list.length ? table(['Doctor', 'Practice', 'Product remade', 'Reason', 'Units', 'Case'], list.flatMap(c => c.items.map((it, i) => '<tr>' +
       td(i ? '' : '<b style="color:#0f172a">' + goldMarkEmail(c.drId) + esc(c.name || '—') + '</b>' + quietMarkEmail(Q.get(c.drId))) +
       td(i ? '' : '<span style="color:#64748b">' + esc(c.practice || '—') + '</span>') + td('<b style="color:#0f172a">' + esc(it.product) + '</b>') +
@@ -16847,16 +16869,16 @@ function rpBuildRemakesReport() {
   // 3. the last 30 business days in brief
   const M = W.month[0], S = rmkSections(M), spec = M.remade - M.vague;
   h += sec('Last 30 business days — products remade most', 'top 10');
-  h += S.prods.length ? table(['Product', 'Remakes', 'Remake rate', 'Top reason'], S.prods.sort((a, b) => b.rem - a.rem).slice(0, 10).map(x => '<tr>' +
+  h += S.prods.length ? table(['Product', 'Remade units', 'Remake rate', 'Top reason'], S.prods.sort((a, b) => b.rem - a.rem).slice(0, 10).map(x => '<tr>' +
       td('<b style="color:#0f172a">' + esc(x.name) + '</b><div style="font-size:11px;color:#64748b">' + esc(x.cat) + '</div>') + td(fmtN(x.rem), true) + td(pct(x.rate), true) +
       td(rmkTop(x.reasons) ? esc(rmkTop(x.reasons)) : '<span style="color:#94a3b8">—</span>') + '</tr>')) : nil('No remakes in the last 30 business days.');
-  h += sec('Last 30 business days — top reasons', (M.vague ? fmtN(M.vague) + ' remakes (' + pct(M.remade ? M.vague / M.remade : 0) + ') had no specific reason and aren’t listed' : ''));
-  h += S.reasons.length ? table(['Reason', 'Remakes', 'Share', 'Products most remade for it'], S.reasons.sort((a, b) => b.rem - a.rem).slice(0, 10).map(x => '<tr>' +
+  h += sec('Last 30 business days — top reasons', (M.vague ? fmtN(M.vague) + ' remade units (' + pct(M.remade ? M.vague / M.remade : 0) + ') had no specific reason and aren’t listed' : ''));
+  h += S.reasons.length ? table(['Reason', 'Remade units', 'Share', 'Products most remade for it'], S.reasons.sort((a, b) => b.rem - a.rem).slice(0, 10).map(x => '<tr>' +
       td('<b style="color:#0f172a">' + esc(x.name) + '</b>') + td(fmtN(x.rem), true) + td(pct(spec ? x.rem / spec : 0), true) + td('<span style="color:#64748b">' + esc(x.prods) + '</span>') + '</tr>')) : nil('No specific reasons recorded.');
   h += sec('Last 30 business days — doctors with the most remakes', 'top 10');
-  h += S.docs.length ? table(['Doctor', 'Remakes', 'Remake rate', 'Last remake', 'Top reason'], S.docs.sort((a, b) => b.rem - a.rem).slice(0, 10).map(x => '<tr>' +
+  h += S.docs.length ? table(['Doctor', 'Remade units', 'Remake rate', 'Last remake', 'Top reason'], S.docs.sort((a, b) => b.rem - a.rem).slice(0, 10).map(x => '<tr>' +
       td('<b style="color:#0f172a">' + goldMarkEmail(x._dr) + esc(x.name || '') + '</b>' + quietMarkEmail(Q.get(x._dr)) + '<div style="font-size:11px;color:#64748b">' + esc(x.practice || '') + '</div>') +
-      td(fmtN(x.rem), true) + td(pct(x.rate) + '<div style="font-size:11px;color:#64748b">of ' + fmtN(x.units) + ' cases</div>', true) + td(x.last ? esc(fmtDateShort(x.last)) : '—') +
+      td(fmtN(x.rem), true) + td(pct(x.rate) + '<div style="font-size:11px;color:#64748b">of ' + fmtN(x.units) + ' units</div>', true) + td(x.last ? esc(fmtDateShort(x.last)) : '—') +
       td(rmkTop(x.reasons) ? esc(rmkTop(x.reasons)) : '<span style="color:#94a3b8">—</span>') + '</tr>')) : nil('No remakes in the last 30 business days.');
   return h;
 }
