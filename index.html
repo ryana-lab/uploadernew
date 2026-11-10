@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.11.09-DL73</title>
+<title>Lab Sales Dashboard v2026.11.10-DL74</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -229,6 +229,7 @@ html, body {
 .gl-addcard { padding: 12px 14px; margin-bottom: 12px; } .gl-addhead { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
 .gl-hit { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 7px 2px; border-bottom: 1px solid var(--border); font-size: 13px; } .gl-hint { font-size: 12.5px; padding: 8px 2px; }
 .dd-gl { display: inline-flex; gap: 6px; } .dd-gl .btn-text { font-size: 12px; }
+.ed-span2 { grid-column: span 2; } @media (max-width: 760px) { .ed-span2 { grid-column: auto; } }
 /* Golden / Silver removal · remake reason types */
 .dr-card-r { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
 .gl-rm { font: inherit; font-size: 11px; font-weight: 700; color: #b91c1c; background: none; border: 1px solid #fecaca; border-radius: 999px; padding: 1px 8px; cursor: pointer; opacity: .75; }
@@ -2085,7 +2086,7 @@ const APP = {
 
 /* Bump when normalization logic changes, so it's possible to tell at a glance
    (bottom of the Avg Turnaround card) which build a browser is running. */
-const BUILD_ID = 'DL73 · 2026-11-09';
+const BUILD_ID = 'DL74 · 2026-11-10';
 
 const DB_NAME = 'LabOpsCache';
 const DB_STORE = 'datasets';
@@ -11875,6 +11876,7 @@ async function xlEmployeeWorkbook(e, mine) {
     Object.entries(by).sort((a, b) => b[1] - a[1]).forEach(([k, u]) => { r++; const [w, d] = k.split('\u0001'); const row = ws.getRow(r); row.values = [w, d, u, u / tot];
       row.getCell(3).numFmt = '#,##0'; row.getCell(4).numFmt = '0%'; });
   }
+  xlEmployeeScans(wb, e, edScanData(mine));   // DL74
   xlRawSheet(wb, mine);
   return wb;
 }
@@ -11939,6 +11941,185 @@ async function xlDownload(wbPromise, fileName, btn) {
     saveBlob(fileName, new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
   } catch (err) { toast('Excel export failed: ' + (err && err.message || err)); console.error(err); }
   finally { if (btn) { btn.disabled = false; btn.textContent = was; } }
+}
+
+/* ══ EMPLOYEE DETAIL — scan in → scan out (DL74) ═══════════════════════════════
+   Every task carries its scan-in (started_at) and scan-out (resolved_at) time
+   from the lab software. Times are shown in Chicago time. Durations are ELAPSED
+   time — a task scanned in Friday afternoon and out Monday morning includes the
+   weekend — so the MEDIAN is the headline, with a same-day / next-day breakdown. */
+const ED_TZ = 'America/Chicago';
+const edFmtTime = d => d.toLocaleTimeString('en-US', { timeZone: ED_TZ, hour: 'numeric', minute: '2-digit' });
+const edFmtDay = d => d.toLocaleDateString('en-US', { timeZone: ED_TZ, weekday: 'short', month: 'short', day: 'numeric' });
+const edYmd = d => new Intl.DateTimeFormat('en-CA', { timeZone: ED_TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+const edHourOf = d => Number(new Intl.DateTimeFormat('en-US', { timeZone: ED_TZ, hour: 'numeric', hourCycle: 'h23' }).format(d)) % 24;
+const edTs = v => { if (!v) return null; const d = new Date(v); return isNaN(d) ? null : d; };
+function edDur(ms) {
+  if (ms == null || !isFinite(ms)) return '—';
+  const m = Math.round(ms / 6e4); if (m < 60) return m + ' min';
+  const h = Math.floor(m / 60), mm = m % 60; if (h < 24) return h + ' h' + (mm ? ' ' + mm + ' m' : '');
+  const d = Math.floor(h / 24), hh = h % 24; return d + ' d' + (hh ? ' ' + hh + ' h' : '');
+}
+const edMedian = a => { if (!a.length) return null; const s = a.slice().sort((x, y) => x - y), h = s.length >> 1; return s.length % 2 ? s[h] : (s[h - 1] + s[h]) / 2; };
+const ED_BUCKETS = ['Under 15 min', '15–60 min', '1–4 hours', '4+ hours, same day', 'Next day', '2+ days later'];
+function edBucket(t) {
+  const days = Math.round((new Date(edYmd(t.out) + 'T12:00:00') - new Date(edYmd(t.in) + 'T12:00:00')) / 864e5);
+  if (days >= 2) return 5; if (days === 1) return 4;
+  const m = t.ms / 6e4; return m < 15 ? 0 : m < 60 ? 1 : m < 240 ? 2 : 3;
+}
+// one entry per task (the task's own row, not its subtask rows)
+function edScanData(mine) {
+  const byTask = new Map();
+  mine.forEach(r => { const id = r.task_id || ('row' + byTask.size); const cur = byTask.get(id);
+    if (!cur || (cur.subtask_id && !r.subtask_id)) byTask.set(id, r); });
+  const tasks = [...byTask.values()].map(r => {
+    const tin = edTs(r.started_at), tout = edTs(r.resolved_at), done = /true/i.test(String(r.is_completed || ''));
+    const ms = tin && tout && tout >= tin ? tout - tin : null;
+    return { r, in: tin, out: tout, ms, done, day: r.scan_in_date || '', product: (r.product_name || '').trim() || '(no product)',
+             task: r.step || r.task_name || '', units: prodNum(r.total_units != null ? r.total_units : r.units), case_number: r.case_number || '' };
+  });
+  const timed = tasks.filter(t => t.ms != null), durs = timed.map(t => t.ms);
+  const sameDay = timed.filter(t => edYmd(t.in) === edYmd(t.out)).length;
+  const buckets = ED_BUCKETS.map(() => 0); timed.forEach(t => { buckets[edBucket(t)]++; });
+  const hourIn = Array(24).fill(0), hourOut = Array(24).fill(0);
+  tasks.forEach(t => { if (t.in) hourIn[edHourOf(t.in)]++; if (t.out) hourOut[edHourOf(t.out)]++; });
+  const prod = new Map();
+  tasks.forEach(t => { const p = prod.get(t.product) || prod.set(t.product, { units: 0, tasks: 0, durs: [], same: 0 }).get(t.product);
+    p.units += t.units; p.tasks++; if (t.ms != null) { p.durs.push(t.ms); if (edYmd(t.in) === edYmd(t.out)) p.same++; } });
+  return { tasks, timed: timed.length, scannedIn: tasks.filter(t => t.in).length, scannedOut: tasks.filter(t => t.out).length,
+           open: tasks.filter(t => t.in && !t.out && !t.done).length, median: edMedian(durs), mean: durs.length ? durs.reduce((a, b) => a + b, 0) / durs.length : null,
+           sameDayPct: timed.length ? sameDay / timed.length : null, buckets, hourIn, hourOut,
+           products: [...prod.entries()].map(([name, p]) => ({ name, units: p.units, tasks: p.tasks, timed: p.durs.length, median: edMedian(p.durs),
+             mean: p.durs.length ? p.durs.reduce((a, b) => a + b, 0) / p.durs.length : null, samePct: p.durs.length ? p.same / p.durs.length : null }))
+             .sort((a, b) => b.units - a.units) };
+}
+function edScanHTML(D) {
+  const card = 'class="card" style="padding:14px;border:1px solid var(--line,#e6e9ee);border-radius:12px"';
+  const kpi = (l, v, sub) => `<div class="kpi-card" style="flex:1 1 140px;padding:10px 12px;border:1px solid var(--line,#e6e9ee);border-radius:10px">
+      <div class="text-mut" style="font-size:10px;text-transform:uppercase;letter-spacing:.4px">${l}</div>
+      <div style="font-size:19px;font-weight:700;margin-top:2px">${v}</div>${sub ? `<div class="text-mut" style="font-size:11px">${sub}</div>` : ''}</div>`;
+  const noTimes = !D.scannedIn;
+  const maxB = Math.max(1, ...D.buckets);
+  return `
+    <div ${card} style="padding:14px;border:1px solid var(--line,#e6e9ee);border-radius:12px;margin-top:16px">
+      <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+        <div style="font-weight:700;font-size:15px">Scan in → scan out</div>
+        <div class="text-mut" style="font-size:12px">each task’s scan-in and scan-out · Chicago time · elapsed time, so overnight and weekend time count — the median is the fairer guide</div></div>
+      ${noTimes ? `<div class="text-mut" style="font-size:12.5px;margin-bottom:10px">Scan times aren’t in this data yet — press ↻ Reload on the Employee Grid to fetch them.</div>` : `
+      <div class="kpi-row" style="gap:10px;margin-bottom:14px">
+        ${kpi('Median time in → out', edDur(D.median), D.timed.toLocaleString() + ' tasks timed')}
+        ${kpi('Average time in → out', edDur(D.mean), 'pulled up by overnight tasks')}
+        ${kpi('Finished same day', D.sameDayPct == null ? '—' : Math.round(D.sameDayPct * 100) + '%', 'scanned out the day they were scanned in')}
+        ${kpi('Scanned in', D.scannedIn.toLocaleString(), 'tasks')}
+        ${kpi('Scanned out', D.scannedOut.toLocaleString(), 'tasks')}
+        ${kpi('Still open', D.open.toLocaleString(), 'scanned in, not out')}
+      </div>`}
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px">
+        <div ${card.replace('class="card"', 'class="card ed-span2"')}>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><div style="font-weight:700;flex:1">Product breakdown</div>
+            <div class="pill-group" id="edPieBy"><button class="pill${(PROD.edPieBy || 'units') === 'units' ? ' active' : ''}" data-by="units">Units</button><button class="pill${PROD.edPieBy === 'tasks' ? ' active' : ''}" data-by="tasks">Tasks</button></div></div>
+          <div style="display:grid;grid-template-columns:210px minmax(0,1fr);gap:16px;align-items:center">
+            <div style="height:200px;position:relative"><canvas id="edPie"></canvas></div><div id="edPieLegend" style="font-size:12px"></div></div>
+        </div>
+        ${noTimes ? '' : `<div ${card}><div style="font-weight:700;margin-bottom:8px">Scans by hour of day</div><div style="height:220px"><canvas id="edHours"></canvas></div></div>
+        <div ${card}><div style="font-weight:700;margin-bottom:10px">Time from scan-in to scan-out</div>
+          ${ED_BUCKETS.map((b, i) => `<div style="display:flex;align-items:center;gap:10px;margin-bottom:7px">
+            <div style="flex:0 0 140px;font-size:12.5px">${b}</div>
+            <div style="flex:1;height:8px;background:#eef1f5;border-radius:4px;overflow:hidden"><div style="width:${Math.round(D.buckets[i] / maxB * 100)}%;height:100%;background:${i < 4 ? '#24bfcd' : '#f59e0b'}"></div></div>
+            <div style="font-size:12px;width:92px;text-align:right">${D.buckets[i].toLocaleString()} <span class="text-mut">${D.timed ? Math.round(D.buckets[i] / D.timed * 100) : 0}%</span></div></div>`).join('')}
+        </div>
+        <div ${card.replace('class="card"', 'class="card ed-span2"')}><div style="font-weight:700;margin-bottom:8px">Time in → out by product</div>
+          <div style="max-height:250px;overflow:auto"><table class="tbl" style="width:100%;font-size:12.5px;border-collapse:collapse">
+            <thead><tr style="text-align:left"><th style="padding:4px">Product</th><th style="padding:4px;text-align:right">Tasks</th><th style="padding:4px;text-align:right">Median</th><th style="padding:4px;text-align:right">Average</th><th style="padding:4px;text-align:right">Same day</th></tr></thead>
+            <tbody>${D.products.filter(p => p.timed).slice(0, 25).map(p => `<tr style="border-top:1px solid var(--line,#eef1f5)">
+              <td style="padding:4px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(p.name)}">${esc(p.name)}</td>
+              <td style="padding:4px;text-align:right">${p.timed.toLocaleString()}</td><td style="padding:4px;text-align:right;font-weight:600">${edDur(p.median)}</td>
+              <td style="padding:4px;text-align:right">${edDur(p.mean)}</td><td style="padding:4px;text-align:right">${p.samePct == null ? '—' : Math.round(p.samePct * 100) + '%'}</td></tr>`).join('')}</tbody></table></div>
+        </div>`}
+      </div>
+      ${noTimes ? '' : `<div ${card} style="padding:14px;border:1px solid var(--line,#e6e9ee);border-radius:12px;margin-top:16px">
+        <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:8px"><div style="font-weight:700">Every scan</div>
+          <div class="text-mut" style="font-size:12px" id="edScanCount"></div></div>
+        <div style="overflow-x:auto"><table class="tbl" style="width:100%;font-size:12.5px;border-collapse:collapse" id="edScanTbl"></table></div>
+        <div style="text-align:center;margin-top:8px"><button class="btn-text" id="edScanMore" style="font-size:12px">Show more</button></div>
+      </div>`}
+    </div>`;
+}
+function edScanBind(D) {
+  (PROD._edCharts || []).forEach(c => { try { c.destroy(); } catch (e) {} }); PROD._edCharts = [];
+  const colors = typeof EG_COLORS !== 'undefined' ? EG_COLORS : ['#0ea5b7', '#7c3aed', '#f59e0b', '#ef4444', '#10b981', '#3b82f6', '#ec4899', '#84cc16', '#f97316', '#6366f1'];
+  const ink = getComputedStyle(document.documentElement).getPropertyValue('--mut').trim() || '#64748b';
+  const drawPie = () => {
+    const by = PROD.edPieBy || 'units', list = D.products.map(p => [p.name, by === 'units' ? p.units : p.tasks]).filter(x => x[1] > 0).sort((a, b) => b[1] - a[1]);
+    const total = list.reduce((t, x) => t + x[1], 0), top = list.slice(0, 9), rest = list.slice(9).reduce((t, x) => t + x[1], 0);
+    if (rest > 0) top.push(['Everything else (' + (list.length - 9) + ')', rest]);
+    const lg = document.getElementById('edPieLegend');
+    if (lg) lg.innerHTML = top.map(([n, v], i) => `<div style="display:grid;grid-template-columns:10px 1fr auto 34px;gap:6px;align-items:center;margin-bottom:4px">
+        <i style="width:10px;height:10px;border-radius:3px;background:${colors[i % colors.length]}"></i><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(n)}">${esc(n)}</span>
+        <b>${Math.round(v).toLocaleString()}</b><span class="text-mut" style="text-align:right">${total ? Math.round(v / total * 100) : 0}%</span></div>`).join('') || '<div class="text-mut">No products recorded.</div>';
+    const cv = document.getElementById('edPie'); if (!cv || typeof Chart === 'undefined') return;
+    const old = PROD._edCharts.findIndex(c => c.canvas === cv); if (old >= 0) { PROD._edCharts[old].destroy(); PROD._edCharts.splice(old, 1); }
+    PROD._edCharts.push(new Chart(cv, { type: 'doughnut', data: { labels: top.map(x => x[0]), datasets: [{ data: top.map(x => Math.round(x[1])), backgroundColor: top.map((x, i) => colors[i % colors.length]), borderWidth: 1 }] },
+      options: { maintainAspectRatio: false, cutout: '55%', plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => ` ${c.label}: ${c.parsed.toLocaleString()} (${total ? Math.round(c.parsed / total * 100) : 0}%)` } } } } }));
+  };
+  drawPie();
+  document.querySelectorAll('#edPieBy [data-by]').forEach(b => b.addEventListener('click', () => { PROD.edPieBy = b.dataset.by;
+    document.querySelectorAll('#edPieBy .pill').forEach(x => x.classList.toggle('active', x === b)); drawPie(); }));
+  const hc = document.getElementById('edHours');
+  if (hc && typeof Chart !== 'undefined') {
+    const used = D.hourIn.map((v, h) => v + D.hourOut[h]), lo = Math.max(0, used.findIndex(v => v > 0)), hi = 23 - Math.max(0, used.slice().reverse().findIndex(v => v > 0));
+    const hours = []; for (let h = Math.min(lo, 6); h <= Math.max(hi, 18); h++) hours.push(h);
+    const lbl = h => (h % 12 || 12) + (h < 12 ? ' AM' : ' PM');
+    PROD._edCharts.push(new Chart(hc, { type: 'bar', data: { labels: hours.map(lbl), datasets: [
+        { label: 'Scanned in', data: hours.map(h => D.hourIn[h]), backgroundColor: '#24bfcd', borderRadius: 3 },
+        { label: 'Scanned out', data: hours.map(h => D.hourOut[h]), backgroundColor: '#7c3aed', borderRadius: 3 }] },
+      options: { maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: ink, boxWidth: 12 } } }, scales: { x: { ticks: { color: ink } }, y: { ticks: { color: ink }, beginAtZero: true } } } }));
+  }
+  const tbl = document.getElementById('edScanTbl'); if (!tbl) return;
+  const COLS = [['day', 'Date'], ['case_number', 'Case #'], ['product', 'Product'], ['task', 'Task'], ['in', 'Scanned in'], ['out', 'Scanned out'], ['ms', 'Time in → out']];
+  const st = PROD.edScanSort || (PROD.edScanSort = { k: 'in', dir: -1, n: 50 });
+  const val = (t, k) => k === 'in' || k === 'out' ? (t[k] ? +t[k] : -Infinity) : k === 'ms' ? (t.ms == null ? -Infinity : t.ms) : k === 'day' ? (+prodDate(t.day) || 0) : String(t[k] || '').toLowerCase();
+  const paint = () => {
+    const rows = D.tasks.slice().sort((a, b) => { const x = val(a, st.k), y = val(b, st.k); return (x > y ? 1 : x < y ? -1 : 0) * st.dir; });
+    const shown = rows.slice(0, st.n);
+    tbl.innerHTML = `<thead><tr style="text-align:left">${COLS.map(([k, l]) => `<th data-k="${k}" style="padding:5px 4px;cursor:pointer;white-space:nowrap">${l}${st.k === k ? (st.dir > 0 ? ' ▲' : ' ▼') : ''}</th>`).join('')}</tr></thead>
+      <tbody>${shown.map(t => `<tr style="border-top:1px solid var(--line,#eef1f5)">
+        <td style="padding:4px;white-space:nowrap">${esc(t.day)}</td><td style="padding:4px">${esc(t.case_number)}</td>
+        <td style="padding:4px;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(t.product)}">${esc(t.product)}</td>
+        <td style="padding:4px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(t.task)}">${esc(t.task)}</td>
+        <td style="padding:4px;white-space:nowrap">${t.in ? edFmtDay(t.in) + ' · ' + edFmtTime(t.in) : '—'}</td>
+        <td style="padding:4px;white-space:nowrap">${t.out ? edFmtDay(t.out) + ' · ' + edFmtTime(t.out) : (t.done ? 'completed' : '<span class="text-mut">open</span>')}</td>
+        <td style="padding:4px;white-space:nowrap;font-weight:600">${edDur(t.ms)}</td></tr>`).join('')}</tbody>`;
+    const c = document.getElementById('edScanCount'); if (c) c.textContent = `${shown.length.toLocaleString()} of ${rows.length.toLocaleString()} tasks · click a heading to sort`;
+    const more = document.getElementById('edScanMore'); if (more) more.style.display = rows.length > shown.length ? '' : 'none';
+    tbl.querySelectorAll('th[data-k]').forEach(th => th.addEventListener('click', () => { st.dir = st.k === th.dataset.k ? -st.dir : (th.dataset.k === 'in' || th.dataset.k === 'out' || th.dataset.k === 'ms' || th.dataset.k === 'day' ? -1 : 1); st.k = th.dataset.k; paint(); }));
+  };
+  paint();
+  const more = document.getElementById('edScanMore'); if (more) more.addEventListener('click', () => { st.n += 100; paint(); });
+}
+// Excel: the scans, and time by product
+function xlEmployeeScans(wb, e, D) {
+  if (!D.scannedIn) return;
+  // Excel stores a date as UTC — so write the CHICAGO wall-clock time as the UTC fields
+  const tz = d => { if (!d) return null;
+    const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: ED_TZ, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' })
+      .formatToParts(d).map(x => [x.type, x.value]));
+    return new Date(Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour % 24, +p.minute, +p.second)); };
+  { const ws = wb.addWorksheet('Scans');
+    ws.columns = [{ width: 12 }, { width: 14 }, { width: 44 }, { width: 30 }, { width: 18 }, { width: 18 }, { width: 12 }, { width: 10 }];
+    let r = xlTitle(ws, e.employee + ' — every scan', 'Scan-in and scan-out times (Chicago) · minutes are elapsed time, overnight included', null);
+    xlHeader(ws, r, ['Date', 'Case #', 'Product', 'Task', 'Scanned in', 'Scanned out', 'Minutes', 'Same day']);
+    D.tasks.slice().sort((a, b) => (+b.in || 0) - (+a.in || 0)).forEach(t => { r++; const row = ws.getRow(r);
+      row.values = [t.day, t.case_number, t.product, t.task, tz(t.in), tz(t.out), t.ms == null ? null : Math.round(t.ms / 6e4), t.ms == null ? null : (edYmd(t.in) === edYmd(t.out) ? 'Yes' : 'No')];
+      row.getCell(5).numFmt = 'm/d/yyyy h:mm AM/PM'; row.getCell(6).numFmt = 'm/d/yyyy h:mm AM/PM'; row.getCell(7).numFmt = '#,##0'; });
+    ws.views = [{ state: 'frozen', ySplit: 4 }]; }
+  { const ws = wb.addWorksheet('Time by product');
+    ws.columns = [{ width: 48 }, { width: 10 }, { width: 14 }, { width: 14 }, { width: 11 }, { width: 10 }];
+    let r = xlTitle(ws, e.employee + ' — time from scan-in to scan-out, by product', `Median ${edDur(D.median)} · average ${edDur(D.mean)} · ${D.timed.toLocaleString()} tasks timed`, null);
+    xlHeader(ws, r, ['Product', 'Tasks timed', 'Median minutes', 'Average minutes', 'Same day', 'Units']);
+    D.products.filter(p => p.timed).forEach(p => { r++; const row = ws.getRow(r);
+      row.values = [p.name, p.timed, Math.round(p.median / 6e4), Math.round(p.mean / 6e4), p.samePct, p.units];
+      row.getCell(5).numFmt = '0%'; [2, 3, 4, 6].forEach(c => { row.getCell(c).numFmt = '#,##0'; }); }); }
 }
 
 async function renderEmployeeDetail() {
@@ -12027,6 +12208,7 @@ async function renderEmployeeDetail() {
   mine.forEach(r => { const k = (r.workstation || '—') + ' · ' + (r.department || '—');
     byStation[k] = (byStation[k] || 0) + prodNum(r.total_units); });
   const stations = Object.entries(byStation).sort((a,b) => b[1]-a[1]);
+  const ED_SCAN = edScanData(mine);   // DL74: scan in → scan out
 
   el.innerHTML = `
     <div class="section-header">
@@ -12089,6 +12271,7 @@ async function renderEmployeeDetail() {
           </div>`; }).join('') || '<div class="text-mut">No workstations recorded.</div>'}
       </div>
     </div>
+    ${edScanHTML(ED_SCAN)}
 
     <div class="card" style="padding:14px;border:1px solid var(--line,#e6e9ee);border-radius:12px;margin-top:16px">
       <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px">
@@ -12142,6 +12325,7 @@ async function renderEmployeeDetail() {
 
   { const a = document.getElementById('edDatesAll'); if (a) a.onclick = ev => { ev.preventDefault(); PROD.from = ''; PROD.to = ''; EG.preset = 'all'; renderEmployeeDetail(); }; }
   document.getElementById('edPick').addEventListener('change', ev => { PROD.employee = ev.target.value; renderEmployeeDetail(); });
+  edScanBind(ED_SCAN);
   document.querySelectorAll('.ed-dayrow').forEach(tr => tr.addEventListener('click', () => {
     const k = openKey(tr.dataset.day);
     PROD.openDaysTouched = true;            // stop re-opening the latest day after the user chooses
