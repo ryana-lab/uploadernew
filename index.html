@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.11.09-DL71</title>
+<title>Lab Sales Dashboard v2026.11.09-DL73</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -225,6 +225,10 @@ html, body {
 .rm-tbl td { padding: 7px 10px; border-bottom: 1px solid var(--border); color: var(--dim); } .rm-tbl td b { color: var(--ink); }
 .rm-tbl .num { text-align: right; font-variant-numeric: tabular-nums; } .rm-tbl tr.rm-fresh td { background: #fff7f7; }
 .rm-more summary { cursor: pointer; color: var(--accent-ink); font-weight: 600; font-size: 12.5px; margin-top: 8px; }
+.rc-sub { font-size: 10.5px; color: var(--mut); white-space: nowrap; } .dr-card-r { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.gl-addcard { padding: 12px 14px; margin-bottom: 12px; } .gl-addhead { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.gl-hit { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 7px 2px; border-bottom: 1px solid var(--border); font-size: 13px; } .gl-hint { font-size: 12.5px; padding: 8px 2px; }
+.dd-gl { display: inline-flex; gap: 6px; } .dd-gl .btn-text { font-size: 12px; }
 /* Golden / Silver removal · remake reason types */
 .dr-card-r { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
 .gl-rm { font: inherit; font-size: 11px; font-weight: 700; color: #b91c1c; background: none; border: 1px solid #fecaca; border-radius: 999px; padding: 1px 8px; cursor: pointer; opacity: .75; }
@@ -2081,7 +2085,7 @@ const APP = {
 
 /* Bump when normalization logic changes, so it's possible to tell at a glance
    (bottom of the Avg Turnaround card) which build a browser is running. */
-const BUILD_ID = 'DL71 · 2026-11-09';
+const BUILD_ID = 'DL73 · 2026-11-09';
 
 const DB_NAME = 'LabOpsCache';
 const DB_STORE = 'datasets';
@@ -2709,7 +2713,7 @@ let FIN_DROPPED = { lines: 0, amount: 0 }, OB_DROPPED = { lines: 0, amount: 0 };
    Kept in Supabase's app_settings (admins only — the 11 am job signs in as one),
    so every admin, every computer and the emailed reports use the same choices.
    Cached in this browser so a CSV-only session still has them. */
-const SETTINGS_KEYS = ['list_removals', 'remake_reason_types'];
+const SETTINGS_KEYS = ['list_removals', 'list_additions', 'remake_reason_types'];
 const SETTINGS = (() => { const o = {}; SETTINGS_KEYS.forEach(k => { try { o[k] = JSON.parse(localStorage.getItem('vda_set_' + k) || 'null'); } catch (e) { o[k] = null; } }); return o; })();
 async function settingsLoad() {
   const db = typeof pgClient === 'function' ? pgClient() : null; if (!db) return false;
@@ -2842,15 +2846,31 @@ function rmkNotCounted(rows) {
    — until restored. Removing someone from the Golden List who is also on the
    Silver list file moves them to Silver (and they can be removed there too). */
 const listRemoved = kind => ((SETTINGS.list_removals || {})[kind]) || {};
+const listAdded = kind => ((SETTINGS.list_additions || {})[kind]) || {};
+// is this doctor on the list FILE (before anyone's additions or removals)?
+const listInFile = (kind, id) => kind === 'golden' ? goldenMatch().ids.has(id) : listMatch(SILVER_DEFAULT).ids.has(id);
+/* DL73: additions and removals are kept as a pair. Removing an added doctor takes the
+   addition off; removing a doctor from the list file records a removal. Adding a doctor
+   who was removed puts them back; adding anyone else records an addition. */
 async function listRemove(kind, id, name) {
-  const R = JSON.parse(JSON.stringify(SETTINGS.list_removals || {})); R[kind] = R[kind] || {};
-  R[kind][id] = { name: name || '', at: new Date().toISOString() };
-  const how = await settingsSave('list_removals', R); listRefresh();
-  return how;
+  const R = JSON.parse(JSON.stringify(SETTINGS.list_removals || {})), A = JSON.parse(JSON.stringify(SETTINGS.list_additions || {}));
+  R[kind] = R[kind] || {}; A[kind] = A[kind] || {};
+  const wasAdded = !!A[kind][id]; delete A[kind][id];
+  if (!wasAdded || listInFile(kind, id)) R[kind][id] = { name: name || '', at: new Date().toISOString() };
+  const h1 = await settingsSave('list_removals', R), h2 = wasAdded ? await settingsSave('list_additions', A) : h1;
+  listRefresh(); return h1 === 'shared' && h2 === 'shared' ? 'shared' : 'local';
 }
 async function listRestore(kind, id) {
   const R = JSON.parse(JSON.stringify(SETTINGS.list_removals || {})); if (R[kind]) delete R[kind][id];
   const how = await settingsSave('list_removals', R); listRefresh(); return how;
+}
+async function listAdd(kind, id, name) {
+  const R = JSON.parse(JSON.stringify(SETTINGS.list_removals || {})), A = JSON.parse(JSON.stringify(SETTINGS.list_additions || {}));
+  R[kind] = R[kind] || {}; A[kind] = A[kind] || {};
+  const wasRemoved = !!R[kind][id]; delete R[kind][id];
+  if (!listInFile(kind, id)) A[kind][id] = { name: name || '', at: new Date().toISOString() };
+  const h1 = await settingsSave('list_additions', A), h2 = wasRemoved ? await settingsSave('list_removals', R) : h1;
+  listRefresh(); return h1 === 'shared' && h2 === 'shared' ? 'shared' : 'local';
 }
 function listRefresh() {
   if (APP.derived) { delete APP.derived.goldenIds; delete APP.derived.silverIds; delete APP.derived.silverMatch; }
@@ -3342,6 +3362,7 @@ function aggKPIs() {
        remakes skew toward multi-unit cases. */
     const remakeUnits = data.reduce((s, r) => s + (r.remake ? (r.rmRem || 0) : 0), 0);
     const rmUnitsAll = data.reduce((s, r) => s + (r.rmQty || 0), 0);
+    const rmCaseBase = countCases(data.filter(r => r.rmQty > 0));   // DL72: the by-case base
     const onHoldCount = countCases(data.filter(r => r.onHold));
     const doctors = new Set(data.map(r => r.drId)).size;
     const products = new Set(data.map(r => r.product)).size;
@@ -3366,6 +3387,7 @@ function aggKPIs() {
         return v.length % 2 ? v[h] : (v[h - 1] + v[h]) / 2;
       })(),
       remakeRate: rmUnitsAll ? remakeUnits / rmUnitsAll : 0,   // main products only
+      remakeCaseRate: rmCaseBase ? remakeCount / rmCaseBase : 0, rmCaseBase, rmUnitsAll,   // DL72: by case; rmUnitsAll = the units the rate is on
       remakeCount,
       remakeUnits,
       onHoldRate: totalCases ? onHoldCount / totalCases : 0,
@@ -3418,6 +3440,7 @@ function aggByDoctor() {
       addCase(d.caseSet, r.caseKey);
       d.revenue += r.netCost;
       d.units += r.qty;
+      if (r.rmQty > 0) { if (!d.rmCaseSet) d.rmCaseSet = new Set(); addCase(d.rmCaseSet, r.caseKey); }   // DL72: the by-case base
       d.uAll = (d.uAll || 0) + (r.rmQty || 0); if (r.remake) { addCase(d.remakeSet, r.caseKey); d.remakeUnits = (d.remakeUnits || 0) + (r.rmRem || 0); }
       if (r.anchorDate) {
         if (!d.firstDate || r.anchorDate < d.firstDate) d.firstDate = r.anchorDate;
@@ -3444,6 +3467,7 @@ function aggByDoctor() {
       practiceInfo,
       avgCase: cases ? d.revenue / cases : 0,
       remakeRate: d.uAll ? (d.remakeUnits || 0) / d.uAll : 0,   // by unit
+      remakeCaseRate: d.rmCaseSet && d.rmCaseSet.size ? remakes / d.rmCaseSet.size : 0, rmCases: d.rmCaseSet ? d.rmCaseSet.size : 0,   // DL72: by case
       avgTat: d.tatN ? d.tatSum / d.tatN : null,
       medTat: medianOf(d.tatList),
       earlyPct:  d.ontimeCases ? d.onTimeEarly  / d.ontimeCases : null,
@@ -3473,6 +3497,7 @@ function aggByProduct() {
       addCase(p.caseSet, r.caseKey);
       p.revenue += r.netCost;
       p.units += r.qty;
+      if (r.rmUnitsP > 0) { if (!p.rmCaseSet) p.rmCaseSet = new Set(); addCase(p.rmCaseSet, r.caseKey); }   // DL72: the by-case base
       p.uAll = (p.uAll || 0) + (r.rmUnitsP || 0); if (r.rmRemP > 0) { addCase(p.remakeSet, r.caseKey); p.remakeUnits = (p.remakeUnits || 0) + r.rmRemP; }   // DL70: as marked
       p.doctors.add(r.drId);
       addTat(p, r);
@@ -3488,6 +3513,7 @@ function aggByProduct() {
       doctors: p.doctors.size,
       avgPrice: p.units ? p.revenue / p.units : 0,
       remakeRate: p.uAll ? (p.remakeUnits || 0) / p.uAll : 0,   // by unit
+      remakeCaseRate: p.rmCaseSet && p.rmCaseSet.size ? p.remakeSet.size / p.rmCaseSet.size : 0, rmCases: p.rmCaseSet ? p.rmCaseSet.size : 0,   // DL72: by case
       avgTat: p.tatN ? p.tatSum / p.tatN : null,
       medTat: medianOf(p.tatList),
       onTimeEarly: p.onTimeEarly, onTimeOnTime: p.onTimeOnTime, onTimeLate: p.onTimeLate, ontimeCases: p.ontimeCases,
@@ -4792,7 +4818,7 @@ function renderOverview() {
       <div class="kpi"><div class="kpi-label">Total Revenue</div><div class="kpi-value">${fmtUSDFull(k.totalRev)}</div><div class="kpi-sub">${fmtN(k.totalCases)} invoiced cases</div></div>
       <div class="kpi"><div class="kpi-label">Median Case Value</div><div class="kpi-value">${fmtUSDFull(k.medianCase)}</div><div class="kpi-sub">mean ${fmtUSDFull(k.avgCase)} · ${fmtN(k.totalUnits)} units shipped</div></div>
       <div class="kpi"><div class="kpi-label">Active Doctors</div><div class="kpi-value">${fmtN(k.doctors)}</div><div class="kpi-sub">${fmtN(k.products)} unique products</div></div>
-      <div class="kpi"><div class="kpi-label">Remake Rate</div><div class="kpi-value">${fmtPct(k.remakeRate)}</div><div class="kpi-sub">${fmtN(k.remakeUnits)} of ${fmtN(k.totalUnits)} units reworked</div></div>
+      <div class="kpi"><div class="kpi-label">Remake Rate</div><div class="kpi-value">${fmtPct(k.remakeRate)}</div><div class="kpi-sub">${fmtN(k.remakeUnits)} of ${fmtN(k.rmUnitsAll)} units reworked · <b>by case ${fmtPct(k.remakeCaseRate)}</b> (${fmtN(k.remakeCount)} of ${fmtN(k.rmCaseBase)})</div></div>
       <div class="kpi"><div class="kpi-label">On-Hold Rate</div><div class="kpi-value">${fmtPct(k.onHoldRate)}</div><div class="kpi-sub">${fmtN(k.onHoldCount)} held cases</div></div>
       <div class="kpi"><div class="kpi-label">Avg Turnaround</div><div class="kpi-value">${k.avgTAT == null ? '—' : k.avgTAT.toFixed(1) + '<span class="sup">days</span>'}</div><div class="kpi-sub">entry → invoiced · 90% within ${fmtTat(k.p90TAT)} days${tatExclHolds() ? ' · hold days excluded' : ''}<br>${tatToggleHTML()} <span title="Build identifier — use this to confirm you are running the latest file.">${BUILD_ID}</span></div></div>
     </div>
@@ -5927,6 +5953,7 @@ const DGRID_COLS = [
   { k: 'units', l: 'Units', num: 1, f: d => fmtN(d.units) },
   { k: 'avgCase', l: 'Avg case', num: 1, f: d => fmtUSDFull(d.avgCase) },
   { k: 'remakeRate', l: 'Remake', num: 1, f: d => fmtPct(d.remakeRate) },
+  { k: 'remakeCaseRate', l: 'Remake · by case', num: 1, f: d => fmtPct(d.remakeCaseRate) },
   { k: 'avgTat', l: 'Avg TAT', num: 1, f: d => d.avgTat == null ? '—' : d.avgTat.toFixed(1) + 'd' },
   { k: 'medTat', l: 'Median TAT', num: 1, f: d => d.medTat == null ? '—' : fmtTat(d.medTat) + 'd' },
   { k: 'firstDate', l: 'First case', num: 1, v: d => d.firstDate ? +d.firstDate : null, f: d => gridDay(d.firstDate) },
@@ -5949,6 +5976,7 @@ const PGRID_COLS = [
   { k: 'avgPrice', l: 'Avg unit $', num: 1, f: p => fmtUSDFull(p.avgPrice) },
   { k: 'doctors', l: 'Doctors', num: 1, f: p => fmtN(p.doctors) },
   { k: 'remakeRate', l: 'Remake', num: 1, f: p => fmtPct(p.remakeRate) },
+  { k: 'remakeCaseRate', l: 'Remake · by case', num: 1, f: p => fmtPct(p.remakeCaseRate) },
   { k: 'avgTat', l: 'Avg TAT', num: 1, f: p => p.avgTat == null ? '—' : p.avgTat.toFixed(1) + 'd' },
   { k: 'medTat', l: 'Median TAT', num: 1, f: p => p.medTat == null ? '—' : fmtTat(p.medTat) + 'd' }
 ];
@@ -6251,14 +6279,16 @@ function silverMatch() {
 /* ⭐ + ! beside a doctor's name, the same everywhere a doctor appears */
 function goldenIds() {
   if (APP.derived && APP.derived.goldenIds) return APP.derived.goldenIds;
-  const rm = listRemoved('golden'), ids = new Set([...((APP.raw && APP.raw.length) ? goldenMatch().ids : [])].filter(id => !rm[id]));   // DL66: minus anyone removed
+  const rm = listRemoved('golden'), have = (APP.raw && APP.raw.length);
+  const ids = new Set([...(have ? goldenMatch().ids : []), ...(have ? Object.keys(listAdded('golden')) : [])].filter(id => !rm[id]));   // DL66/73: + added − removed
   if (APP.derived && APP.raw && APP.raw.length) APP.derived.goldenIds = ids;
   return ids;
 }
 const isGolden = id => !!id && goldenIds().has(id);
 function silverIds() {
   if (APP.derived && APP.derived.silverIds) return APP.derived.silverIds;
-  const rm = listRemoved('silver'), ids = new Set([...((APP.raw && APP.raw.length) ? silverMatch().ids : [])].filter(id => !rm[id]));   // DL66: minus anyone removed
+  const rm = listRemoved('silver'), have = (APP.raw && APP.raw.length), gold = have ? goldenIds() : new Set();
+  const ids = new Set([...(have ? silverMatch().ids : []), ...(have ? Object.keys(listAdded('silver')) : [])].filter(id => !rm[id] && !gold.has(id)));   // DL66/73: + added − removed, never a Golden doctor
   if (APP.derived && APP.raw && APP.raw.length) APP.derived.silverIds = ids;
   return ids;
 }
@@ -6299,16 +6329,18 @@ function renderDoctorGrid(mode) {
       <div>
         <div class="section-title">${kind === 'golden' ? '⭐ Golden List' : kind === 'silver' ? '🥈 Silver List' : 'Doctor Grid'}</div>
         <div class="section-sub">${kind === 'golden'
-          ? `The Diamond-list doctors — the same view as the Doctor Grid. ${LM.total - LM.unmatched.length} of ${LM.total} found, from ${esc(LM.src)}${Object.keys(listRemoved('golden')).length ? ` · ${Object.keys(listRemoved('golden')).length} removed` : ''}.`
+          ? `The Diamond-list doctors — the same view as the Doctor Grid. ${goldenIds().size} doctors · ${LM.total - LM.unmatched.length} of ${LM.total} found, from ${esc(LM.src)}${Object.keys(listAdded('golden')).length ? ` · ${Object.keys(listAdded('golden')).length} added` : ''}${Object.keys(listRemoved('golden')).length ? ` · ${Object.keys(listRemoved('golden')).length} removed` : ''}.`
           : kind === 'silver'
-          ? `The Silver-list doctors who aren’t on the Golden List — the same view as the Doctor Grid. ${silverIds().size} doctors · ${LM.dupes} of the list’s ${LM.total} names are on the Golden List instead${Object.keys(listRemoved('silver')).length ? ` · ${Object.keys(listRemoved('silver')).length} removed` : ''}.`
+          ? `The Silver-list doctors who aren’t on the Golden List — the same view as the Doctor Grid. ${silverIds().size} doctors · ${LM.dupes} of the list’s ${LM.total} names are on the Golden List instead${Object.keys(listAdded('silver')).length ? ` · ${Object.keys(listAdded('silver')).length} added` : ''}${Object.keys(listRemoved('silver')).length ? ` · ${Object.keys(listRemoved('silver')).length} removed` : ''}.`
           : 'All accounts as cards — search, sort, click for the full profile.'}</div>
         ${LM && LM.unmatched.length ? `<details class="gl-miss"><summary>${LM.unmatched.length} not found in the lab data</summary>${LM.unmatched.map(u => `<div><b>${esc(u.doc)}</b> <span>${esc(u.prac)}</span></div>`).join('')}</details>` : ''}
       </div>
       <div class="section-actions">
+        ${LM ? `<button class="btn-text" id="glAddBtn">＋ Add a doctor</button>` : ''}
         <button class="btn-text" id="dgExport">⬇ Export Visible</button>
       </div>
     </div>
+    ${LM ? '<div id="glAdd"></div>' : ''}
 
     <div class="filter-bar">
       <div class="search-wrap">
@@ -6419,6 +6451,31 @@ function dgFilteredDocs() {
   return docs;
 }
 
+// DL73: "＋ Add a doctor" on the Golden / Silver tab — search every doctor in the data
+function glBindAdd(kind, label) {
+  const btn = document.getElementById('glAddBtn'), host = document.getElementById('glAdd'); if (!btn || !host || btn._bound) return; btn._bound = true;
+  const onList = id => kind === 'golden' ? isGolden(id) : isSilver(id);
+  const paint = q => {
+    q = String(q || '').trim().toLowerCase();
+    const hits = q.length < 2 ? [] : aggByDoctor().filter(d => !onList(d.drId) && [d.name, d.practice, d.city, d.state].some(v => String(v || '').toLowerCase().includes(q)))
+      .sort((a, b) => b.revenue - a.revenue).slice(0, 10);
+    host.querySelector('.gl-hits').innerHTML = q.length < 2 ? '<div class="text-mut gl-hint">Type at least two letters of a doctor, practice or city.</div>'
+      : hits.length ? hits.map(d => `<div class="gl-hit"><span><b>${goldMark(d.drId)}${esc(d.name)}</b> <small class="text-mut">${esc(d.practice || '')} · ${esc([d.city, d.state].filter(Boolean).join(', '))} · ${fmtUSD(d.revenue)}</small>
+          ${isGolden(d.drId) ? '<small class="gm-tag">⭐ Golden</small>' : isSilver(d.drId) ? '<small class="gm-tag sv">🥈 Silver</small>' : ''}</span>
+          <button type="button" class="btn-text gl-addone" data-id="${esc(d.drId)}" data-nm="${esc(d.name)}">＋ Add${kind === 'golden' && isSilver(d.drId) ? ' (moves from Silver)' : ''}</button></div>`).join('')
+      : '<div class="text-mut gl-hint">No doctor matches that — or they’re already on this list.</div>';
+    host.querySelectorAll('.gl-addone').forEach(b => b.addEventListener('click', async () => {
+      const how = await listAdd(kind, b.dataset.id, b.dataset.nm); toast(`${b.dataset.nm} added to the ${label} — ${settingsSaidHow(how)}`); renderDoctorGrid(kind); }));
+  };
+  btn.addEventListener('click', () => {
+    if (host.innerHTML) { host.innerHTML = ''; return; }
+    host.innerHTML = `<div class="card gl-addcard"><div class="gl-addhead"><b>＋ Add a doctor to the ${label}</b><button type="button" class="btn-text" id="glAddX">Close ✕</button></div>
+      <input type="text" class="search-input" id="glAddQ" placeholder="Search a doctor, practice or city…" autocomplete="off"><div class="gl-hits"></div></div>`;
+    const q = document.getElementById('glAddQ'); q.focus(); paint('');
+    q.addEventListener('input', () => paint(q.value));
+    document.getElementById('glAddX').onclick = () => { host.innerHTML = ''; };
+  });
+}
 // DL66: removing / restoring a doctor on the Golden or Silver tab
 function dgBindRemove(grid) {
   const kind = DGRID === DG_GOLD ? 'golden' : DGRID === DG_SILV ? 'silver' : null;
@@ -6433,12 +6490,19 @@ function dgBindRemove(grid) {
     toast(`${b.dataset.nm} removed from the ${label} — ${settingsSaidHow(how)}${moved ? '. They’re on the Silver list file, so they now show as 🥈 Silver' : ''}`);
     renderDoctorGrid(kind);
   }));
-  const R = listRemoved(kind), ids = Object.keys(R);
+  const R = listRemoved(kind), ids = Object.keys(R), A = listAdded(kind), aids = Object.keys(A);
   if (!box) return;
-  box.innerHTML = ids.length ? `<details class="card gl-removed"><summary>Removed from the ${label} — ${ids.length}</summary>
+  const addedHTML = aids.length ? `<details class="card gl-removed"><summary>Added to the ${label} — ${aids.length}</summary>
+    ${aids.sort((a, b) => String(A[a].name).localeCompare(String(A[b].name))).map(id => `<div class="gl-rrow"><span><b>${esc(A[id].name || id)}</b>
+      <small class="text-mut"> · added ${A[id].at ? esc(new Date(A[id].at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })) : ''}</small></span>
+      <button type="button" class="btn-text gl-unadd" data-id="${esc(id)}" data-nm="${esc(A[id].name || '')}">✕ Take off the list</button></div>`).join('')}</details>` : '';
+  box.innerHTML = addedHTML + (ids.length ? `<details class="card gl-removed"><summary>Removed from the ${label} — ${ids.length}</summary>
     ${ids.sort((a, b) => String(R[a].name).localeCompare(String(R[b].name))).map(id => `<div class="gl-rrow"><span><b>${esc(R[id].name || id)}</b>
       <small class="text-mut"> · removed ${R[id].at ? esc(new Date(R[id].at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })) : ''}</small></span>
-      <button type="button" class="btn-text gl-restore" data-id="${esc(id)}">↩ Put back</button></div>`).join('')}</details>` : '';
+      <button type="button" class="btn-text gl-restore" data-id="${esc(id)}">↩ Put back</button></div>`).join('')}</details>` : '');
+  box.querySelectorAll('.gl-unadd').forEach(b => b.addEventListener('click', async () => {
+    const how = await listRemove(kind, b.dataset.id, b.dataset.nm); toast(`${b.dataset.nm} taken off the ${label} — ${settingsSaidHow(how)}`); renderDoctorGrid(kind); }));
+  glBindAdd(kind, label);
   box.querySelectorAll('.gl-restore').forEach(b => b.addEventListener('click', async () => {
     const how = await listRestore(kind, b.dataset.id); toast(`Put back on the ${label} — ${settingsSaidHow(how)}`); renderDoctorGrid(kind); }));
 }
@@ -6481,7 +6545,7 @@ function drawDGrid() {
             <div class="dr-loc">${esc(d.city || '—')}${d.state ? ', ' + esc(d.state) : ''}</div>
             ${statusBadgeHTML(d.drId, 'sm')}
           </div>
-          <div class="dr-card-r">${tag}${DGRID === DG_GOLD || DGRID === DG_SILV ? `<button type="button" class="gl-rm" data-rm="${esc(d.drId)}" data-nm="${esc(d.name)}" title="Remove from the ${DGRID === DG_GOLD ? 'Golden' : 'Silver'} List">✕ Remove</button>` : ''}</div>
+          <div class="dr-card-r">${tag}${d.remakeRate > 0 || d.remakeCaseRate > 0 ? `<small class="rc-sub" title="Cases remade ÷ cases">by case ${fmtPct(d.remakeCaseRate)}</small>` : ''}${DGRID === DG_GOLD || DGRID === DG_SILV ? `<button type="button" class="gl-rm" data-rm="${esc(d.drId)}" data-nm="${esc(d.name)}" title="Remove from the ${DGRID === DG_GOLD ? 'Golden' : 'Silver'} List">✕ Remove</button>` : ''}</div>
         </div>
         <div class="dr-stats">
           <div><label>Revenue</label><div class="val">${fmtUSD(d.revenue)}</div></div>
@@ -6583,6 +6647,7 @@ function renderDoctorDetail() {
   const totalUnits = cases.reduce((s,r) => s + r.qty, 0);
   const caseCount = countCases(cases);
   const remakes = countCases(cases.filter(r => r.remake));
+  const caseBaseK = countCases(cases.filter(r => r.rmQty > 0));   // DL72: the by-case base
   const remakeUnitsK = cases.reduce((s, r) => s + (r.remake ? (r.rmRem || 0) : 0), 0);
   const allUnitsK    = cases.reduce((s, r) => s + (r.rmQty || 0), 0);   // main products
   const onHold = cases.filter(r => r.onHold).length;
@@ -6666,6 +6731,9 @@ function renderDoctorDetail() {
           <span>${esc(s.drName)}</span>
           ${statusBadgeHTML(APP.selectedDoctorId, 'lg')}
           ${isGolden(APP.selectedDoctorId) ? '<span class="gm-tag">⭐ Golden List</span>' : isSilver(APP.selectedDoctorId) ? '<span class="gm-tag sv">🥈 Silver List</span>' : ''}
+          <span class="dd-gl">${isGolden(APP.selectedDoctorId) ? '<button type="button" class="btn-text" data-gl="rm:golden">✕ Remove from Golden</button>'
+            : isSilver(APP.selectedDoctorId) ? '<button type="button" class="btn-text" data-gl="add:golden">⭐ Move to Golden</button><button type="button" class="btn-text" data-gl="rm:silver">✕ Remove from Silver</button>'
+            : '<button type="button" class="btn-text" data-gl="add:golden">＋ ⭐ Golden</button><button type="button" class="btn-text" data-gl="add:silver">＋ 🥈 Silver</button>'}</span>
           ${(() => { const q = quietInfo().get(APP.selectedDoctorId), L = q && quietLevel(q.bd); return L ? `<span class="qm-tag qm-${L[1]}" title="${esc(quietTip(q))}"><b>!</b> ${bdWord(q.bd)} since the last case${q.usual ? ` · usually every ${q.usual}` : ''}</span>` : ''; })()}
         </div>
         ${ddPracticeTabs.length === 1
@@ -6696,7 +6764,7 @@ function renderDoctorDetail() {
       <div class="kpi"><div class="kpi-label">Revenue (filtered)</div><div class="kpi-value">${fmtUSDFull(totalRev)}</div></div>
       <div class="kpi"><div class="kpi-label">Cases</div><div class="kpi-value">${fmtN(caseCount)}</div><div class="kpi-sub">${fmtN(totalUnits)} units</div></div>
       <div class="kpi"><div class="kpi-label">Avg Case</div><div class="kpi-value">${fmtUSDFull(caseCount ? totalRev/caseCount : 0)}</div></div>
-      <div class="kpi"><div class="kpi-label">Remake Rate</div><div class="kpi-value">${fmtPct(allUnitsK ? remakeUnitsK/allUnitsK : 0)}</div><div class="kpi-sub">${fmtN(remakeUnitsK)} of ${fmtN(allUnitsK)} units</div></div>
+      <div class="kpi"><div class="kpi-label">Remake Rate</div><div class="kpi-value">${fmtPct(allUnitsK ? remakeUnitsK/allUnitsK : 0)}</div><div class="kpi-sub">${fmtN(remakeUnitsK)} of ${fmtN(allUnitsK)} units · <b>by case ${fmtPct(caseBaseK ? remakes / caseBaseK : 0)}</b> (${fmtN(remakes)} of ${fmtN(caseBaseK)})</div></div>
       <div class="kpi"><div class="kpi-label">Avg Turnaround</div><div class="kpi-value">${ddTat == null ? '—' : ddTat.toFixed(1) + '<span class="sup">days</span>'}</div><div class="kpi-sub">entry → invoiced · 90% within ${fmtTat(tatP90(tatValues(cases)))} days${tatExclHolds() ? ' · hold days excluded' : ''}<br>${tatToggleHTML()}</div></div>
       ${onTimeKpiHTML(ddOnTime)}
       <div class="kpi"><div class="kpi-label">On Hold</div><div class="kpi-value">${onHold}</div><div class="kpi-sub">cases delayed</div></div>
@@ -6792,6 +6860,11 @@ function renderDoctorDetail() {
     </div>
   `;
 
+  el.querySelectorAll('[data-gl]').forEach(b => b.addEventListener('click', async () => {   // DL73: add to / remove from the lists
+    const [act, kind] = b.dataset.gl.split(':'), id = APP.selectedDoctorId, nm = s.drName, label = kind === 'golden' ? '⭐ Golden List' : '🥈 Silver List';
+    if (act === 'rm' && !confirm(`Remove ${nm} from the ${label}?`)) return;
+    const how = act === 'add' ? await listAdd(kind, id, nm) : await listRemove(kind, id, nm);
+    toast(`${nm} ${act === 'add' ? 'added to' : 'removed from'} the ${label} — ${settingsSaidHow(how)}`); renderDoctorDetail(); }));
   document.getElementById('ddBack').addEventListener('click', () => switchTab('docgrid'));
 
   /* Practice tabs: selecting one re-renders the whole detail view scoped to that
@@ -12105,7 +12178,7 @@ function rmkRollup(rows) {
   const o = { units: 0, remade: 0, cases: new Set(), remCases: new Set(), disc: 0, docs: new Set(), vague: 0,
               byCat: new Map(), byProd: new Map(), byReason: new Map(), byDoc: new Map(), byMonth: new Map(), lines: new Map() };
   const get = (m, k, init) => m.get(k) || m.set(k, init()).get(k);
-  const unit = () => ({ units: 0, rem: 0, cases: new Set(), reasons: {}, prods: {}, last: null });
+  const unit = () => ({ units: 0, rem: 0, cases: new Set(), bc: new Set(), reasons: {}, prods: {}, last: null });   // bc: the by-case base
   for (const r of rows) {
     if (!r || !(r.rmQty > 0 || r.rmUnitsP > 0)) continue;   // DL67–68: counted lines, and every unit of a product for its own rate
     const q = r.rmQty || 0, qp = r.rmUnitsP || 0, cat = r.productCat || 'Other';
@@ -12114,6 +12187,7 @@ function rmkRollup(rows) {
     const d = r.drId ? get(o.byDoc, r.drId, () => ({ ...unit(), name: r.drName, practice: r.practice || '' })) : null;
     const m = r.anchorDate ? get(o.byMonth, monthKey(r.anchorDate), () => ({ units: 0, rem: 0 })) : null;
     c.units += qp; p.units += qp; if (d) d.units += q; if (m) m.units += q;   // a product / type: its own units; a doctor / month: the lab's
+    if (r.caseKey) { if (qp > 0) { c.bc.add(r.caseKey); p.bc.add(r.caseKey); } if (d && q > 0) d.bc.add(r.caseKey); }
     const qpr = r.rmRemP || 0;   // DL70: a product / type — remade as the data marks each line
     if (qpr > 0) { const wp = String(r.remakeReason || '').trim(), sp = rmkSpecific(wp);
       [c, p].forEach(x => { x.rem += qpr; if (r.caseKey) x.cases.add(r.caseKey); if (sp) x.reasons[wp] = (x.reasons[wp] || 0) + qpr;
@@ -12160,19 +12234,19 @@ function rmkDraw(id) {
 }
 function rmkSections(R) {
   const n = v => fmtN(Math.round(v || 0)), top = o => { const t = rmkTop(o); return t ? esc(t) : '<span class="text-mut">—</span>'; };
-  const types = [...R.byCat.entries()].filter(([, c]) => c.rem > 0).map(([k, c]) => ({ name: k, units: c.units, rem: c.rem, rate: c.units ? c.rem / c.units : null, cases: c.cases.size, reasons: c.reasons }));
-  const prods = [...R.byProd.entries()].filter(([, p]) => p.rem > 0).map(([k, p]) => ({ name: k, cat: p.cat, units: p.units, rem: p.rem, rate: p.units ? p.rem / p.units : null, cases: p.cases.size, reasons: p.reasons }));
+  const types = [...R.byCat.entries()].filter(([, c]) => c.rem > 0).map(([k, c]) => ({ name: k, units: c.units, rem: c.rem, rate: c.units ? c.rem / c.units : null, cases: c.cases.size, bcases: c.bc.size, caseRate: c.bc.size ? c.cases.size / c.bc.size : null, reasons: c.reasons }));
+  const prods = [...R.byProd.entries()].filter(([, p]) => p.rem > 0).map(([k, p]) => ({ name: k, cat: p.cat, units: p.units, rem: p.rem, rate: p.units ? p.rem / p.units : null, cases: p.cases.size, bcases: p.bc.size, caseRate: p.bc.size ? p.cases.size / p.bc.size : null, reasons: p.reasons }));
   const spec = R.remade - R.vague;
   const reasons = [...R.byReason.entries()].map(([k, x]) => ({ name: k, rem: x.rem, share: spec ? x.rem / spec : 0, cases: x.cases.size, docs: x.docs.size,
     prods: Object.entries(x.prods).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([pn, u]) => pn + ' (' + fmtN(u) + ')').join(' · ') }));
   const docs = [...R.byDoc.entries()].filter(([, d]) => d.rem > 0).map(([id, d]) => ({ _dr: id, name: d.name, practice: d.practice, units: d.units, rem: d.rem,
-    rate: d.units ? d.rem / d.units : null, cases: d.cases.size, reasons: d.reasons, prods: d.prods, last: d.last }));
+    rate: d.units ? d.rem / d.units : null, cases: d.cases.size, bcases: d.bc.size, caseRate: d.bc.size ? d.cases.size / d.bc.size : null, reasons: d.reasons, prods: d.prods, last: d.last }));
   const lines = [...R.lines.values()];
   return { types, prods, reasons, docs, lines, cols: {
     types: [{ k: 'name', l: 'Product type', f: x => `<b>${esc(x.name)}</b>` }, { k: 'rem', l: 'Remade units', num: 1, f: x => n(x.rem) }, { k: 'units', l: 'Units', num: 1, f: x => n(x.units) },
-            { k: 'rate', l: 'Remake rate', num: 1, f: x => rmkPct(x.rate) }, { k: 'cases', l: 'Remade cases', num: 1, f: x => n(x.cases) }, { k: 'top', l: 'Top reason', x: x => rmkTop(x.reasons), f: x => top(x.reasons) }],
+            { k: 'rate', l: 'Remake rate', num: 1, f: x => rmkPct(x.rate) }, { k: 'cases', l: 'Remade cases', num: 1, f: x => n(x.cases) }, { k: 'caseRate', l: 'Rate by case', num: 1, f: x => rmkPct(x.caseRate) }, { k: 'top', l: 'Top reason', x: x => rmkTop(x.reasons), f: x => top(x.reasons) }],
     prods: [{ k: 'name', l: 'Product', f: x => `<b>${esc(x.name)}</b><div class="rmk-sub">${esc(x.cat)}</div>` }, { k: 'rem', l: 'Remade units', num: 1, f: x => n(x.rem) }, { k: 'units', l: 'Units', num: 1, f: x => n(x.units) },
-            { k: 'rate', l: 'Remake rate', num: 1, f: x => rmkPct(x.rate) }, { k: 'cases', l: 'Remade cases', num: 1, f: x => n(x.cases) }, { k: 'top', l: 'Top reason', x: x => rmkTop(x.reasons), f: x => top(x.reasons) }],
+            { k: 'rate', l: 'Remake rate', num: 1, f: x => rmkPct(x.rate) }, { k: 'cases', l: 'Remade cases', num: 1, f: x => n(x.cases) }, { k: 'caseRate', l: 'Rate by case', num: 1, f: x => rmkPct(x.caseRate) }, { k: 'top', l: 'Top reason', x: x => rmkTop(x.reasons), f: x => top(x.reasons) }],
     reasons: [{ k: 'name', l: 'Reason', f: x => `<b>${esc(x.name)}</b>` }, { k: 'rem', l: 'Remade units', num: 1, f: x => n(x.rem) }, { k: 'share', l: 'Share', num: 1, f: x => rmkPct(x.share) },
               { k: 'cases', l: 'Cases', num: 1, f: x => n(x.cases) }, { k: 'docs', l: 'Doctors', num: 1, f: x => n(x.docs) }, { k: 'prods', l: 'Products most remade for it', f: x => `<span class="rmk-sub">${esc(x.prods)}</span>` }] } };
 }
@@ -12230,8 +12304,8 @@ function renderRemakes() {
       <div class="section-actions"><button class="btn-text" id="rmkXlsx">⬇ Excel report</button></div>
     </div>
     <div class="rmk-kpis">
-      ${kpi('Remake rate', rmkPct(rate), `remade units ÷ units — the lab’s only ${ptsBadge(rate, pRate)}`)}
-      ${kpi('Remade units', fmtN(R.remade), `of ${fmtN(R.units)} units · ${fmtN(R.remCases.size)} cases${P ? ` · ${fmtN(P.remade)} the period before` : ''}`)}
+      ${kpi('Remake rate', rmkPct(rate), `remade units ÷ units — the lab’s only ${ptsBadge(rate, pRate)}<br><b>by case ${rmkPct(caseRate)}</b> — cases remade ÷ cases ${ptsBadge(caseRate, pCaseRate)}`)}
+      ${kpi('Remade units', fmtN(R.remade), `of ${fmtN(R.units)} units · ${fmtN(R.remCases.size)} of ${fmtN(R.cases.size)} cases${P ? ` · ${fmtN(P.remade)} units the period before` : ''}`)}
       ${kpi('Not counted', fmtN(NC.doctor + NC.adjustment), `units · 🩺 ${fmtN(NC.doctor)} doctor-side · 🔧 ${fmtN(NC.adjustment)} adjustments`)}
       ${kpi('Credits given', fmtUSD(R.disc), 'remake discounts')}
       ${kpi('Doctors with a remake', fmtN(R.docs.size), `of ${fmtN(R.byDoc.size)} sending`)}
@@ -12309,7 +12383,7 @@ function rmkPaintView() {
     const card = x => `<div class="rmk-dcard" data-dr="${esc(x._dr)}" title="Open Doctor Detail">
         <div class="rmk-dname">${goldMark(x._dr)}${esc(x.name)} ${quietMark(quietInfo().get(x._dr))}</div>
         <div class="rmk-sub">${esc(x.practice || '—')}</div>
-        <div class="rmk-dstats"><div><b>${fmtN(x.rem)}</b><small>remade units</small></div><div><b>${rmkPct(x.rate)}</b><small>of ${fmtN(x.units)} units</small></div>
+        <div class="rmk-dstats"><div><b>${fmtN(x.rem)}</b><small>remade units</small></div><div><b>${rmkPct(x.rate)}</b><small>of ${fmtN(x.units)} units</small></div><div><b>${rmkPct(x.caseRate)}</b><small>by case · ${fmtN(x.cases)} of ${fmtN(x.bcases)}</small></div>
           <div><b>${fmtN(x.cases)}</b><small>cases</small></div><div><b>${x.last ? esc(fmtDateShort(x.last)) : '—'}</b><small>last remake</small></div></div>
         <div class="rmk-dline"><span>Remade:</span> ${Object.entries(x.prods).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([pn, u]) => `${esc(pn)} <b>${fmtN(u)}</b>`).join(' · ')}</div>
         ${rmkTopN(x.reasons, 2).length ? `<div class="rmk-dline"><span>Why:</span> ${rmkTopN(x.reasons, 2).map(([k, u]) => `<span class="rm-chip">${esc(k)} <b>${fmtN(u)}</b></span>`).join(' ')}</div>` : ''}
@@ -12361,14 +12435,14 @@ async function rmkWorkbook(R, S, lo, hi, k) {
     [['Remake rate (units)', k.rate, '0.0%'], ['Remake rate, period before', k.pRate, '0.0%'], ['Remade units', R.remade, '#,##0'], ['Units (main products)', R.units, '#,##0'],
      ['Remake cases', R.remCases.size, '#,##0'], ['Case remake rate', k.caseRate, '0.0%'], ['Credits given', R.disc, '$#,##0'], ['Doctors with a remake', R.docs.size, '#,##0']]
       .forEach(([l, v, f]) => { r++; const row = ws.getRow(r); row.values = [l, v]; row.getCell(2).numFmt = f; row.getCell(1).font = { bold: true }; }); }
-  sheet('By product type', 'Remakes by product type', [['Product type', 34], ['Units', 11, '#,##0'], ['Remade units', 13, '#,##0'], ['Remake rate', 12, '0.0%'], ['Remake cases', 13, '#,##0'], ['Top reason', 36]],
-    S.types.sort((a, b) => b.rem - a.rem).map(x => [x.name, x.units, x.rem, x.rate, x.cases, rmkTop(x.reasons)]));
-  sheet('By product', 'Remakes by product', [['Product', 52], ['Type', 28], ['Units', 11, '#,##0'], ['Remade units', 13, '#,##0'], ['Remake rate', 12, '0.0%'], ['Remake cases', 13, '#,##0'], ['Top reason', 36]],
-    S.prods.sort((a, b) => b.rem - a.rem).map(x => [x.name, x.cat, x.units, x.rem, x.rate, x.cases, rmkTop(x.reasons)]));
+  sheet('By product type', 'Remakes by product type', [['Product type', 34], ['Units', 11, '#,##0'], ['Remade units', 13, '#,##0'], ['Remake rate', 12, '0.0%'], ['Remake cases', 13, '#,##0'], ['Rate by case', 12, '0.0%'], ['Top reason', 36]],
+    S.types.sort((a, b) => b.rem - a.rem).map(x => [x.name, x.units, x.rem, x.rate, x.cases, x.caseRate, rmkTop(x.reasons)]));
+  sheet('By product', 'Remakes by product', [['Product', 52], ['Type', 28], ['Units', 11, '#,##0'], ['Remade units', 13, '#,##0'], ['Remake rate', 12, '0.0%'], ['Remake cases', 13, '#,##0'], ['Rate by case', 12, '0.0%'], ['Top reason', 36]],
+    S.prods.sort((a, b) => b.rem - a.rem).map(x => [x.name, x.cat, x.units, x.rem, x.rate, x.cases, x.caseRate, rmkTop(x.reasons)]));
   sheet('By reason', 'Remakes by reason', [['Reason', 36], ['Remade units', 13, '#,##0'], ['Share', 9, '0.0%'], ['Cases', 9, '#,##0'], ['Doctors', 9, '#,##0'], ['Products most remade for it', 80]],
     S.reasons.sort((a, b) => b.rem - a.rem).map(x => [x.name, x.rem, x.share, x.cases, x.docs, x.prods]));
-  sheet('By doctor', 'Remakes by doctor', [['Doctor', 28], ['Practice', 36], ['Golden / Silver', 14], ['Units', 11, '#,##0'], ['Remade units', 13, '#,##0'], ['Remake rate', 12, '0.0%'], ['Remake cases', 13, '#,##0'], ['Top reason', 36]],
-    S.docs.sort((a, b) => b.rem - a.rem).map(x => [x.name, x.practice, isGolden(x._dr) ? 'Golden' : isSilver(x._dr) ? 'Silver' : '', x.units, x.rem, x.rate, x.cases, rmkTop(x.reasons)]));
+  sheet('By doctor', 'Remakes by doctor', [['Doctor', 28], ['Practice', 36], ['Golden / Silver', 14], ['Units', 11, '#,##0'], ['Remade units', 13, '#,##0'], ['Remake rate', 12, '0.0%'], ['Remake cases', 13, '#,##0'], ['Rate by case', 12, '0.0%'], ['Top reason', 36]],
+    S.docs.sort((a, b) => b.rem - a.rem).map(x => [x.name, x.practice, isGolden(x._dr) ? 'Golden' : isSilver(x._dr) ? 'Silver' : '', x.units, x.rem, x.rate, x.cases, x.caseRate, rmkTop(x.reasons)]));
   sheet('Remade units', 'Every remake (one row per case and product) · Reason blank = no specific reason recorded', [['Date', 12, 'm/d/yyyy'], ['Doctor', 28], ['Practice', 36], ['Product remade', 52], ['Reason', 36], ['Units', 9, '#,##0'], ['Case', 14]],
     S.lines.sort((a, b) => (b.date || 0) - (a.date || 0)).map(x => [x.date ? new Date(Date.UTC(x.date.getFullYear(), x.date.getMonth(), x.date.getDate())) : null, x.name || '', x.practice || '', x.product, x.reason || '', x.qty, x.caseNo]));
   return wb;
@@ -12803,7 +12877,7 @@ function drawPGrid(all) {
             <div class="dr-name">${esc(p.name)}</div>
             <div class="dr-loc">${esc(p.category)}</div>
           </div>
-          ${tag}
+          <div class="dr-card-r">${tag}${p.remakeRate > 0 || p.remakeCaseRate > 0 ? `<small class="rc-sub" title="Cases remade ÷ cases with this product">by case ${fmtPct(p.remakeCaseRate)}</small>` : ''}</div>
         </div>
         <div class="dr-stats">
           <div><label>Revenue</label><div class="val">${fmtUSD(p.revenue)}</div></div>
@@ -12852,6 +12926,7 @@ function renderProductDetail() {
   const totalUnits = cases.reduce((s,r) => s + r.qty, 0);
   const caseCount = countCases(cases);
   const remakes = countCases(cases.filter(r => r.rmRemP > 0));   // DL70: as marked
+  const caseBaseK = countCases(cases.filter(r => r.rmUnitsP > 0));   // DL72: cases with this product
   const remakeUnitsK = cases.reduce((s, r) => s + (r.rmRemP || 0), 0);
   const allUnitsK    = cases.reduce((s, r) => s + (r.rmUnitsP || 0), 0);   // main products
   const sample = cases[0];
@@ -12931,7 +13006,7 @@ function renderProductDetail() {
       <div class="kpi"><div class="kpi-label">Cases</div><div class="kpi-value">${fmtN(caseCount)}</div></div>
       <div class="kpi"><div class="kpi-label">Units</div><div class="kpi-value">${fmtN(totalUnits)}</div></div>
       <div class="kpi"><div class="kpi-label">Avg Unit $</div><div class="kpi-value">${fmtUSDFull(totalUnits ? totalRev/totalUnits : 0)}</div></div>
-      <div class="kpi"><div class="kpi-label">Remake Rate</div><div class="kpi-value">${fmtPct(allUnitsK ? remakeUnitsK/allUnitsK : 0)}</div><div class="kpi-sub">${fmtN(remakeUnitsK)} of ${fmtN(allUnitsK)} units</div></div>
+      <div class="kpi"><div class="kpi-label">Remake Rate</div><div class="kpi-value">${fmtPct(allUnitsK ? remakeUnitsK/allUnitsK : 0)}</div><div class="kpi-sub">${fmtN(remakeUnitsK)} of ${fmtN(allUnitsK)} units · <b>by case ${fmtPct(caseBaseK ? remakes / caseBaseK : 0)}</b> (${fmtN(remakes)} of ${fmtN(caseBaseK)})</div></div>
       ${onTimeKpiHTML(pdOnTime)}
     </div>
 
@@ -15691,6 +15766,7 @@ function rpAdd(b, r, perProduct) {
   // `rows` is the distinct CASE count (named rows for backwards compatibility)
   addCase(b.caseSet, r.caseKey);
   b.rows = b.caseSet.size;
+  if (((perProduct ? r.rmUnitsP : r.rmQty) || 0) > 0 && r.caseKey) { if (!b.rmCaseSet) b.rmCaseSet = new Set(); b.rmCaseSet.add(r.caseKey); }   // DL72: the by-case base
   b.uAll = (b.uAll || 0) + ((perProduct ? r.rmUnitsP : r.rmQty) || 0); { const ru = perProduct ? (r.rmRemP || 0) : (r.remake ? (r.rmRem || 0) : 0); if (ru > 0) { addCase(b.remakeSet, r.caseKey); b.remakes = b.remakeSet.size; b.remakeUnits = (b.remakeUnits || 0) + ru; } }
   addTat(b, r);
 }
@@ -15699,6 +15775,7 @@ function rpMetrics(b) {
     rev: b.rev,
     units: b.units,
     remake: b.uAll ? ((b.remakeUnits || 0) / b.uAll) * 100 : null,   // by unit
+    remakeCase: b.rmCaseSet && b.rmCaseSet.size ? (b.remakeSet.size / b.rmCaseSet.size) * 100 : null,   // DL72: by case
     tat: b.tatN ? b.tatSum / b.tatN : null
   };
 }
@@ -15789,7 +15866,8 @@ function rpCell(curM, prevM, metric) {
   const s = fmts[metric];
   const cur = curM[metric], prev = prevM[metric];
   return '<div style="font-weight:700;color:#0f172a">' + s.v(cur) + '</div>' +
-         '<div style="font-size:11px">' + rpDeltaHTML(cur, prev, s.f, s.gd, s.u) + '</div>';
+         '<div style="font-size:11px">' + rpDeltaHTML(cur, prev, s.f, s.gd, s.u) + '</div>' +
+         (metric === 'remake' && curM.remakeCase != null ? '<div style="font-size:11px;color:#64748b">by case ' + curM.remakeCase.toFixed(1) + '%</div>' : '');
 }
 /* "See Dashboard →" — opens the dashboard on the report's own tab (…/#golden).
    Only when the report is built from the dashboard's web address. */
@@ -16869,7 +16947,7 @@ function rpBuildRemakesReport() {
     '<tr>' + td('<b style="color:#0f172a">' + l + '</b><div style="font-size:11px;color:#64748b">' + sub + '</div>') +
     td('<b style="font-size:15px;color:#0f172a">' + pct(rate(a)) + '</b>' + ptsChg(rate(a), rate(b))) +
     td('<b style="font-size:15px;color:#0f172a">' + fmtN(a.remade) + '</b>' + numChg(a.remade, b.remade) + '<div style="font-size:11px;color:#64748b">of ' + fmtN(a.units) + ' units</div>') +
-    td('<b style="font-size:15px;color:#0f172a">' + fmtN(a.remCases.size) + '</b>' + numChg(a.remCases.size, b.remCases.size)) +
+    td('<b style="font-size:15px;color:#0f172a">' + fmtN(a.remCases.size) + '</b>' + numChg(a.remCases.size, b.remCases.size) + '<div style="font-size:11px;color:#64748b">of ' + fmtN(a.cases.size) + ' cases · by case <b>' + pct(a.cases.size ? a.remCases.size / a.cases.size : null) + '</b></div>') +
     td('<b style="font-size:15px;color:#0f172a">' + fmtUSD(a.disc) + '</b>') + '</tr>'));
 
   { const nc = rmkNotCounted(rowsIn(0, 29));
