@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.11.10-DL74</title>
+<title>Lab Sales Dashboard v2026.11.10-DL75</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -230,6 +230,10 @@ html, body {
 .gl-hit { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 7px 2px; border-bottom: 1px solid var(--border); font-size: 13px; } .gl-hint { font-size: 12.5px; padding: 8px 2px; }
 .dd-gl { display: inline-flex; gap: 6px; } .dd-gl .btn-text { font-size: 12px; }
 .ed-span2 { grid-column: span 2; } @media (max-width: 760px) { .ed-span2 { grid-column: auto; } }
+.ed-top { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: 16px; align-items: start; }
+.ed-left { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+@media (max-width: 900px) { .ed-top { grid-template-columns: 1fr; } }
+#edMixList:not(.open) .ed-more { display: none !important; } #edMixList.open .ed-rest { display: none !important; }   /* rows carry an inline display:flex */
 /* Golden / Silver removal · remake reason types */
 .dr-card-r { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
 .gl-rm { font: inherit; font-size: 11px; font-weight: 700; color: #b91c1c; background: none; border: 1px solid #fecaca; border-radius: 999px; padding: 1px 8px; cursor: pointer; opacity: .75; }
@@ -2086,7 +2090,7 @@ const APP = {
 
 /* Bump when normalization logic changes, so it's possible to tell at a glance
    (bottom of the Avg Turnaround card) which build a browser is running. */
-const BUILD_ID = 'DL74 · 2026-11-10';
+const BUILD_ID = 'DL75 · 2026-11-10';
 
 const DB_NAME = 'LabOpsCache';
 const DB_STORE = 'datasets';
@@ -12038,10 +12042,14 @@ function edScanHTML(D) {
         </div>`}
       </div>
       ${noTimes ? '' : `<div ${card} style="padding:14px;border:1px solid var(--line,#e6e9ee);border-radius:12px;margin-top:16px">
-        <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:8px"><div style="font-weight:700">Every scan</div>
-          <div class="text-mut" style="font-size:12px" id="edScanCount"></div></div>
-        <div style="overflow-x:auto"><table class="tbl" style="width:100%;font-size:12.5px;border-collapse:collapse" id="edScanTbl"></table></div>
-        <div style="text-align:center;margin-top:8px"><button class="btn-text" id="edScanMore" style="font-size:12px">Show more</button></div>
+        <div id="edScanHead" style="display:flex;align-items:baseline;gap:10px;cursor:pointer;user-select:none" title="Show or hide every scan">
+          <span id="edScanCaret" style="color:#94a3b8;font-size:12px;width:12px">${PROD.edScanOpen ? '▾' : '▸'}</span>
+          <div style="font-weight:700">Every scan</div><div class="text-mut" style="font-size:12px">${D.tasks.length.toLocaleString()} tasks · ${PROD.edScanOpen ? 'click to hide' : 'click to show'}</div></div>
+        <div id="edScanBody" style="display:${PROD.edScanOpen ? 'block' : 'none'};margin-top:8px">
+          <div class="text-mut" style="font-size:12px;margin-bottom:6px" id="edScanCount"></div>
+          <div style="overflow-x:auto"><table class="tbl" style="width:100%;font-size:12.5px;border-collapse:collapse" id="edScanTbl"></table></div>
+          <div style="text-align:center;margin-top:8px"><button class="btn-text" id="edScanMore" style="font-size:12px">Show more</button></div>
+        </div>
       </div>`}
     </div>`;
 }
@@ -12075,6 +12083,10 @@ function edScanBind(D) {
         { label: 'Scanned out', data: hours.map(h => D.hourOut[h]), backgroundColor: '#7c3aed', borderRadius: 3 }] },
       options: { maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: ink, boxWidth: 12 } } }, scales: { x: { ticks: { color: ink } }, y: { ticks: { color: ink }, beginAtZero: true } } } }));
   }
+  { const h = document.getElementById('edScanHead'), body = document.getElementById('edScanBody'), car = document.getElementById('edScanCaret');   // DL75: collapsible
+    if (h && body) h.addEventListener('click', () => { PROD.edScanOpen = !PROD.edScanOpen; body.style.display = PROD.edScanOpen ? 'block' : 'none';
+      if (car) car.textContent = PROD.edScanOpen ? '▾' : '▸'; const hint = h.querySelector('.text-mut');
+      if (hint) hint.textContent = hint.textContent.replace(/click to (show|hide)/, PROD.edScanOpen ? 'click to hide' : 'click to show'); }); }
   const tbl = document.getElementById('edScanTbl'); if (!tbl) return;
   const COLS = [['day', 'Date'], ['case_number', 'Case #'], ['product', 'Product'], ['task', 'Task'], ['in', 'Scanned in'], ['out', 'Scanned out'], ['ms', 'Time in → out']];
   const st = PROD.edScanSort || (PROD.edScanSort = { k: 'in', dir: -1, n: 50 });
@@ -12238,7 +12250,8 @@ async function renderEmployeeDetail() {
             <div style="font-size:21px;font-weight:700;margin-top:2px">${v}</div></div>`).join('')}
     </div>
 
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:16px">
+    <div class="ed-top">
+      <div class="ed-left">
       ${(e.stepMix && e.stepMix.length) ? `<div class="card" style="padding:14px;border:1px solid var(--line,#e6e9ee);border-radius:12px">
         <div style="font-weight:700;margin-bottom:10px">Task / subtask mix</div>
         ${e.stepMix.map(([name,v]) => { const pct = (e.stepUnits || e.units) ? Math.round(v.units/(e.stepUnits || e.units)*100) : 0;
@@ -12250,17 +12263,6 @@ async function renderEmployeeDetail() {
           </div>`; }).join('')}
       </div>` : ''}
       <div class="card" style="padding:14px;border:1px solid var(--line,#e6e9ee);border-radius:12px">
-        <div style="font-weight:700;margin-bottom:10px">Product mix</div>
-        ${e.mix.map(([name,u]) => { const pct = e.units ? Math.round(u/e.units*100) : 0;
-          return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:7px">
-            <div style="flex:1;min-width:0;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(name)}</div>
-            <div style="width:110px;height:7px;background:#eef1f5;border-radius:4px;overflow:hidden;flex:0 0 auto">
-              <div style="width:${pct}%;height:100%;background:#24bfcd"></div></div>
-            <div style="font-size:12px;width:62px;text-align:right">${u.toLocaleString()} <span class="text-mut">${pct}%</span></div>
-          </div>`; }).join('') || '<div class="text-mut">No products recorded.</div>'}
-      </div>
-
-      <div class="card" style="padding:14px;border:1px solid var(--line,#e6e9ee);border-radius:12px">
         <div style="font-weight:700;margin-bottom:10px">Workstations</div>
         ${stations.map(([name,u]) => { const pct = e.units ? Math.round(u/e.units*100) : 0;
           return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:7px">
@@ -12269,6 +12271,24 @@ async function renderEmployeeDetail() {
               <div style="width:${pct}%;height:100%;background:#2a9d8f"></div></div>
             <div style="font-size:12px;width:62px;text-align:right">${u.toLocaleString()} <span class="text-mut">${pct}%</span></div>
           </div>`; }).join('') || '<div class="text-mut">No workstations recorded.</div>'}
+      </div>
+      </div>
+      <div class="card ed-mix" style="padding:14px;border:1px solid var(--line,#e6e9ee);border-radius:12px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+          <div style="font-weight:700;flex:1">Product mix <span class="text-mut" style="font-weight:400;font-size:12px">· ${e.mix.length} product${e.mix.length === 1 ? '' : 's'}</span></div>
+          ${e.mix.length > 10 ? `<button class="btn-text" id="edMixToggle" style="font-size:12px">${PROD.edMixOpen ? 'Show top 10 ▴' : 'Show all ' + e.mix.length + ' ▾'}</button>` : ''}
+        </div>
+        <div id="edMixList" class="${PROD.edMixOpen ? 'open' : ''}">
+        ${e.mix.map(([name,u], i) => { const pct = e.units ? Math.round(u/e.units*100) : 0;
+          return `<div class="${i >= 10 ? 'ed-more' : ''}" style="display:flex;align-items:center;gap:10px;margin-bottom:7px">
+            <div style="flex:1;min-width:0;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(name)}">${esc(name)}</div>
+            <div style="width:110px;height:7px;background:#eef1f5;border-radius:4px;overflow:hidden;flex:0 0 auto">
+              <div style="width:${pct}%;height:100%;background:#24bfcd"></div></div>
+            <div style="font-size:12px;width:62px;text-align:right">${u.toLocaleString()} <span class="text-mut">${pct}%</span></div>
+          </div>`; }).join('') || '<div class="text-mut">No products recorded.</div>'}
+        ${e.mix.length > 10 ? (() => { const rest = e.mix.slice(10), ru = rest.reduce((t, [, u]) => t + u, 0);
+          return `<div class="ed-rest text-mut" style="font-size:12px;padding-top:4px;border-top:1px dashed var(--line,#e6e9ee)">+ ${rest.length} more product${rest.length === 1 ? '' : 's'} · ${ru.toLocaleString()} units (${e.units ? Math.round(ru / e.units * 100) : 0}%)</div>`; })() : ''}
+        </div>
       </div>
     </div>
     ${edScanHTML(ED_SCAN)}
@@ -12325,6 +12345,9 @@ async function renderEmployeeDetail() {
 
   { const a = document.getElementById('edDatesAll'); if (a) a.onclick = ev => { ev.preventDefault(); PROD.from = ''; PROD.to = ''; EG.preset = 'all'; renderEmployeeDetail(); }; }
   document.getElementById('edPick').addEventListener('change', ev => { PROD.employee = ev.target.value; renderEmployeeDetail(); });
+  { const t = document.getElementById('edMixToggle'), l = document.getElementById('edMixList');   // DL75: product mix top 10 / all
+    if (t && l) t.addEventListener('click', () => { PROD.edMixOpen = !PROD.edMixOpen; l.classList.toggle('open', PROD.edMixOpen);
+      t.textContent = PROD.edMixOpen ? 'Show top 10 ▴' : 'Show all ' + e.mix.length + ' ▾'; }); }
   edScanBind(ED_SCAN);
   document.querySelectorAll('.ed-dayrow').forEach(tr => tr.addEventListener('click', () => {
     const k = openKey(tr.dataset.day);
