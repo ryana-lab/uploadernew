@@ -45,7 +45,9 @@ const CHUNK = 2000;   // rows per staging request — the dashboard's size
 const INVOICE_COLS = ['Case_Number', 'Case_Status', 'Case_Received_Date', 'Days_On_Hold', 'On_Hold_Reason', 'Tooth_Number', 'Shade',
   'Dentist_Last_Name', 'Dentist_First_Name', 'Invoice_Date', 'Quantity', 'Unit_Price', 'phone', 'Net_Cost', 'Product_ID', 'Product_Name',
   'email', 'address', 'Scanner_Source', 'Transaction_Type', 'Remake', 'Product_Remake', 'Remake_Qty', 'Remake_Discount', 'Remake_percent',
-  'Remake_Reason', 'Shipped', 'state', 'city', 'dd', 'pracname', 'Put_On_Hold_Date', 'Put_Off_Hold_Date'];
+  'Remake_Reason', 'Shipped', 'state', 'city', 'dd', 'pracname', 'Put_On_Hold_Date', 'Put_Off_Hold_Date',
+  // the NEW JG layout (Nov 2026): price before credit, and the credit applied — case-level credits
+  'Gross_Cost', 'Credit_Discount_Amount'];
 // The production loader reads these (salesly_production_tasks.sql). "patient"
 // is NOT among them: patient names are dropped here, before anything is sent.
 const PRODUCTION_COLS = ['employee', 'attribution', 'workstation', 'department', 'scan_in_date', 'started_at', 'resolved_at', 'is_completed',
@@ -208,21 +210,30 @@ async function main() {
   log('Signed in to Supabase.');
 
   // ── invoices: send every line in the window. The loader recognises a line
-  //    it already has (case, product, tooth, quantity, amount, within a day),
-  //    refreshes its status and holds, and removes surplus copies — the same
-  //    path a CSV upload takes. So nothing is ever stored twice.
-  status.invoices = { fetched: inv.length, loaded: 0, updated: 0, removed: 0 };
+  //    it already has by its identity (case + product + tooth, within a day) and
+  //    UPDATES it — a credit, a $0 remake or a re-dated invoice changes the stored
+  //    line instead of adding a second one. Nothing is ever stored twice.
+  //    REPLACE: the JG report is a complete export of its days, so once the SQL
+  //    is on the NEW layout (it has Gross_Cost), lines no longer in it — voided
+  //    invoices, superseded versions — are removed for those days. Never on the
+  //    old layout (it has no credit lines), and the database refuses a replace
+  //    that would remove more than 10% of a window (a truncated export).
+  const newLayout = !invMissing.has('Gross_Cost');
+  status.invoices = { fetched: inv.length, loaded: 0, updated: 0, removed: 0, replaced: 0, layout: newLayout ? 'new (with credits)' : 'old' };
   if (inv.length) {
     await rpc('lab_stage_reset');
     for (let i = 0; i < inv.length; i += CHUNK) await rpc('lab_stage_rows', { p_rows: inv.slice(i, i + CHUNK) });
-    let batch = null, loaded = 0, updated = 0, removed = 0;
+    let batch = null, loaded = 0, updated = 0, removed = 0, replaced = 0, skipped = false;
     for (let guard = 0; guard < 200; guard++) {
-      const ch = await rpc('lab_load_chunk', { p_batch: batch, p_source: `pilot-auto ${days[0]}..${days[days.length - 1]}`, p_limit: 20000 });
+      const ch = await rpc('lab_load_chunk', { p_batch: batch, p_source: `pilot-auto ${days[0]}..${days[days.length - 1]}`, p_limit: 4000, p_replace: newLayout });   // 4,000 lines a request: inside the 8-second limit for signed-in requests
       batch = ch.batch_id; loaded += Number(ch.loaded || 0); updated += Number(ch.updated || 0); removed += Number(ch.removed || 0);
+      replaced += Number(ch.replaced || 0); skipped = skipped || !!ch.replace_skipped;
       if (ch.done) break;
     }
-    Object.assign(status.invoices, { loaded, updated, removed });
-    log(`Invoices: ${inv.length} lines sent — ${loaded} new, ${updated} already stored (refreshed)${removed ? `, ${removed} surplus copies removed` : ''}.`);
+    Object.assign(status.invoices, { loaded, updated, removed, replaced, replace_skipped: skipped });
+    log(`Invoices (${newLayout ? 'new layout, with credits' : 'old layout'}): ${inv.length} lines sent — ${loaded} new, ${updated} already stored (updated)` +
+        `${removed - replaced ? `, ${removed - replaced} surplus copies removed` : ''}${replaced ? `, ${replaced} no longer in the export removed` : ''}.`);
+    if (skipped) log('WARNING: the database refused to replace these days — over 10% of the stored lines are missing from this export. Check the JG report.');
   } else {
     log('Invoices: Pilot sent no lines for these days.');
   }
