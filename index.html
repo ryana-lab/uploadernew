@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.11.10-DL75</title>
+<title>Lab Sales Dashboard v2026.11.11-DL76</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -1470,6 +1470,7 @@ tr.cs-open td { background: var(--card-2); white-space: normal; cursor: default;
 .sb-log .ok { color: var(--grn); font-weight: 700; }
 .sb-log .warn { color: var(--amb); font-weight: 700; }
 .sb-log .err { color: var(--red); font-weight: 700; }
+.sb-log .warn { color: var(--amb, #b45309); font-weight: 700; }   /* DL76: e.g. "sending is paused" */
 .sb-conn-status { font-size: 13px; margin-left: 8px; }
 .rp-preview { border: 1px solid var(--border); border-radius: 10px; background: #fff; max-height: 520px; overflow-y: auto; padding: 14px; margin-top: 12px; }
 .rp-preview:empty { display: none; }
@@ -2090,7 +2091,7 @@ const APP = {
 
 /* Bump when normalization logic changes, so it's possible to tell at a glance
    (bottom of the Avg Turnaround card) which build a browser is running. */
-const BUILD_ID = 'DL75 · 2026-11-10';
+const BUILD_ID = 'DL76 · 2026-11-11';
 
 const DB_NAME = 'LabOpsCache';
 const DB_STORE = 'datasets';
@@ -8032,12 +8033,25 @@ function prodInRange(r) {
   return true;
 }
 
+/* DL76 — two fixes:
+   • A second caller while a load is already running now WAITS for that load (it used to
+     return "not loaded" at once, so the Employee Grid sometimes drew empty and only filled
+     in after you opened a detail page).
+   • A refused request (expired sign-in, "Admins only") is now an ERROR shown on the page,
+     not silently "no data". The last good data is kept if a reload fails. */
 async function prodLoadAll(force) {
-  if (PROD.loading || (PROD.loaded && !force)) return PROD.loaded;
+  if (PROD.loading && PROD._loadP) return PROD._loadP;
+  if (PROD.loaded && !force) return true;
+  PROD._loadP = prodLoadAllInner();
+  return PROD._loadP;
+}
+async function prodLoadAllInner() {
   const db = pgClient();
   if (!db) return false;
-  PROD.loading = true;
+  PROD.loading = true; PROD.error = null;
+  const missingFn = e => /PGRST202|42883/.test(String(e && e.code)) || /could not find the function|does not exist/i.test(String(e && e.message));
   try {
+    if (!(await pgSessionValid())) { PROD.error = PG_SESSION_MSG; pgSessionExpired(); return false; }
     const rows = [];
     // Pull both shapes: the newer task/subtask export and anything loaded under
     // the older daily rollup, so history from before the format change survives.
@@ -8047,10 +8061,11 @@ async function prodLoadAll(force) {
     ]) {
       let after = 0;
       for (;;) {
-        let data, error;
-        try { ({ data, error } = await db.rpc(src.rpc, { p_after: after, p_limit: 5000 })); }
-        catch (e) { break; }                       // that table/RPC not installed — skip it
-        if (error) break;
+        const { data, error } = await db.rpc(src.rpc, { p_after: after, p_limit: 5000 });
+        if (error) {
+          if (missingFn(error)) break;                 // that table/RPC not installed — skip it
+          throw Object.assign(new Error(error.message || 'The database refused the request'), { pg: error });
+        }
         const got = (data && data.rows) || [];
         if (!got.length) break;
         got.forEach(r => {
@@ -8065,8 +8080,7 @@ async function prodLoadAll(force) {
             /* Rows from the OLDER daily rollup have no task or subtask — only a
                product. Leaving `step` blank keeps them out of the task/subtask
                panel entirely; they still count toward units, cases and the
-               product mix. Setting it to the product name put "Vitality Solid
-               Zirconia" in a panel that is meant to show work steps. */
+               product mix. */
             r.step = '';
           }
           rows.push(r);
@@ -8078,9 +8092,10 @@ async function prodLoadAll(force) {
     PROD.rows = rows; PROD.loaded = true;
     return true;
   } catch (e) {
-    PROD.error = (e && e.message) || String(e);
+    if (pgIsAuthError(e && (e.pg || e)) || !(await pgSessionValid())) { PROD.error = PG_SESSION_MSG; pgSessionExpired(); }
+    else PROD.error = 'Production data could not be loaded: ' + ((e && e.message) || String(e));
     return false;
-  } finally { PROD.loading = false; }
+  } finally { PROD.loading = false; PROD._loadP = null; }
 }
 
 // Roll the raw rows up per person, honouring the date filter.
@@ -8143,12 +8158,16 @@ function prodEmptyState(el, title) {
       <div class="section-title">${title}</div>
       <div class="section-sub">Production data lives in the database, separate from the invoice export.</div>
     </div></div>
-    <div class="empty-state"><div class="empty-icon">🧑‍🔧</div>
+    <div class="empty-state"><div class="empty-icon">${PROD.error === PG_SESSION_MSG ? '🔒' : PROD.error ? '⚠️' : '🧑‍🔧'}</div>
       ${PROD.error ? esc(PROD.error) : 'No production data yet.'}<br>
-      <span class="text-mut" style="font-size:13px">
+      ${PROD.error === PG_SESSION_MSG
+        ? `<button class="btn-primary" style="margin-top:12px" onclick="pgSignInAgain()">🔑 Sign in again</button>`
+        : PROD.error
+        ? `<button class="btn-text" style="margin-top:10px" onclick="PROD.loaded=false;PROD.error=null;switchTab(document.querySelector('.tab-btn.active')?.dataset.tab||'employees')">↻ Try again</button>`
+        : `<span class="text-mut" style="font-size:13px">
         Upload a production export (employee, workstation, product, units) on any tab —
         it is detected automatically and saved to the database.
-      </span>
+      </span>`}
     </div>`;
 }
 
@@ -14189,6 +14208,15 @@ function pgClient() {
   if (!url || !key || !window.supabase) return null;
   try { PG = window.supabase.createClient(url, key, { auth: { persistSession: true } }); }
   catch (e) { PG = null; }
+  if (PG && !PG.__dl76) {   // DL76: a refresh that failed signs the client out — say so
+    PG.__dl76 = true;
+    try {
+      PG.auth.onAuthStateChange((evt) => {
+        if (evt === 'SIGNED_OUT' && !window.__pgSigningOut) { pgUser = null; pgSessionExpired(); }
+        if (evt === 'SIGNED_IN' || evt === 'TOKEN_REFRESHED') { const b = document.getElementById('pgSessionBanner'); if (b) b.remove(); }
+      });
+    } catch (e) {}
+  }
   return PG;
 }
 function pgReset() { PG = null; }
@@ -14304,14 +14332,54 @@ async function pgSignIn(email, password) {
   const { data, error } = await db.auth.signInWithPassword({ email: email.trim(), password });
   if (error) throw new Error(error.message);
   pgUser = data.user;
+  pgSessionRestored();   // DL76: clear the "expired" banner and reload the production data
   return pgUser;
 }
 async function pgSignOut() {
   const db = pgClient();
+  window.__pgSigningOut = true;            // a sign-out the user asked for is not an "expired session"
   if (db) { try { await db.auth.signOut(); } catch (e) {} }
+  window.__pgSigningOut = false;
   pgUser = null;
   pgReset();
   renderBridge();
+}
+
+/* ══ DL76: an EXPIRED SIGN-IN is said out loud ════════════════════════════════
+   Sign-ins have a time limit (Authentication → Sessions). Once one lapses, the
+   browser talks to the database as an anonymous visitor: production pages came up
+   empty and saving reports failed with a row-level-security error. Now a banner
+   says so, with a button straight to the sign-in form. Triggers: Supabase's own
+   SIGNED_OUT signal (a refresh that failed), and any load/save that is refused. */
+const PG_SESSION_MSG = 'Your sign-in has expired — sign in again to load and save data.';
+async function pgSessionValid() {
+  const db = pgClient(); if (!db) return false;
+  try { const { data, error } = await db.auth.getUser(); return !error && !!(data && data.user); }
+  catch (e) { return false; }
+}
+function pgIsAuthError(e) {
+  const t = String((e && (e.message || e.msg)) || e || '') + ' ' + String((e && e.code) || '') + ' ' + String((e && e.status) || '');
+  return /\bJWT\b|jwt expired|PGRST30[0-3]|invalid claim|refresh token|session (has )?expired|not signed in|\b401\b/i.test(t);
+}
+function pgSessionExpired() {
+  if (document.getElementById('pgSessionBanner')) return;
+  const b = document.createElement('div');
+  b.id = 'pgSessionBanner';
+  b.setAttribute('role', 'alert');
+  b.style.cssText = 'position:sticky;top:0;z-index:60;display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 16px;margin:0 0 12px;background:#fef3c7;border:1px solid #f59e0b;border-radius:10px;color:#78350f;font-size:13.5px';
+  b.innerHTML = '<span style="font-size:18px">🔒</span><span style="flex:1;min-width:220px"><b>Your sign-in has expired.</b> Data can’t load or save until you sign in again.</span>' +
+    '<button class="btn-primary" style="padding:6px 14px" onclick="pgSignInAgain()">🔑 Sign in again</button>';
+  const host = document.querySelector('.content') || document.body;   // the area that holds the tab pages
+  host.insertBefore(b, host.firstChild);
+}
+async function pgSignInAgain() {
+  await pgSignOut();                       // clears the dead session so the sign-in form shows
+  switchTab('bridge');
+  setTimeout(() => { const f = document.querySelector('#panel-bridge input[type="email"], #panel-bridge input'); if (f) f.focus(); }, 300);
+}
+function pgSessionRestored() {
+  const b = document.getElementById('pgSessionBanner'); if (b) b.remove();
+  if (PROD.error === PG_SESSION_MSG) { PROD.error = null; PROD.loaded = false; }
 }
 
 function pgRequire() {
@@ -17258,7 +17326,10 @@ async function rpPost(action) {
     rpLog('  ' + rows.length + ' reports · ' + kb + ' KB → storing…');
 
     const { error } = await db.from('reports').upsert(rows, { onConflict: 'key' });
-    if (error) throw new Error(error.message);
+    if (error) {
+      if (pgIsAuthError(error) || !(await pgSessionValid())) { pgSessionExpired(); throw new Error(PG_SESSION_MSG + ' (🔗 Salesly Bridge → Sign out, then sign in.)'); }
+      throw new Error(error.message);
+    }
     rpLog('  stored ✓');
 
     // The nightly cron and this button both call the same Edge Function; it reads
@@ -17275,8 +17346,11 @@ async function rpPost(action) {
       }
       const res = data || {};
       if (res.ok === false) throw new Error('send-reports: ' + String(res.error || 'failed').slice(0, 260));
+      // DL76: sending can be paused (app_settings.reports_paused) — that is not a failure
+      if (res.paused) {
+        rpLog('  ⏸ Report sending is paused — nothing was sent. The reports are stored and ready; they go out once sending is resumed.', 'warn');
       // two shapes: per-report results ({results:[…]}) or totals ({sent, skipped})
-      if (Array.isArray(res.results)) {
+      } else if (Array.isArray(res.results)) {
         const bad = res.results.filter(x => x && x.error), good = res.results.filter(x => x && !x.error);
         bad.forEach(x => rpLog('  ✗ not sent: ' + x.key + ' — ' + String(x.error).slice(0, 220), 'err'));
         if (!good.length) throw new Error(bad.length ? 'Resend refused every report — ' + String(bad[0].error).slice(0, 220)
@@ -17503,17 +17577,20 @@ const STATE_LABEL_POS = {"AK":[152,540],"AL":[675,457],"AR":[590,396],"AZ":[169,
 const PROSPECTS = { q: '', tier: null, page: 0, size: 50, total: 0, rows: [], busy: false, seq: 0 };
 
 async function pgPaintAuth() {
-  const box = document.getElementById('pgAuthBox');
-  if (!box) return;
+  if (!document.getElementById('pgAuthBox')) return;
   if (!pgClient()) {
-    box.innerHTML = '<div class="sb-hint">Enter your Supabase URL and anon key below, then sign in.</div>';
+    document.getElementById('pgAuthBox').innerHTML = '<div class="sb-hint">Enter your Supabase URL and anon key below, then sign in.</div>';
     return;
   }
   const user = await pgSession();
+  // DL76: look the box up AFTER the wait — the tab may have been redrawn meanwhile
+  // (e.g. "Sign in again" signs out, then opens this tab), leaving the old box detached.
+  const box = document.getElementById('pgAuthBox');
+  if (!box) return;
   if (user) {
     box.innerHTML = `<div class="sb-hint" style="color:var(--ok,#16a34a)">● Signed in as <b>${esc(user.email || '')}</b>
       <button class="btn-text" id="pgOut" style="margin-left:10px">Sign out</button></div>`;
-    document.getElementById('pgOut').onclick = () => pgSignOut();
+    box.querySelector('#pgOut').onclick = () => pgSignOut();
     return;
   }
   box.innerHTML = `
@@ -17524,20 +17601,20 @@ async function pgPaintAuth() {
       <button class="btn-text" id="pgIn">Sign in</button>
     </div>
     <div id="pgErr" style="color:#dc2626;font-size:12px;margin-top:6px;min-height:14px"></div>`;
-  const go = document.getElementById('pgIn');
+  const go = box.querySelector('#pgIn');
   const submit = async () => {
     go.disabled = true; go.textContent = 'Signing in…';
     try {
-      await pgSignIn(document.getElementById('pgEmail').value, document.getElementById('pgPw').value);
+      await pgSignIn(box.querySelector('#pgEmail').value, box.querySelector('#pgPw').value);
       toast('Signed in');
       renderBridge();
     } catch (e) {
       go.disabled = false; go.textContent = 'Sign in';
-      document.getElementById('pgErr').textContent = e.message;
+      box.querySelector('#pgErr').textContent = e.message;
     }
   };
   go.onclick = submit;
-  document.getElementById('pgPw').addEventListener('keydown', ev => { if (ev.key === 'Enter') submit(); });
+  box.querySelector('#pgPw').addEventListener('keydown', ev => { if (ev.key === 'Enter') submit(); });
 }
 
 
