@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.11.11-DL77</title>
+<title>Lab Sales Dashboard v2026.11.11-DL78</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -2091,7 +2091,7 @@ const APP = {
 
 /* Bump when normalization logic changes, so it's possible to tell at a glance
    (bottom of the Avg Turnaround card) which build a browser is running. */
-const BUILD_ID = 'DL77 · 2026-11-11';
+const BUILD_ID = 'DL78 · 2026-11-11';
 
 const DB_NAME = 'LabOpsCache';
 const DB_STORE = 'datasets';
@@ -15080,6 +15080,25 @@ function renderBridge() {
     for (const k in r) { const c = LAB_COL_BY_LOWER.get(String(k).trim().toLowerCase()); if (c && (o[c] == null || o[c] === '')) o[c] = r[k]; }
     return o;
   }
+  /* DL78 — ONE UPLOAD AT A TIME. Every upload shares the database's single staging area and
+     clears it first, so two at once (two files added in quick succession) let the second wipe the
+     first's lines before they loaded. Uploads now queue and run one after another; a new-layout
+     file's reload happens once, after the last one in the queue. */
+  let LAB_PUSH_CHAIN = Promise.resolve(), LAB_PUSH_WAITING = 0, LAB_PUSH_RELOAD = false;
+  function labPushQueued(opts) {
+    LAB_PUSH_WAITING++;
+    if (LAB_PUSH_WAITING > 1) sbLog('⏳ Another upload is still running — this one will start when it finishes.');
+    const run = LAB_PUSH_CHAIN.then(() => labPushRaw(opts)).finally(async () => {
+      LAB_PUSH_WAITING--;
+      if (LAB_PUSH_WAITING === 0 && LAB_PUSH_RELOAD) {
+        LAB_PUSH_RELOAD = false;
+        sbLog('Reloading from the database so the dashboard matches it exactly…');
+        try { await labPullAll({}); } catch (e) {}
+      }
+    });
+    LAB_PUSH_CHAIN = run.catch(() => {});
+    return run;
+  }
   // DL77: the new JG layout — at least 90% of a file's lines carry a Gross_Cost value
   function labIsNewLayout(rows) {
     if (!rows || !rows.length) return false;
@@ -15235,8 +15254,8 @@ function renderBridge() {
         const cached = await dbGet();
         if (cached && cached.rows) { cached.labStamp = LAB_LAST_STAMP; await dbPut(cached); }
       } catch (e) {}
-      // DL77: a new-layout load updates amounts and may remove lines — reload, so the dashboard shows exactly what is stored
-      if (newLayout) { sbLog('Reloading from the database so the dashboard matches it exactly…'); try { await labPullAll({}); } catch (e) {} }
+      // DL77/78: a new-layout load updates amounts and may remove lines — the queue reloads once, after the last upload
+      if (newLayout) LAB_PUSH_RELOAD = true;
     } catch (e) {
       const m = (e && e.message) || String(e);
       sbLog('✗ ' + m, 'err');
@@ -15251,9 +15270,9 @@ function renderBridge() {
     }
   }
   const lp = document.getElementById('sbLabPush');
-  if (lp) lp.onclick = () => labPushRaw({});
+  if (lp) lp.onclick = () => labPushQueued({});
   // expose for the automatic push after an upload
-  window.__labPushRaw = labPushRaw;
+  window.__labPushRaw = labPushQueued;
 
   /* ══ DATABASE → DASHBOARD ═════════════════════════════════════════════════
      Rebuilds the whole dataset from lab.invoices, so the dashboard works on a
