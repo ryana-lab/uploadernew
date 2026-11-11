@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.11.11-DL76</title>
+<title>Lab Sales Dashboard v2026.11.11-DL77</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -2091,7 +2091,7 @@ const APP = {
 
 /* Bump when normalization logic changes, so it's possible to tell at a glance
    (bottom of the Avg Turnaround card) which build a browser is running. */
-const BUILD_ID = 'DL76 · 2026-11-11';
+const BUILD_ID = 'DL77 · 2026-11-11';
 
 const DB_NAME = 'LabOpsCache';
 const DB_STORE = 'datasets';
@@ -2374,6 +2374,9 @@ const FIELD_ALIASES = {
   quantity:       ['Quantity', 'Qty'],
   unitPrice:      ['Unit_Price', 'UnitPrice'],
   netCost:        ['Net_Cost', 'NetCost'],
+  // DL77 — the NEW JG layout: price before credit, and the credit applied to the line
+  grossCost:      ['Gross_Cost', 'GrossCost'],
+  creditAmount:   ['Credit_Discount_Amount', 'Credit_Amount', 'CreditDiscountAmount'],
   productId:      ['Product_ID', 'ProductID', 'Product_Id'],
   productName:    ['Product_Name', 'ProductName'],
   // Legacy carries email/email_1 and phone/phone_1; either may hold the value
@@ -2984,6 +2987,20 @@ function normalizeRecords(rows) {
        whole, and is narrower than the case flag. */
     const productRemake = truthyFlag(fv(r, F.productRemake));
 
+    /* DL77 — CREDITS (new JG layout: Gross_Cost, Credit_Discount_Amount). Revenue is always the
+       net, which is already after credits; these say what the credit WAS:
+       memo     a credit memo — net below zero: money given back
+       forgiven no charge — a credit brings the net to $0, or a remake billed $0 (value = its gross)
+       discount part of the price credited — a credit with some net still charged */
+    const grossTxt = fv(r, F.grossCost), creditTxt = fv(r, F.creditAmount);
+    const grossCost = (grossTxt == null || String(grossTxt).trim() === '') ? null : (parseFloat(grossTxt) || 0);
+    const creditAmount = (creditTxt == null || String(creditTxt).trim() === '') ? null : (parseFloat(creditTxt) || 0);
+    let creditType = '', creditValue = 0;
+    if (netCost < 0) { creditType = 'memo'; creditValue = -netCost; }
+    else if ((creditAmount || 0) > 0 && netCost === 0) { creditType = 'forgiven'; creditValue = creditAmount; }
+    else if ((creditAmount || 0) > 0 && netCost > 0) { creditType = 'discount'; creditValue = creditAmount; }
+    else if (grossCost != null && grossCost > 0 && netCost === 0 && remake) { creditType = 'forgiven'; creditValue = grossCost; }
+
     const onHoldReasonRaw = fv(r, F.onHoldReason);
     const onHold = !!String(onHoldReasonRaw || '').trim();
     const practiceRaw = String(fv(r, F.practice) || '').trim();
@@ -3065,6 +3082,7 @@ function normalizeRecords(rows) {
       qty,
       unitPrice,
       netCost,
+      grossCost, creditAmount, creditType, creditValue,   // DL77: credits, case by case
       scanner: normalizeScanner(fv(r, F.scanner)),
       // Legacy header is Transaction_type, Query Studio uses Transaction_Type
       transactionType: fv(r, F.transactionType) || '',
@@ -4729,6 +4747,67 @@ function buildSortableTable(containerId, rows, cols, opts) {
    TAB 1: SALES OVERVIEW
    ═══════════════════════════════════════════════════════════════ */
 
+/* ══ DL77: CREDITS — case by case, from the new JG layout ═══════════════════════════════════
+   Revenue everywhere is the NET (already after credits). These views say what the credits were:
+   ↩️ credit memos (money given back), 🆓 no charge (value forgiven — mostly remakes), 🏷️ discounts. */
+const CREDIT_KINDS = {
+  memo:     { icon: '↩️', label: 'Credit memo', sub: 'money given back' },
+  forgiven: { icon: '🆓', label: 'No charge',   sub: 'value forgiven' },
+  discount: { icon: '🏷️', label: 'Discount',    sub: 'part of the price credited' } };
+function creditSummary(rows) {
+  const t = { lines: [], total: 0, hasLayout: false };
+  Object.keys(CREDIT_KINDS).forEach(k => { t[k] = { n: 0, v: 0, cases: new Set(), remakes: 0 }; });
+  for (const r of rows) {
+    if (r.grossCost != null) t.hasLayout = true;
+    if (!r.creditType) continue;
+    const x = t[r.creditType]; x.n++; x.v += r.creditValue; x.cases.add(r.caseNo); if (r.remake) x.remakes++;
+    t.total += r.creditValue; t.lines.push(r);
+  }
+  return t;
+}
+function creditKpisHTML(t) {
+  return Object.keys(CREDIT_KINDS).map(k => { const K = CREDIT_KINDS[k], x = t[k];
+    return `<div class="kpi" style="flex:1 1 170px"><div class="kpi-label">${K.icon} ${K.label}</div>
+      <div class="kpi-value">${fmtUSDFull(x.v)}</div>
+      <div class="kpi-sub">${K.sub} · ${x.cases.size.toLocaleString()} case${x.cases.size === 1 ? '' : 's'}${k === 'forgiven' && x.remakes ? ' · ' + x.remakes.toLocaleString() + ' remake line' + (x.remakes === 1 ? '' : 's') : ''}</div></div>`; }).join('');
+}
+function ovCreditsHTML(rows) {
+  const t = creditSummary(rows);
+  if (!t.total) return '';
+  const byDr = new Map();
+  t.lines.forEach(r => { const d = byDr.get(r.drId) || byDr.set(r.drId, { id: r.drId, name: r.drName, practice: r.practice, v: 0, cases: new Set() }).get(r.drId); d.v += r.creditValue; d.cases.add(r.caseNo); });
+  const top = [...byDr.values()].sort((a, b) => b.v - a.v).slice(0, 6);
+  return `<div class="card mb20" id="ovCredits">
+    <div class="chart-title">💳 Credits in this period <span style="font-weight:400;font-size:12px;color:var(--mut)">· ${fmtUSDFull(t.total)} in total · revenue above is already net of these</span></div>
+    ${t.hasLayout ? '' : '<div class="card-sub" style="font-size:11.5px;color:var(--mut);margin:-6px 0 10px">Only credit memos are known for this period — the credit detail starts with the new JG layout (from Jul 30, 2026).</div>'}
+    <div class="kpi-row" style="margin-bottom:12px">${creditKpisHTML(t)}</div>
+    <div style="font-size:12px;font-weight:700;margin-bottom:6px">Most credited doctors</div>
+    ${top.map(d => `<div class="cr-dr" data-dr="${esc(d.id)}" style="display:flex;gap:10px;align-items:baseline;padding:4px 0;border-top:1px solid var(--line,#eef1f5);cursor:pointer;font-size:12.5px">
+        <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><b>${esc(d.name)}</b> <span style="color:var(--mut)">${esc(d.practice || '')}</span></span>
+        <span style="color:var(--mut)">${d.cases.size} case${d.cases.size === 1 ? '' : 's'}</span><b>${fmtUSDFull(d.v)}</b></div>`).join('')}
+  </div>`;
+}
+function ddCreditsHTML(rows) {
+  const t = creditSummary(rows);
+  if (!t.total) return '';
+  const lines = t.lines.slice().sort((a, b) => (b.invoiced || 0) - (a.invoiced || 0) || String(b.caseNo).localeCompare(String(a.caseNo)));
+  const money = v => v == null ? '<span style="color:var(--mut)">—</span>' : fmtUSDFull(v);
+  const row = r => `<tr style="border-top:1px solid var(--line,#eef1f5)">
+      <td style="padding:4px 6px;white-space:nowrap">${fmtDateShort(r.invoiced)}</td><td style="padding:4px 6px">${esc(r.caseNo)}</td>
+      <td style="padding:4px 6px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.product)}">${esc(r.product)}${r.remake ? ' <span title="remake">🔁</span>' : ''}</td>
+      <td style="padding:4px 6px;white-space:nowrap">${CREDIT_KINDS[r.creditType].icon} ${CREDIT_KINDS[r.creditType].label}</td>
+      <td style="padding:4px 6px;text-align:right">${money(r.grossCost)}</td><td style="padding:4px 6px;text-align:right;font-weight:700">${fmtUSDFull(r.creditValue)}</td>
+      <td style="padding:4px 6px;text-align:right">${fmtUSDFull(r.netCost)}</td></tr>`;
+  const head = `<thead><tr style="text-align:left;font-size:11px;color:var(--mut)"><th style="padding:4px 6px">Date</th><th style="padding:4px 6px">Case #</th><th style="padding:4px 6px">Product</th><th style="padding:4px 6px">Kind</th><th style="padding:4px 6px;text-align:right">Gross</th><th style="padding:4px 6px;text-align:right">Credit</th><th style="padding:4px 6px;text-align:right">Net</th></tr></thead>`;
+  return `<div class="card mb20" id="ddCredits">
+    <div class="chart-title">💳 Credits <span style="font-weight:400;font-size:12px;color:var(--mut)">· ${fmtUSDFull(t.total)} on ${new Set(t.lines.map(r => r.caseNo)).size} case${new Set(t.lines.map(r => r.caseNo)).size === 1 ? '' : 's'} · revenue is already net of these</span></div>
+    <div class="kpi-row" style="margin-bottom:12px">${creditKpisHTML(t)}</div>
+    <div style="overflow-x:auto"><table style="width:100%;font-size:12.5px;border-collapse:collapse">${head}<tbody>${lines.slice(0, 12).map(row).join('')}</tbody></table></div>
+    ${lines.length > 12 ? `<details style="margin-top:6px"><summary style="cursor:pointer;font-size:12px;color:var(--accent)">Show all ${lines.length} credited lines</summary>
+      <div style="overflow-x:auto"><table style="width:100%;font-size:12.5px;border-collapse:collapse"><tbody>${lines.slice(12).map(row).join('')}</tbody></table></div></details>` : ''}
+  </div>`;
+}
+
 function renderOverview() {
   const el = document.getElementById('panel-overview');
 
@@ -4828,6 +4907,8 @@ function renderOverview() {
       <div class="kpi"><div class="kpi-label">On-Hold Rate</div><div class="kpi-value">${fmtPct(k.onHoldRate)}</div><div class="kpi-sub">${fmtN(k.onHoldCount)} held cases</div></div>
       <div class="kpi"><div class="kpi-label">Avg Turnaround</div><div class="kpi-value">${k.avgTAT == null ? '—' : k.avgTAT.toFixed(1) + '<span class="sup">days</span>'}</div><div class="kpi-sub">entry → invoiced · 90% within ${fmtTat(k.p90TAT)} days${tatExclHolds() ? ' · hold days excluded' : ''}<br>${tatToggleHTML()} <span title="Build identifier — use this to confirm you are running the latest file.">${BUILD_ID}</span></div></div>
     </div>
+
+    ${ovCreditsHTML(APP.filtered)}
 
     <div class="card mb20">
       <div class="chart-title">Revenue &amp; Units — Month over Month</div>
@@ -4962,6 +5043,8 @@ function renderOverview() {
       on_hold: r.onHold ? 'Y' : 'N', days_on_hold: r.daysOnHold, scanner: r.scanner, tat_days: r.tat
     })));
   });
+
+  document.querySelectorAll('#ovCredits .cr-dr').forEach(x => x.addEventListener('click', () => { APP.selectedDoctorId = x.dataset.dr; switchTab('docdetail'); }));   // DL77
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -6779,6 +6862,7 @@ function renderDoctorDetail() {
 
     ${cmp30HTML(trendOf(APP.selectedDoctorId))}
     ${ddRemakesHTML(APP.selectedDoctorId)}
+    ${ddCreditsHTML(cases)}
     <div class="card mb20 dd-crm" id="ddCrm">${ddCrmHead(0, false)}<div class="crm-nil">Loading visits and calls from Salesly…</div></div>
 
     <div class="flex-row">
@@ -14988,12 +15072,23 @@ function renderBridge() {
   const LAB_STAGE_COLS = ['Case_Number', 'Case_Status', 'Case_Received_Date', 'Days_On_Hold', 'On_Hold_Reason', 'Tooth_Number', 'Shade',
     'Dentist_Last_Name', 'Dentist_First_Name', 'Invoice_Date', 'Quantity', 'Unit_Price', 'phone', 'Net_Cost', 'Product_ID', 'Product_Name',
     'email', 'address', 'Scanner_Source', 'Transaction_Type', 'Remake', 'Product_Remake', 'Remake_Qty', 'Remake_Discount', 'Remake_percent',
-    'Remake_Reason', 'Shipped', 'state', 'city', 'dd', 'pracname', 'Put_On_Hold_Date', 'Put_Off_Hold_Date'];
+    'Remake_Reason', 'Shipped', 'state', 'city', 'dd', 'pracname', 'Put_On_Hold_Date', 'Put_Off_Hold_Date',
+    'Gross_Cost', 'Credit_Discount_Amount'];   // DL77: the new JG layout's credits
   const LAB_COL_BY_LOWER = new Map(LAB_STAGE_COLS.map(c => [c.toLowerCase(), c]));
   function labStageShape(r) {
     const o = {};
     for (const k in r) { const c = LAB_COL_BY_LOWER.get(String(k).trim().toLowerCase()); if (c && (o[c] == null || o[c] === '')) o[c] = r[k]; }
     return o;
+  }
+  // DL77: the new JG layout — at least 90% of a file's lines carry a Gross_Cost value
+  function labIsNewLayout(rows) {
+    if (!rows || !rows.length) return false;
+    const key = Object.keys(rows[0]).find(k => /^gross_cost$/i.test(String(k).trim()));
+    if (!key) return false;
+    let n = 0; const step = Math.max(1, Math.floor(rows.length / 400)), sample = [];
+    for (let i = 0; i < rows.length; i += step) sample.push(rows[i]);
+    sample.forEach(r => { const v = r[key]; if (v != null && String(v).trim() !== '') n++; });
+    return n / sample.length >= 0.9;
   }
   async function labPushRaw(opts) {
     opts = opts || {};
@@ -15002,6 +15097,24 @@ function renderBridge() {
     // An explicit row set (from Add Data) wins; otherwise send the whole dataset.
     const all = (opts.rows && opts.rows.length) ? opts.rows : ((APP && APP.rawRows) || []);
     if (!all.length) { if (!opts.auto) sbLog('No CSV loaded — upload your export first.', 'warn'); return; }
+
+    /* DL77 — a file in the NEW JG layout (Gross_Cost on its lines). Its amounts can differ from
+       what is stored even on days whose line COUNT matches (credits, $0 remakes), so every day is
+       sent; and a complete JG export may REPLACE its days: lines voided or changed since they were
+       first loaded are removed (new-system cases only; the database refuses if over 10% would go). */
+    const newLayout = labIsNewLayout(all);
+    let replaceDays = false;
+    if (newLayout) {
+      opts.full = true;
+      const ds = all.map(labRowDate).filter(Boolean).sort((a, b) => a - b);
+      const f = d => d ? (d.getMonth() + 1) + '/' + d.getDate() + '/' + d.getFullYear() : '?';
+      replaceDays = window.confirm('This file is a complete JG export in the new layout (with credits), covering ' +
+        f(ds[0]) + ' – ' + f(ds[ds.length - 1]) + '.\n\nReplace those days in the database with it?\n\n' +
+        'OK (recommended): invoice lines that were voided or changed since they were first loaded are removed for those days. ' +
+        'New-system cases only, older history is never touched, and the database refuses if more than 10% would go.\n\n' +
+        'Cancel: only add and update lines; nothing is removed.');
+      sbLog('New JG layout (with credits) — every day is sent' + (replaceDays ? '; its days will be REPLACED.' : '; nothing will be removed.'));
+    }
 
     const btn = document.getElementById('sbLabPush');
     if (btn) { btn.disabled = true; btn.textContent = '🗄 Saving…'; }
@@ -15088,14 +15201,15 @@ function renderBridge() {
          armed before the function is entered), so each call drains a slice
          instead: ~1.5s per 20k rows, comfortably inside any timeout. */
       sbLog('  loading (only rows that are new get processed)…');
-      let batchId = null, totalLoaded = 0, guard = 0;
+      let batchId = null, totalLoaded = 0, guard = 0, totalReplaced = 0, replaceSkipped = false;
       const source = (APP.meta && APP.meta.fileName) || 'dashboard upload';
       for (;;) {
         const { data: ch, error: cErr } = await db.rpc('lab_load_chunk',
-          { p_batch: batchId, p_source: source, p_limit: 20000 });
+          { p_batch: batchId, p_source: source, p_limit: 20000, p_replace: replaceDays });
         if (cErr) throw new Error(cErr.message);
         batchId = ch.batch_id;
         totalLoaded += Number(ch.loaded || 0);
+        totalReplaced += Number(ch.replaced || 0); replaceSkipped = replaceSkipped || !!ch.replace_skipped;
         const remaining = Number(ch.remaining || 0);
         if (btn) btn.textContent = '🗄 loading… ' + remaining.toLocaleString() + ' left';
         sbLog('  loaded ' + totalLoaded.toLocaleString() +
@@ -15110,6 +15224,8 @@ function renderBridge() {
       sbLog('✓ batch ' + d.batch_id + ': ' + Number(d.loaded || 0).toLocaleString() + ' new rows, ' +
             Number(d.skipped || 0).toLocaleString() + ' already present' +
             (d.from ? ' (' + d.from + ' → ' + d.to + ')' : ''), 'ok');
+      if (totalReplaced) sbLog('  ✓ replaced: ' + totalReplaced.toLocaleString() + ' line' + (totalReplaced === 1 ? '' : 's') + ' no longer in the export removed (voided or superseded)', 'ok');
+      if (replaceSkipped) sbLog('  ⚠ the database did NOT replace these days: over 10% of the stored lines are missing from this file. Check the export is complete.', 'warn');
       /* Stamp our own cache with the database's NEW fingerprint. Without this
          the person who just uploaded would look stale to the freshness check on
          their next visit, and re-download the 190k rows they just sent up. */
@@ -15119,6 +15235,8 @@ function renderBridge() {
         const cached = await dbGet();
         if (cached && cached.rows) { cached.labStamp = LAB_LAST_STAMP; await dbPut(cached); }
       } catch (e) {}
+      // DL77: a new-layout load updates amounts and may remove lines — reload, so the dashboard shows exactly what is stored
+      if (newLayout) { sbLog('Reloading from the database so the dashboard matches it exactly…'); try { await labPullAll({}); } catch (e) {} }
     } catch (e) {
       const m = (e && e.message) || String(e);
       sbLog('✗ ' + m, 'err');
