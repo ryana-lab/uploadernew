@@ -1,5 +1,5 @@
 {
-  "ran_at": "2026-11-12T04:20:11.802Z",
+  "ran_at": "2026-11-12T05:20:11.427Z",
   "ok": true,
   "dry_run": false,
   "days": [
@@ -9,8 +9,8 @@
   ],
   "invoices": {
     "fetched": 316,
-    "loaded": 56,
-    "updated": 260,
+    "loaded": 0,
+    "updated": 316,
     "removed": 0,
     "replaced": 0,
     "layout": "new (with credits)",
