@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.11.13-DL84</title>
+<title>Lab Sales Dashboard v2026.11.13-DL85</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -2105,7 +2105,7 @@ const APP = {
 
 /* Bump when normalization logic changes, so it's possible to tell at a glance
    (bottom of the Avg Turnaround card) which build a browser is running. */
-const BUILD_ID = 'DL84 · 2026-11-13';
+const BUILD_ID = 'DL85 · 2026-11-13';
 
 const DB_NAME = 'LabOpsCache';
 const DB_STORE = 'datasets';
@@ -7237,6 +7237,68 @@ function drawDGrid() {
    TAB 4: DOCTOR DETAIL
    ═══════════════════════════════════════════════════════════════ */
 
+
+/* ══ DL85: Doctor Detail → All Cases — newest first; click any heading to sort, again to reverse ══
+   Dates, amounts and day counts sort highest first on the first click; text sorts A–Z. The order is
+   remembered from doctor to doctor. The 250 rows shown are the top 250 in the chosen order. */
+const DD_CASE_COLS = [['caseNo', 'Case #'], ['date', 'Date'], ['product', 'Product'], ['tooth', 'Tooth'], ['shade', 'Shade'],
+  ['qty', 'Qty', 1], ['net', 'Net $', 1], ['remake', 'Remake'], ['hold', 'Hold', 1], ['tat', 'TAT', 1]];
+const DD_CASE_DESC_FIRST = new Set(['date', 'qty', 'net', 'remake', 'hold', 'tat']);
+const ddCaseSort = () => APP.ddCaseSort || (APP.ddCaseSort = { k: 'date', dir: -1 });   // newest first until changed
+function ddCaseVal(r, k) {
+  switch (k) {
+    case 'caseNo': return String(r.caseNo || '');
+    case 'date':   return r.anchorDate ? +r.anchorDate : null;
+    case 'product':return String(r.product || '');
+    case 'tooth':  { const m = String(r.tooth || '').match(/\d+/); return m ? +m[0] : (r.tooth ? 1000 : null); }
+    case 'shade':  return String(r.shade || '');
+    case 'qty':    return +r.qty || 0;
+    case 'net':    return +r.netCost || 0;
+    case 'remake': return r.remake ? 1 : 0;
+    case 'hold':   return +r.daysOnHold || 0;
+    case 'tat':    return r.tat == null ? null : +r.tat;
+  }
+  return null;
+}
+function ddCasesSorted(cases) {
+  const { k, dir } = ddCaseSort();
+  const blank = v => v == null || v === '';
+  return cases.slice().sort((a, b) => {
+    const x = ddCaseVal(a, k), y = ddCaseVal(b, k);
+    if (blank(x) || blank(y)) { if (blank(x) && blank(y)) return 0; return blank(x) ? 1 : -1; }   // blanks always last
+    const c = (typeof x === 'number' && typeof y === 'number') ? x - y : String(x).localeCompare(String(y), undefined, { numeric: true, sensitivity: 'base' });
+    if (c) return c * dir;
+    return (+b.anchorDate || 0) - (+a.anchorDate || 0) || String(b.caseNo).localeCompare(String(a.caseNo), undefined, { numeric: true });   // ties: newest first
+  });
+}
+function ddCasesTableHTML(cases) {
+  const { k: sk, dir } = ddCaseSort(), rows = ddCasesSorted(cases).slice(0, 250);
+  return `<table class="dtable" id="ddCasesTbl">
+    <thead><tr>${DD_CASE_COLS.map(([k, l, num]) => `<th data-k="${k}"${num ? ' class="num"' : ''} style="cursor:pointer;user-select:none;white-space:nowrap" title="Sort by ${l}">${l}<span style="display:inline-block;width:12px;color:${sk === k ? 'var(--accent,#0f8b99)' : 'transparent'}">${sk === k ? (dir > 0 ? '▲' : '▼') : '▲'}</span></th>`).join('')}</tr></thead>
+    <tbody>${rows.map(r => `
+      <tr>
+        <td class="text-mut" style="font-size:11px">${esc(r.caseNo)}</td>
+        <td style="white-space:nowrap">${fmtDate(r.anchorDate)}</td>
+        <td>${esc(r.product)}</td>
+        <td>${esc(r.tooth)}</td>
+        <td>${esc(r.shade)}</td>
+        <td class="num">${r.qty}</td>
+        <td class="num">${fmtUSDFull(r.netCost)}</td>
+        <td>${r.remake ? '<span class="tag tag-red">Y</span>' : '<span class="text-mut">—</span>'}</td>
+        <td class="num">${r.daysOnHold > 0 ? r.daysOnHold + 'd' : '—'}</td>
+        <td class="num">${r.tat == null ? '—' : r.tat + 'd'}</td>
+      </tr>`).join('')}</tbody>
+  </table>`;
+}
+function ddBindCaseSort(cases) {
+  const wrap = document.getElementById('ddCasesWrap'); if (!wrap) return;
+  wrap.querySelectorAll('th[data-k]').forEach(th => th.onclick = () => {
+    const k = th.dataset.k, cur = ddCaseSort();
+    APP.ddCaseSort = cur.k === k ? { k, dir: -cur.dir } : { k, dir: DD_CASE_DESC_FIRST.has(k) ? -1 : 1 };
+    wrap.innerHTML = ddCasesTableHTML(cases); wrap.scrollTop = 0; ddBindCaseSort(cases);
+  });
+}
+
 function renderDoctorDetail() {
   const el = document.getElementById('panel-docdetail');
   const id = APP.selectedDoctorId;
@@ -7492,28 +7554,7 @@ function renderDoctorDetail() {
 
     <div class="card flush">
       <div class="card-head"><div><div class="card-title">All Cases</div><div class="card-sub">${caseCount.toLocaleString()} cases · ${cases.length.toLocaleString()} line items</div></div></div>
-      <div class="table-scroll">
-        <table class="dtable">
-          <thead><tr>
-            <th>Case #</th><th>Date</th><th>Product</th><th>Tooth</th><th>Shade</th>
-            <th class="num">Qty</th><th class="num">Net $</th><th>Remake</th><th class="num">Hold</th><th class="num">TAT</th>
-          </tr></thead>
-          <tbody>${cases.slice(0, 250).map(r => `
-            <tr>
-              <td class="text-mut" style="font-size:11px">${esc(r.caseNo)}</td>
-              <td>${fmtDate(r.anchorDate)}</td>
-              <td>${esc(r.product)}</td>
-              <td>${esc(r.tooth)}</td>
-              <td>${esc(r.shade)}</td>
-              <td class="num">${r.qty}</td>
-              <td class="num">${fmtUSDFull(r.netCost)}</td>
-              <td>${r.remake ? '<span class="tag tag-red">Y</span>' : '<span class="text-mut">—</span>'}</td>
-              <td class="num">${r.daysOnHold > 0 ? r.daysOnHold + 'd' : '—'}</td>
-              <td class="num">${r.tat == null ? '—' : r.tat + 'd'}</td>
-            </tr>
-          `).join('')}</tbody>
-        </table>
-      </div>
+      <div class="table-scroll" id="ddCasesWrap">${ddCasesTableHTML(cases)}</div>
       ${cases.length > 250 ? `<div style="padding:12px 20px;text-align:center;font-size:11px;color:var(--mut);border-top:1px solid var(--border)">Showing 250 of ${cases.length.toLocaleString()} — export for the full list</div>` : ''}
     </div>
   `;
@@ -7524,6 +7565,7 @@ function renderDoctorDetail() {
     const how = act === 'add' ? await listAdd(kind, id, nm) : await listRemove(kind, id, nm);
     toast(`${nm} ${act === 'add' ? 'added to' : 'removed from'} the ${label} — ${settingsSaidHow(how)}`); renderDoctorDetail(); }));
   document.getElementById('ddBack').addEventListener('click', () => switchTab('docgrid'));
+  ddBindCaseSort(cases);   // DL85: All Cases — newest first; click a heading to sort
 
   /* Practice tabs: selecting one re-renders the whole detail view scoped to that
      office. An empty data-prac means "all practices". */
