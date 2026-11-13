@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.11.13-DL83</title>
+<title>Lab Sales Dashboard v2026.11.13-DL84</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -1472,10 +1472,11 @@ tr.cs-open td { background: var(--card-2); white-space: normal; cursor: default;
 .sb-log .err { color: var(--red); font-weight: 700; }
 .sb-log .warn { color: var(--amb, #b45309); font-weight: 700; }
 /* DL83 — Sales Funnel: doctor names as buttons; collapsible sections */
-#panel-funnel a.fun-dr { display: inline-block; padding: 2px 10px; border: 1px solid var(--line, #d7dde5); border-radius: 8px;
+#panel-funnel a.fun-dr, #funModal a.fun-dr { display: inline-block; padding: 2px 10px; border: 1px solid var(--line, #d7dde5); border-radius: 8px;
   background: var(--card, #fff); color: var(--ink, #0f172a) !important; font-weight: 700; text-decoration: none !important; line-height: 1.5; transition: background .12s, border-color .12s; }
-#panel-funnel a.fun-dr::after { content: ' \203A'; color: var(--mut, #64748b); font-weight: 400; }
-#panel-funnel a.fun-dr:hover { background: #e6f7f9; border-color: #24bfcd; }
+#panel-funnel a.fun-dr::after, #funModal a.fun-dr::after { content: ' \203A'; color: var(--mut, #64748b); font-weight: 400; }
+#panel-funnel a.fun-dr:hover, #funModal a.fun-dr:hover { background: #e6f7f9; border-color: #24bfcd; }
+#panel-funnel .fun-peers:hover { background: #e0e7ff; }
 #panel-funnel .fun-toggle { cursor: pointer; user-select: none; }
 #panel-funnel .fun-caret { display: inline-block; width: 14px; color: var(--mut, #64748b); transition: transform .15s; }
 #panel-funnel .fun-collapsed .fun-caret { transform: rotate(-90deg); }
@@ -2104,7 +2105,7 @@ const APP = {
 
 /* Bump when normalization logic changes, so it's possible to tell at a glance
    (bottom of the Avg Turnaround card) which build a browser is running. */
-const BUILD_ID = 'DL83 · 2026-11-13';
+const BUILD_ID = 'DL84 · 2026-11-13';
 
 const DB_NAME = 'LabOpsCache';
 const DB_STORE = 'datasets';
@@ -4904,9 +4905,45 @@ function funBadges(d) {
   return `<div style="margin-top:3px;display:flex;flex-wrap:wrap;gap:3px;align-items:center">
     ${ts.map(t => `<span style="padding:0 7px;border-radius:9px;font-size:10.5px;background:#0f8b9922;color:#0f6b75;border:1px solid #0f8b9944">${esc(t)}</span>`).join('')}
     ${ns.length ? `<span title="${esc(ns[0].note)}" style="font-size:10.5px;color:var(--mut)">📝 ${ns.length}</span>` : ''}
+    ${(() => { const n = funPeers(d).length; return n ? `<button class="fun-peers" data-id="${esc(d.id)}" title="Other doctors at ${esc(d.practice)}" style="border:1px solid #c7d2fe;background:#eef2ff;color:#3730a3;border-radius:7px;padding:0 7px;font-size:11px;cursor:pointer">👥 ${n} other doctor${n === 1 ? '' : 's'} here</button>` : ''; })()}
     <button class="fun-edit" data-id="${esc(d.id)}" title="Notes &amp; tags" style="border:1px solid var(--line,#dfe3ea);background:none;border-radius:7px;padding:0 6px;font-size:11px;cursor:pointer;color:var(--mut)">✎ ${ts.length || ns.length ? 'edit' : 'notes · tags'}</button></div>`;
 }
-function funBindEdits(box) { box.querySelectorAll('.fun-edit').forEach(b => b.onclick = ev => { ev.preventDefault(); ev.stopPropagation(); funOpenClient(b.dataset.id); }); }
+function funBindEdits(box) {
+  box.querySelectorAll('.fun-edit').forEach(b => b.onclick = ev => { ev.preventDefault(); ev.stopPropagation(); funOpenClient(b.dataset.id); });
+  box.querySelectorAll('.fun-peers').forEach(b => b.onclick = ev => { ev.preventDefault(); ev.stopPropagation(); funOpenPeers(b.dataset.id); });
+}
+// DL84: everyone at the doctor's practice — click a name to open their Doctor Detail
+function funOpenPeers(id) {
+  const C = funDoctors(), d = C.list.find(x => x.id === id); if (!d) return;
+  const all = [d].concat(funPeers(d).sort((a, b) => b.revenue - a.revenue));
+  document.getElementById('funModal')?.remove();
+  const m = document.createElement('div'); m.id = 'funModal';
+  m.style.cssText = 'position:fixed;inset:0;z-index:90;background:rgba(15,23,42,.45);display:flex;align-items:flex-start;justify-content:center;padding:6vh 12px;overflow:auto';
+  const close = () => { m.remove(); document.removeEventListener('keydown', onKey); };
+  const onKey = ev => { if (ev.key === 'Escape') close(); }; document.addEventListener('keydown', onKey);
+  m.addEventListener('click', ev => { if (ev.target === m) close(); });
+  const cities = [...new Set(all.map(x => x.city).filter(Boolean))];
+  const prac = d.practice + ' · ' + (cities.length ? cities.join(' / ') + ', ' : '') + (d.state || '');
+  const types = x => x.cats.slice(0, 3).map(([c]) => `<span style="display:inline-block;padding:0 7px;margin:1px 3px 1px 0;border-radius:9px;font-size:10.5px;background:${funColor(c)}1a;border:1px solid ${funColor(c)}55;white-space:nowrap">${esc(funShort(c))}</span>`).join('');
+  const tags = x => funTagsOf(x.id).map(t => `<span style="padding:0 6px;border-radius:9px;font-size:10px;background:#0f8b9922;color:#0f6b75;border:1px solid #0f8b9944;margin-left:3px">${esc(t)}</span>`).join('');
+  const activeN = all.filter(x => x.since <= 90).length;
+  m.innerHTML = `<div style="background:var(--card,#fff);color:var(--ink,#0f172a);border-radius:14px;padding:18px 20px;width:min(760px,100%);box-shadow:0 20px 50px rgba(0,0,0,.25)">
+    <div style="display:flex;align-items:flex-start;gap:10px"><div style="flex:1"><div style="font-size:17px;font-weight:800">👥 ${esc(d.practice)}</div>
+      <div style="font-size:12.5px;color:var(--mut)">${esc(prac.replace(d.practice, '').replace(/^ · /, ''))} · ${all.length} doctors · ${activeN} sent a case in the last 90 days · ${fmtUSDFull(all.reduce((t, x) => t + x.revenue, 0))} together</div></div>
+      <button id="funPClose" style="border:none;background:none;font-size:20px;cursor:pointer;color:var(--mut)" title="Close">✕</button></div>
+    <div style="overflow-x:auto;margin-top:12px"><table style="width:100%;font-size:12.5px;border-collapse:collapse">
+      <thead><tr style="text-align:left;font-size:11px;color:var(--mut)"><th style="padding:4px 6px">Doctor</th><th style="padding:4px 6px;text-align:right">Cases</th><th style="padding:4px 6px;text-align:right">Revenue</th><th style="padding:4px 6px">First case</th><th style="padding:4px 6px">Last case</th><th style="padding:4px 6px">Case types</th></tr></thead>
+      <tbody>${all.map(x => `<tr style="border-top:1px solid var(--line,#eef1f5);${x.id === d.id ? 'background:#f0fbfc' : ''}">
+        <td style="padding:6px"><a href="#" class="fun-dr fun-peer" data-id="${esc(x.id)}">${esc(x.name)}</a>${x.id === d.id ? '<span style="font-size:10.5px;color:var(--mut);margin-left:6px">(the doctor you clicked)</span>' : ''}${tags(x)}</td>
+        <td style="padding:6px;text-align:right;font-weight:700">${x.n}</td><td style="padding:6px;text-align:right">${fmtUSDFull(x.revenue)}</td>
+        <td style="padding:6px;white-space:nowrap">${fmtDateShort(x.first)}</td>
+        <td style="padding:6px;white-space:nowrap">${fmtDateShort(x.last)} <span style="color:var(--mut);font-size:11px">· ${x.since === 0 ? 'today' : x.since + 'd ago'}</span></td>
+        <td style="padding:6px;min-width:150px">${types(x)}</td></tr>`).join('')}</tbody></table></div>
+    <div style="font-size:11.5px;color:var(--mut);margin-top:10px">Same practice = same practice name in the same state. Click a doctor to open their Doctor Detail.</div></div>`;
+  document.body.appendChild(m);
+  m.querySelector('#funPClose').onclick = close;
+  m.querySelectorAll('.fun-peer').forEach(a => a.onclick = ev => { ev.preventDefault(); close(); APP.selectedDoctorId = a.dataset.id; switchTab('docdetail'); });
+}
 
 // ── the notes & tags panel for one doctor ──
 function funOpenClient(id) {
@@ -4987,7 +5024,7 @@ function funDoctors() {
     if (f.group && r.group !== f.group) continue;
     const dt = r.invoiced || r.anchorDate; if (!dt) continue;
     let d = docs.get(r.drId);
-    if (!d) docs.set(r.drId, d = { id: r.drId, name: r.drName || '(no name)', practice: r.practice || '', state: r.stateAbbr || r.state || '', cases: new Map(), revenue: 0 });
+    if (!d) docs.set(r.drId, d = { id: r.drId, name: r.drName || '(no name)', practice: r.practice || '', city: r.city || '', state: r.stateAbbr || r.state || '', cases: new Map(), revenue: 0 });
     let c = d.cases.get(r.caseNo);
     if (!c) d.cases.set(r.caseNo, c = { no: r.caseNo, date: dt, rev: 0, products: new Map(), cats: new Map(), remake: false });
     if (dt < c.date) c.date = dt;
@@ -5016,8 +5053,16 @@ function funDoctors() {
     d.rate = d.n / d.months;
     d.avg = d.n ? d.revenue / d.n : 0;
   });
-  return (FUN.cache = { key, list, max, maxDay });
+  // DL84: doctors at the same practice — same practice name in the same state. (By city split real
+  // offices: "St Charles" vs "Saint Charles", a county instead of the city, a typo, a blank city.)
+  const norm = x => String(x || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const byP = new Map();
+  const stKey = st => /^(dc|d\.c\.|washington\s*,?\s*d\.?\s*c\.?|district of columbia)$/i.test(String(st).trim()) ? 'DC' : String(st).toUpperCase().trim();
+  list.forEach(d => { d.pkey = norm(d.practice) ? norm(d.practice) + '|' + stKey(d.state) : '';
+    if (d.pkey) (byP.get(d.pkey) || byP.set(d.pkey, []).get(d.pkey)).push(d); });
+  return (FUN.cache = { key, list, max, maxDay, byP });
 }
+const funPeers = d => ((funDoctors().byP || new Map()).get(d.pkey) || []).filter(x => x.id !== d.id);
 
 /* ── DL82: 🎯 NEVER SENT A PRODUCT — doctors who sent cases in a recent period but have never
    (in their whole history) sent a chosen product or case type. Main products only. ── */
