@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.11.11-DL78</title>
+<title>Lab Sales Dashboard v2026.11.12-DL81</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -1598,6 +1598,7 @@ tr.cs-open td { background: var(--card-2); white-space: normal; cursor: default;
       <button class="tab-btn" data-tab="status">📋 Retention</button>
       <button class="tab-btn" data-tab="churn">📉 Churn</button>
       <button class="tab-btn" data-tab="crosssell">🔀 Cross Selling</button>
+      <button class="tab-btn" data-tab="funnel">🧭 Sales Funnel</button>
       <button class="tab-btn" data-tab="timeline">🕐 Client Timeline</button>
       <button class="tab-btn" data-tab="map">🗺️ State Map</button>
       <button class="tab-btn" data-tab="prospects">🗺️ Prospect Map</button>
@@ -1658,6 +1659,7 @@ tr.cs-open td { background: var(--card-2); white-space: normal; cursor: default;
     <div class="tab-panel" id="panel-golden"></div>
     <div class="tab-panel" id="panel-remakes"></div>
     <div class="tab-panel" id="panel-churn"></div>
+    <div class="tab-panel" id="panel-funnel"></div>
     <div class="tab-panel" id="panel-silver"></div>
     <div class="tab-panel" id="panel-docdetail"></div>
     <div class="tab-panel" id="panel-empgrid"></div>
@@ -2091,7 +2093,7 @@ const APP = {
 
 /* Bump when normalization logic changes, so it's possible to tell at a glance
    (bottom of the Avg Turnaround card) which build a browser is running. */
-const BUILD_ID = 'DL78 · 2026-11-11';
+const BUILD_ID = 'DL81 · 2026-11-12';
 
 const DB_NAME = 'LabOpsCache';
 const DB_STORE = 'datasets';
@@ -4495,7 +4497,7 @@ function switchTab(tab) {
 /* Detail tabs depend on the current selection, so they must re-render on every
    visit — never serve them from the rendered-cache. */
 const ALWAYS_RENDER = { docdetail: 1, proddetail: 1, bridge: 1, reports: 1, prospects: 1, queue: 1,
-                        empgrid: 1, empdetail: 1, svgrid: 1, svdetail: 1, coach: 1, crosssell: 1 };
+                        empgrid: 1, empdetail: 1, svgrid: 1, svdetail: 1, coach: 1, crosssell: 1, funnel: 1 };
 
 function renderTab(tab, force) {
   if (!force && !ALWAYS_RENDER[tab] && APP.rendered[tab]) return;
@@ -4513,6 +4515,7 @@ function renderTab(tab, force) {
     case 'docdetail': renderDoctorDetail(); break;
     case 'status':    renderStatus(); break;
     case 'empgrid':   renderEmployeeGrid(); break;
+    case 'funnel':    renderFunnel(); break;
     case 'empdetail': renderEmployeeDetail(); break;
     case 'svgrid':    renderSalesVisits(); break;
     case 'svdetail':  renderSalesVisitDetail(); break;
@@ -4806,6 +4809,373 @@ function ddCreditsHTML(rows) {
     ${lines.length > 12 ? `<details style="margin-top:6px"><summary style="cursor:pointer;font-size:12px;color:var(--accent)">Show all ${lines.length} credited lines</summary>
       <div style="overflow-x:auto"><table style="width:100%;font-size:12.5px;border-collapse:collapse"><tbody>${lines.slice(12).map(row).join('')}</tbody></table></div></details>` : ''}
   </div>`;
+}
+
+/* ══ 🧭 SALES FUNNEL (DL80) ══════════════════════════════════════════════════════
+   1. NEW CLIENTS — doctors whose FIRST-EVER case falls in the chosen window, followed
+      week by week (or month by month) from that first invoice: cases, revenue, case types.
+      A funnel strip shows how many went on to a 2nd, 3rd, 5th and 10th case.
+   2. LOW-VOLUME DOCTORS — exactly 1 / 2 / 3 cases, 3 or fewer, 5 or fewer, or sparing
+      senders (3+ cases, active 2+ months, about 2 a month or fewer) — with practice,
+      revenue and product mix.
+   Uses each doctor's WHOLE history (a "first case" can't depend on the date bar); the State
+   and Group filters still apply. A case = one case number, dated by its first invoice.
+   Revenue = net, including shipping and fees; the product mix uses main products only. */
+const FUN = { win: '90', view: 'weeks', sort: 'first', open: null, n: 40, bucket: 'eq1', last: 'any', q: '', sk: 'revenue', sd: -1, ln: 100, cache: null, tagNew: 'all', tagLow: 'all' };
+/* ── DL81: case chips (date · case type, colour-coded) and shared NOTES & TAGS per doctor ──
+   Notes and tags live in public.client_notes / public.client_tags (admins only), keyed by the
+   dashboard's doctor id, so everyone signed in sees the same ones. */
+const FUN_CAT_SHORT = { 'Zirconia Crowns & Bridges': 'Zirconia', 'Implant Crowns': 'Implant crown', 'Implant Components': 'Implant parts',
+  'E.max / Lithium Disilicate': 'E.max', 'PFM Crowns': 'PFM', 'Full Cast / Metal Crowns': 'Full cast', 'Dentures & Partials': 'Denture / partial',
+  'Nightguards / Splints': 'Nightguard', 'Veneers': 'Veneer', 'Other': 'Other' };
+const FUN_PALETTE = ['#0ea5b7', '#7c3aed', '#f59e0b', '#ef4444', '#10b981', '#3b82f6', '#ec4899', '#84cc16', '#f97316', '#6366f1', '#14b8a6', '#a855f7'];
+const FUN_PRESET_TAGS = ['Follow up', 'Hot lead', 'At risk', 'Sample sent', 'Pricing sent', 'Called', 'Visited', 'Key account', 'Not interested'];
+const funShort = c => FUN_CAT_SHORT[c || 'Other'] || String(c).split(/[\s/&,]+/)[0];
+function funColor(c) { c = c || 'Other'; const keys = Object.keys(FUN_CAT_SHORT); let i = keys.indexOf(c);
+  if (i < 0) { let h = 0; for (const ch of String(c)) h = (h * 31 + ch.charCodeAt(0)) >>> 0; i = h; } return FUN_PALETTE[i % FUN_PALETTE.length]; }
+const funCaseTip = c => `${fmtDateShort(c.date)} · ${c.type || 'Other'} · ${fmtUSDFull(c.rev)}${c.products.size ? ' · ' + [...c.products.keys()].join(', ') : ''}${c.remake ? ' · remake' : ''}`;
+const funChip = c => { const k = funColor(c.type); return `<span title="${esc(funCaseTip(c))}" style="display:inline-flex;align-items:center;gap:4px;padding:1px 7px;margin:1px 3px 1px 0;border-radius:10px;font-size:11px;white-space:nowrap;background:${k}1a;border:1px solid ${k}55"><i style="width:7px;height:7px;border-radius:50%;background:${k};display:inline-block"></i>${fmtDateShort(c.date)} · ${esc(funShort(c.type))}${c.remake ? ' 🔁' : ''}</span>`; };
+const funChips = (cs, max) => cs.length <= max ? cs.map(funChip).join('')
+  : cs.slice(0, max).map(funChip).join('') + `<span style="font-size:11px;color:var(--mut)"> +${cs.length - max} more</span>`;
+function funLegend(list) {
+  const seen = new Map(); list.forEach(d => d.caseList.forEach(c => seen.set(c.type || 'Other', (seen.get(c.type || 'Other') || 0) + 1)));
+  return [...seen.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10).map(([t]) => `<span style="display:inline-flex;align-items:center;gap:4px;margin-right:10px;font-size:11px;color:var(--mut)"><i style="width:8px;height:8px;border-radius:50%;background:${funColor(t)};display:inline-block"></i>${esc(funShort(t))}</span>`).join('');
+}
+
+// ── notes & tags: load once, then kept up to date as you edit ──
+FUN.meta = { loaded: false, loading: null, tags: new Map(), notes: new Map(), err: '' };
+async function funLoadMeta(force) {
+  if (FUN.meta.loading) return FUN.meta.loading;
+  if (FUN.meta.loaded && !force) return;
+  FUN.meta.loading = (async () => {
+    const db = pgClient();
+    if (!db || !(await pgSessionValid())) { FUN.meta.err = 'Sign in (🔗 Salesly Bridge) to see and add notes and tags.'; return; }
+    const [t, n] = await Promise.all([
+      db.from('client_tags').select('dr_id,tags'),
+      db.from('client_notes').select('id,dr_id,note,created_at,created_by_email').order('created_at', { ascending: false }).limit(10000)]);
+    if (t.error || n.error) { FUN.meta.err = 'Notes and tags could not be loaded: ' + (t.error || n.error).message; return; }
+    FUN.meta.tags = new Map((t.data || []).map(r => [r.dr_id, r.tags || []]));
+    const m = new Map(); (n.data || []).forEach(r => { (m.get(r.dr_id) || m.set(r.dr_id, []).get(r.dr_id)).push(r); });
+    FUN.meta.notes = m; FUN.meta.loaded = true; FUN.meta.err = '';
+  })();
+  try { await FUN.meta.loading; } finally { FUN.meta.loading = null; }
+}
+const funTagsOf = id => FUN.meta.tags.get(id) || [];
+const funNotesOf = id => FUN.meta.notes.get(id) || [];
+function funAllTags() { const s = new Set(FUN_PRESET_TAGS); FUN.meta.tags.forEach(ts => ts.forEach(t => s.add(t))); return [...s].sort((a, b) => a.localeCompare(b)); }
+function funUsedTags() { const s = new Set(); FUN.meta.tags.forEach(ts => ts.forEach(t => s.add(t))); return [...s].sort((a, b) => a.localeCompare(b)); }
+function funTagPass(id, f) {
+  if (!f || f === 'all') return true;
+  if (f === '__none') return !funTagsOf(id).length;
+  if (f === '__notes') return funNotesOf(id).length > 0;
+  return funTagsOf(id).includes(f);
+}
+function funTagSelect(idAttr, cur) {
+  const used = funUsedTags(), o = (v, l) => `<option value="${esc(v)}"${v === cur ? ' selected' : ''}>${esc(l)}</option>`;
+  return `<select id="${idAttr}" title="Show only doctors with this tag">${o('all', 'All tags')}${o('__notes', '📝 Has notes')}${o('__none', 'Untagged')}${used.map(t => o(t, '🏷 ' + t)).join('')}</select>`;
+}
+function funBadges(d) {
+  const ts = funTagsOf(d.id), ns = funNotesOf(d.id);
+  return `<div style="margin-top:3px;display:flex;flex-wrap:wrap;gap:3px;align-items:center">
+    ${ts.map(t => `<span style="padding:0 7px;border-radius:9px;font-size:10.5px;background:#0f8b9922;color:#0f6b75;border:1px solid #0f8b9944">${esc(t)}</span>`).join('')}
+    ${ns.length ? `<span title="${esc(ns[0].note)}" style="font-size:10.5px;color:var(--mut)">📝 ${ns.length}</span>` : ''}
+    <button class="fun-edit" data-id="${esc(d.id)}" title="Notes &amp; tags" style="border:1px solid var(--line,#dfe3ea);background:none;border-radius:7px;padding:0 6px;font-size:11px;cursor:pointer;color:var(--mut)">✎ ${ts.length || ns.length ? 'edit' : 'notes · tags'}</button></div>`;
+}
+function funBindEdits(box) { box.querySelectorAll('.fun-edit').forEach(b => b.onclick = ev => { ev.preventDefault(); ev.stopPropagation(); funOpenClient(b.dataset.id); }); }
+
+// ── the notes & tags panel for one doctor ──
+function funOpenClient(id) {
+  const d = funDoctors().list.find(x => x.id === id); if (!d) return;
+  document.getElementById('funModal')?.remove();
+  const m = document.createElement('div'); m.id = 'funModal';
+  m.style.cssText = 'position:fixed;inset:0;z-index:90;background:rgba(15,23,42,.45);display:flex;align-items:flex-start;justify-content:center;padding:6vh 12px;overflow:auto';
+  document.body.appendChild(m);
+  const close = () => { m.remove(); document.removeEventListener('keydown', onKey); paintFunNew(); paintFunLow(); };
+  const onKey = ev => { if (ev.key === 'Escape') close(); }; document.addEventListener('keydown', onKey);
+  m.addEventListener('click', ev => { if (ev.target === m) close(); });
+  const paint = (msg) => {
+    const ts = funTagsOf(id), ns = funNotesOf(id), can = FUN.meta.loaded && !FUN.meta.err;
+    const sugg = funAllTags().filter(t => !ts.includes(t));
+    m.innerHTML = `<div style="background:var(--card,#fff);color:var(--ink,#0f172a);border-radius:14px;padding:18px 20px;width:min(620px,100%);box-shadow:0 20px 50px rgba(0,0,0,.25)">
+      <div style="display:flex;align-items:flex-start;gap:10px"><div style="flex:1"><div style="font-size:18px;font-weight:800">${esc(d.name)}</div>
+        <div style="font-size:12.5px;color:var(--mut)">${esc(d.practice)}${d.state ? ' · ' + esc(d.state) : ''} · ${d.n} case${d.n === 1 ? '' : 's'} · ${fmtUSDFull(d.revenue)} · first ${fmtDateShort(d.first)} · last ${fmtDateShort(d.last)} (${d.since} days ago)</div></div>
+        <button id="funMClose" style="border:none;background:none;font-size:20px;cursor:pointer;color:var(--mut)" title="Close">✕</button></div>
+      <div style="margin:12px 0 4px;font-size:12px;font-weight:700">Cases</div><div>${funChips(d.caseList, 40)}</div>
+      ${FUN.meta.err ? `<div style="margin-top:14px;padding:10px;border-radius:8px;background:#fef3c7;color:#78350f;font-size:12.5px">${esc(FUN.meta.err)}</div>` : ''}
+      <div style="margin:16px 0 6px;font-size:12px;font-weight:700">Tags</div>
+      <div style="display:flex;flex-wrap:wrap;gap:5px;align-items:center">${ts.map(t => `<span style="padding:2px 4px 2px 9px;border-radius:11px;font-size:12px;background:#0f8b9922;color:#0f6b75;border:1px solid #0f8b9944">${esc(t)} <button class="funTagX" data-t="${esc(t)}" ${can ? '' : 'disabled'} style="border:none;background:none;cursor:pointer;color:#0f6b75" title="Remove">✕</button></span>`).join('') || '<span style="font-size:12px;color:var(--mut)">No tags yet.</span>'}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:8px">${sugg.slice(0, 14).map(t => `<button class="funTagAdd" data-t="${esc(t)}" ${can ? '' : 'disabled'} style="border:1px dashed var(--line,#cbd5e1);background:none;border-radius:11px;padding:1px 9px;font-size:11.5px;cursor:pointer;color:var(--mut)">+ ${esc(t)}</button>`).join('')}</div>
+      <div style="display:flex;gap:6px;margin-top:8px"><input id="funTagNew" maxlength="40" placeholder="New tag…" ${can ? '' : 'disabled'} style="flex:1;padding:5px 8px;border:1px solid var(--line,#dfe3ea);border-radius:8px;font-size:12.5px"><button id="funTagNewBtn" class="btn-text" ${can ? '' : 'disabled'}>Add tag</button></div>
+      <div style="margin:16px 0 6px;font-size:12px;font-weight:700">Notes</div>
+      <textarea id="funNoteTxt" rows="3" maxlength="4000" placeholder="Add a note — a call, a visit, what they need…" ${can ? '' : 'disabled'} style="width:100%;box-sizing:border-box;padding:7px 9px;border:1px solid var(--line,#dfe3ea);border-radius:8px;font:inherit;font-size:13px"></textarea>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px"><span id="funMMsg" style="font-size:12px;color:${msg && msg.err ? 'var(--red,#dc2626)' : 'var(--mut)'}">${msg ? esc(msg.text) : ''}</span><button id="funNoteAdd" class="btn-primary" ${can ? '' : 'disabled'} style="padding:6px 14px">Add note</button></div>
+      <div style="margin-top:10px">${ns.map(n => `<div style="border-top:1px solid var(--line,#eef1f5);padding:8px 0">
+          <div style="font-size:11px;color:var(--mut);display:flex;gap:8px"><span>${new Date(n.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}</span><span>${esc(n.created_by_email || '')}</span>
+            <button class="funNoteDel" data-n="${n.id}" ${can ? '' : 'disabled'} style="margin-left:auto;border:none;background:none;cursor:pointer;color:var(--mut);font-size:11px" title="Delete this note">🗑</button></div>
+          <div style="font-size:13px;white-space:pre-wrap;margin-top:2px">${esc(n.note)}</div></div>`).join('') || '<div style="font-size:12px;color:var(--mut)">No notes yet.</div>'}</div>
+    </div>`;
+    m.querySelector('#funMClose').onclick = close;
+    m.querySelectorAll('.funTagX').forEach(b => b.onclick = () => setTags(ts.filter(t => t !== b.dataset.t)));
+    m.querySelectorAll('.funTagAdd').forEach(b => b.onclick = () => setTags(ts.concat(b.dataset.t)));
+    const addNew = () => { const v = m.querySelector('#funTagNew').value.trim().replace(/\s+/g, ' '); if (v && !ts.some(t => t.toLowerCase() === v.toLowerCase())) setTags(ts.concat(v)); };
+    m.querySelector('#funTagNewBtn').onclick = addNew; m.querySelector('#funTagNew').onkeydown = ev => { if (ev.key === 'Enter') addNew(); };
+    m.querySelector('#funNoteAdd').onclick = addNote;
+    m.querySelectorAll('.funNoteDel').forEach(b => b.onclick = () => delNote(+b.dataset.n));
+  };
+  const db = () => pgClient();
+  async function setTags(next) {
+    const { error } = await db().from('client_tags').upsert({ dr_id: d.id, dr_name: d.name, practice: d.practice, tags: next, updated_at: new Date().toISOString() }, { onConflict: 'dr_id' });
+    if (error) return paint({ err: 1, text: (pgIsAuthError(error) ? PG_SESSION_MSG : 'Could not save the tags: ' + error.message) });
+    FUN.meta.tags.set(d.id, next); paint({ text: 'Tags saved.' });
+  }
+  async function addNote() {
+    const txt = (m.querySelector('#funNoteTxt').value || '').trim(); if (!txt) return;
+    const { data, error } = await db().from('client_notes').insert({ dr_id: d.id, dr_name: d.name, practice: d.practice, note: txt }).select('id,dr_id,note,created_at,created_by_email').single();
+    if (error) return paint({ err: 1, text: (pgIsAuthError(error) ? PG_SESSION_MSG : 'Could not save the note: ' + error.message) });
+    FUN.meta.notes.set(d.id, [data].concat(funNotesOf(d.id))); paint({ text: 'Note added.' });
+  }
+  async function delNote(nid) {
+    if (!window.confirm('Delete this note?')) return;
+    const { error } = await db().from('client_notes').delete().eq('id', nid);
+    if (error) return paint({ err: 1, text: 'Could not delete the note: ' + error.message });
+    FUN.meta.notes.set(d.id, funNotesOf(d.id).filter(n => n.id !== nid)); paint({ text: 'Note deleted.' });
+  }
+  paint();
+  if (!FUN.meta.loaded) funLoadMeta().then(() => paint());
+}
+
+const FUN_BUCKETS = [
+  ['eq1', 'Exactly 1 case'], ['eq2', 'Exactly 2 cases'], ['eq3', 'Exactly 3 cases'],
+  ['le3', '3 cases or fewer'], ['le5', '5 cases or fewer'], ['sparing', 'Sparing senders — about 1–2 cases a month']];
+const funDay = d => Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 864e5;
+const funK = v => { const a = Math.abs(v), s = v < 0 ? '−$' : '$'; return a >= 1e6 ? s + (a / 1e6).toFixed(1) + 'M' : a >= 1e4 ? s + Math.round(a / 1e3) + 'K' : a >= 1e3 ? s + (a / 1e3).toFixed(1) + 'K' : s + Math.round(a); };
+
+function funDoctors() {
+  const f = APP.filters || {};
+  const key = APP.raw.length + '|' + (f.state || '') + '|' + (f.group || '');
+  if (FUN.cache && FUN.cache.key === key) return FUN.cache;
+  const st = String(f.state || '').trim(), stU = st.toUpperCase();
+  const docs = new Map();
+  for (const r of APP.raw) {
+    if (!r.drId || !r.caseNo) continue;
+    if (st && !(r.state === st || r.stateAbbr === stU)) continue;
+    if (f.group && r.group !== f.group) continue;
+    const dt = r.invoiced || r.anchorDate; if (!dt) continue;
+    let d = docs.get(r.drId);
+    if (!d) docs.set(r.drId, d = { id: r.drId, name: r.drName || '(no name)', practice: r.practice || '', state: r.stateAbbr || r.state || '', cases: new Map(), revenue: 0 });
+    let c = d.cases.get(r.caseNo);
+    if (!c) d.cases.set(r.caseNo, c = { no: r.caseNo, date: dt, rev: 0, products: new Map(), cats: new Map(), remake: false });
+    if (dt < c.date) c.date = dt;
+    const amt = r.netCost || 0; c.rev += amt; d.revenue += amt;
+    if (r.remake) c.remake = true;
+    const main = typeof r.mainProduct === 'boolean' ? r.mainProduct : true;   // shipping / fees stay out of the product mix
+    if (main && r.product) {
+      c.products.set(r.product, (c.products.get(r.product) || 0) + (r.qty || 1));
+      const cat = r.productCat || 'Other'; c.cats.set(cat, (c.cats.get(cat) || 0) + Math.max(0, amt));
+    }
+  }
+  const list = [];
+  for (const d of docs.values()) {
+    const cs = [...d.cases.values()].sort((a, b) => a.date - b.date);
+    d.caseList = cs; d.n = cs.length; d.first = cs[0].date; d.last = cs[cs.length - 1].date;
+    const cats = new Map(); cs.forEach(c => c.cats.forEach((v, k) => cats.set(k, (cats.get(k) || 0) + v)));
+    d.cats = [...cats.entries()].sort((a, b) => b[1] - a[1]);
+    d.remakes = cs.filter(c => c.remake).length;
+    cs.forEach(c => { c.type = [...c.cats.entries()].sort((a, b) => b[1] - a[1]).map(x => x[0])[0] || ''; });
+    list.push(d);
+  }
+  const max = getMaxDate() || new Date(), maxDay = funDay(max);
+  list.forEach(d => {
+    d.since = maxDay - funDay(d.last);
+    d.months = Math.max(1, (maxDay - funDay(d.first) + 1) / 30.44);
+    d.rate = d.n / d.months;
+    d.avg = d.n ? d.revenue / d.n : 0;
+  });
+  return (FUN.cache = { key, list, max, maxDay });
+}
+
+function funNewWindow(C) {
+  if (FUN.win === 'bar') {
+    const f = APP.filters || {};
+    return { from: f.fromDate ? funDay(f.fromDate) : -Infinity, to: f.toDate ? funDay(f.toDate) : C.maxDay,
+             label: (f.fromDate ? fmtDateShort(f.fromDate) : 'the start') + ' – ' + (f.toDate ? fmtDateShort(f.toDate) : fmtDateShort(C.max)) };
+  }
+  const days = +FUN.win; return { from: C.maxDay - days + 1, to: C.maxDay, label: 'the last ' + days + ' days' };
+}
+
+function renderFunnel() {
+  const el = document.getElementById('panel-funnel'); if (!el) return;
+  if (!APP.raw || !APP.raw.length) { el.innerHTML = '<div class="empty-state"><div class="empty-icon">🧭</div>Load your invoice data to see the sales funnel.</div>'; return; }
+  const C = funDoctors();
+  const opt = (v, l, cur) => `<option value="${v}"${v === cur ? ' selected' : ''}>${l}</option>`;
+  el.innerHTML = `
+    <div class="section-head" style="margin-bottom:14px"><h2 style="margin:0">🧭 Sales Funnel</h2>
+      <div class="text-mut" style="font-size:13px">New clients from their first invoice, and doctors who send few cases · whole history up to ${fmtDateShort(C.max)} · State &amp; Group filters apply</div></div>
+    <div class="card mb20" style="padding:16px">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+        <div class="chart-title" style="margin:0;flex:1">🌱 New clients <span style="font-weight:400;font-size:12px;color:var(--mut)">· first-ever case in the window, followed from that invoice</span></div>
+        <label style="font-size:12px">First case in <select id="funWin">${opt('30', 'last 30 days', FUN.win)}${opt('60', 'last 60 days', FUN.win)}${opt('90', 'last 90 days', FUN.win)}${opt('180', 'last 180 days', FUN.win)}${opt('bar', 'the top bar’s dates', FUN.win)}</select></label>
+        <div class="pill-group" id="funView"><button class="pill${FUN.view === 'weeks' ? ' active' : ''}" data-v="weeks">Weeks</button><button class="pill${FUN.view === 'months' ? ' active' : ''}" data-v="months">Months</button></div>
+        ${funTagSelect('funTagNewSel', FUN.tagNew)}
+        <label style="font-size:12px">Sort <select id="funSort">${opt('first', 'newest first', FUN.sort)}${opt('revenue', 'revenue', FUN.sort)}${opt('cases', 'cases', FUN.sort)}</select></label>
+        <button class="btn-text" id="funXl" style="font-size:12px">⬇ Excel</button>
+      </div>
+      <div id="funNew"></div>
+    </div>
+    <div class="card mb20" style="padding:16px">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+        <div class="chart-title" style="margin:0;flex:1">🐢 Low-volume doctors</div>
+        <select id="funBucket">${FUN_BUCKETS.map(([v, l]) => opt(v, l, FUN.bucket)).join('')}</select>
+        <label style="font-size:12px">Last case <select id="funLast">${opt('any', 'any time', FUN.last)}${opt('30', 'in the last 30 days', FUN.last)}${opt('90', 'in the last 90 days', FUN.last)}${opt('180', 'in the last 180 days', FUN.last)}${opt('old', 'over 180 days ago', FUN.last)}</select></label>
+        ${funTagSelect('funTagLowSel', FUN.tagLow)}
+        <input id="funQ" type="search" placeholder="Search doctor, practice, tag or note" value="${esc(FUN.q)}" style="padding:5px 8px;border:1px solid var(--line,#dfe3ea);border-radius:8px;font-size:12.5px;min-width:200px">
+      </div>
+      <div id="funLow"></div>
+    </div>`;
+  const re = () => { paintFunNew(); };
+  document.getElementById('funWin').onchange = ev => { FUN.win = ev.target.value; FUN.open = null; FUN.n = 40; re(); };
+  document.getElementById('funSort').onchange = ev => { FUN.sort = ev.target.value; re(); };
+  document.querySelectorAll('#funView .pill').forEach(b => b.onclick = () => { FUN.view = b.dataset.v; document.querySelectorAll('#funView .pill').forEach(x => x.classList.toggle('active', x === b)); re(); });
+  document.getElementById('funBucket').onchange = ev => { FUN.bucket = ev.target.value; FUN.ln = 100; paintFunLow(); };
+  document.getElementById('funLast').onchange = ev => { FUN.last = ev.target.value; FUN.ln = 100; paintFunLow(); };
+  let qt = null; document.getElementById('funQ').oninput = ev => { clearTimeout(qt); qt = setTimeout(() => { FUN.q = ev.target.value; FUN.ln = 100; paintFunLow(); }, 200); };
+  document.getElementById('funXl').onclick = ev => xlDownload(() => xlFunnelWorkbook(), 'sales-funnel-' + new Date().toISOString().slice(0, 10) + '.xlsx', ev.currentTarget);
+  document.getElementById('funTagNewSel').onchange = ev => { FUN.tagNew = ev.target.value; FUN.n = 40; paintFunNew(); };
+  document.getElementById('funTagLowSel').onchange = ev => { FUN.tagLow = ev.target.value; FUN.ln = 100; paintFunLow(); };
+  paintFunNew(); paintFunLow();
+  if (!FUN.meta.loaded && !FUN.meta.loading) funLoadMeta().then(() => { if (document.getElementById('panel-funnel')?.classList.contains('active')) renderFunnel(); });
+}
+
+function funNewDoctors() {
+  const C = funDoctors(), W = funNewWindow(C);
+  const news = C.list.filter(d => { const f = funDay(d.first); return f >= W.from && f <= W.to && funTagPass(d.id, FUN.tagNew); });
+  news.sort(FUN.sort === 'revenue' ? (a, b) => b.revenue - a.revenue : FUN.sort === 'cases' ? (a, b) => b.n - a.n || b.revenue - a.revenue : (a, b) => b.first - a.first || b.revenue - a.revenue);
+  return { C, W, news };
+}
+
+function paintFunNew() {
+  const box = document.getElementById('funNew'); if (!box) return;
+  const { C, W, news } = funNewDoctors();
+  if (!news.length) { box.innerHTML = `<div class="text-mut" style="padding:10px 0">No doctor sent their first case in ${W.label}.</div>`; return; }
+  const steps = [1, 2, 3, 5, 10].map(k => [k, news.filter(d => d.n >= k).length]);
+  const gaps = news.filter(d => d.n >= 2).map(d => funDay(d.caseList[1].date) - funDay(d.first)).sort((a, b) => a - b);
+  const med = gaps.length ? gaps[Math.floor((gaps.length - 1) / 2)] : null;
+  const rev = news.reduce((t, d) => t + d.revenue, 0);
+  const ord = k => k === 1 ? '1st' : k === 2 ? '2nd' : k === 3 ? '3rd' : k + 'th';
+  const strip = `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px">${steps.map(([k, c], i) => {
+      const pct = Math.round(c / news.length * 100);
+      return `<div style="flex:1 1 120px;padding:10px 12px;border-radius:10px;background:rgba(36,191,205,${0.08 + 0.32 * c / news.length});border:1px solid var(--line,#e6e9ee)">
+        <div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--mut)">${i ? 'Sent a ' + ord(k) + ' case' : 'New doctors'}</div>
+        <div style="font-size:20px;font-weight:800">${c.toLocaleString()}</div><div style="font-size:11.5px;color:var(--mut)">${i ? pct + '% of new' : funK(rev) + ' revenue so far'}</div></div>`; }).join('')}</div>
+    <div class="text-mut" style="font-size:12px;margin-bottom:12px">First case in ${W.label}${med != null ? ' · median ' + med + ' day' + (med === 1 ? '' : 's') + ' from 1st to 2nd case' : ''} · click a doctor’s row to see each case</div>`;
+  const weeks = FUN.view === 'weeks', cols = weeks ? 12 : 6, span = weeks ? 7 : 30.44;
+  const label = i => (weeks ? 'Wk ' : 'Mo ') + (i + 1);
+  const rows = news.slice(0, FUN.n);
+  let maxCell = 1;
+  const grid = rows.map(d => { const f = funDay(d.first), cells = Array.from({ length: cols + 1 }, () => ({ n: 0, rev: 0 }));
+    d.caseList.forEach(c => { const i = Math.min(cols, Math.floor((funDay(c.date) - f) / span)); cells[i].n++; cells[i].rev += c.rev; (cells[i].cs = cells[i].cs || []).push(c); });
+    cells.forEach(x => { if (x.rev > maxCell) maxCell = x.rev; });
+    return { d, f, cells }; });
+  const cell = (x, i, f) => {
+    const future = f + i * span > C.maxDay;
+    if (future) return `<td style="padding:3px;text-align:center;color:var(--mut);background:repeating-linear-gradient(45deg,transparent,transparent 4px,rgba(148,163,184,.12) 4px,rgba(148,163,184,.12) 8px)">·</td>`;
+    if (!x.n) return `<td style="padding:3px;text-align:center;color:#cbd5e1">–</td>`;
+    const a = 0.12 + 0.6 * Math.max(0, x.rev) / maxCell;
+    const tip = x.cs.map(funCaseTip).join('\n');
+    const dots = x.cs.slice(0, 8).map(c => `<i style="display:inline-block;width:6px;height:6px;border-radius:50%;margin:0 1px;background:${funColor(c.type)}"></i>`).join('');
+    return `<td style="padding:3px 4px;text-align:center;background:rgba(36,191,205,${a.toFixed(2)});border-radius:4px" title="${esc(tip)}"><b>${x.n}</b><div style="font-size:10px">${funK(x.rev)}</div><div style="line-height:6px">${dots}</div></td>`;
+  };
+  const caseRows = d => `<tr><td colspan="${cols + 6}" style="padding:0 0 10px 18px;background:var(--bg2,#f8fafc)">
+      <table style="width:100%;font-size:12px;border-collapse:collapse"><thead><tr style="text-align:left;color:var(--mut)"><th style="padding:4px">Date</th><th style="padding:4px">Day</th><th style="padding:4px">Case #</th><th style="padding:4px">Products</th><th style="padding:4px">Case type</th><th style="padding:4px;text-align:right">Revenue</th></tr></thead>
+      <tbody>${d.caseList.map(c => `<tr style="border-top:1px solid var(--line,#eef1f5)"><td style="padding:3px 4px;white-space:nowrap">${fmtDateShort(c.date)}</td>
+        <td style="padding:3px 4px;color:var(--mut)">${funDay(c.date) - funDay(d.first) === 0 ? 'first' : 'day ' + (funDay(c.date) - funDay(d.first))}</td><td style="padding:3px 4px">${esc(c.no)}${c.remake ? ' <span title="remake">🔁</span>' : ''}</td>
+        <td style="padding:3px 4px;max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc([...c.products.keys()].join(', '))}">${esc([...c.products.entries()].map(([p, q]) => (q > 1 ? q + '× ' : '') + p).join(', ') || '—')}</td>
+        <td style="padding:3px 4px">${esc(c.type || '—')}</td><td style="padding:3px 4px;text-align:right;font-weight:600">${fmtUSDFull(c.rev)}</td></tr>`).join('')}</tbody></table></td></tr>`;
+  box.innerHTML = strip + `<div style="overflow-x:auto"><table style="width:100%;font-size:12.5px;border-collapse:separate;border-spacing:2px">
+    <thead><tr style="text-align:left;font-size:11px;color:var(--mut)"><th style="padding:4px">Doctor</th><th style="padding:4px">First case</th><th style="padding:4px;text-align:right">Cases</th><th style="padding:4px;text-align:right">Revenue</th><th style="padding:4px">Mostly</th>
+      ${Array.from({ length: cols }, (_, i) => `<th style="padding:4px;text-align:center">${label(i)}</th>`).join('')}<th style="padding:4px;text-align:center">Later</th></tr></thead>
+    <tbody>${grid.map(({ d, f, cells }) => `<tr class="fun-row" data-id="${esc(d.id)}" style="cursor:pointer">
+        <td style="padding:4px;min-width:190px"><a href="#" class="fun-dr" data-id="${esc(d.id)}" style="font-weight:700">${esc(d.name)}</a><div style="font-size:11px;color:var(--mut)">${esc(d.practice)}${d.state ? ' · ' + esc(d.state) : ''}</div>${funBadges(d)}</td>
+        <td style="padding:4px;white-space:nowrap">${fmtDateShort(d.first)}</td><td style="padding:4px;text-align:right;font-weight:700">${d.n}</td><td style="padding:4px;text-align:right">${fmtUSDFull(d.revenue)}</td>
+        <td style="padding:4px;font-size:11.5px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc((d.cats[0] || [''])[0])}</td>
+        ${cells.map((x, i) => cell(x, i, f)).join('')}</tr>
+        <tr class="fun-chiprow"><td colspan="${cols + 6}" style="padding:0 4px 8px 4px;border-bottom:1px solid var(--line,#eef1f5)">${funChips(d.caseList, 14)}</td></tr>${FUN.open === d.id ? caseRows(d) : ''}`).join('')}</tbody></table></div>
+    ${news.length > rows.length ? `<div style="text-align:center;margin-top:8px"><button class="btn-text" id="funMore" style="font-size:12px">Show ${Math.min(40, news.length - rows.length)} more (${(news.length - rows.length).toLocaleString()} not shown)</button></div>` : ''}
+    <div class="text-mut" style="font-size:11px;margin-top:6px">${weeks ? 'Wk 1 = the 7 days starting with the first invoice' : 'Mo 1 = the first 30 days from the first invoice'} · hatched = not reached yet · shading follows revenue · each dot is a case, coloured by type — hover a cell for dates</div>
+    <div style="margin-top:6px">${funLegend(news)}</div>`;
+  box.querySelectorAll('.fun-row').forEach(tr => tr.onclick = ev => { if (ev.target.closest('.fun-dr')) return; FUN.open = FUN.open === tr.dataset.id ? null : tr.dataset.id; paintFunNew(); });
+  box.querySelectorAll('.fun-dr').forEach(a => a.onclick = ev => { ev.preventDefault(); ev.stopPropagation(); APP.selectedDoctorId = a.dataset.id; switchTab('docdetail'); });
+  const more = document.getElementById('funMore'); if (more) more.onclick = () => { FUN.n += 40; paintFunNew(); };
+  funBindEdits(box);
+}
+
+function funLowDoctors() {
+  const C = funDoctors(), b = FUN.bucket, q = FUN.q.trim().toLowerCase();
+  let list = C.list.filter(d =>
+    b === 'eq1' ? d.n === 1 : b === 'eq2' ? d.n === 2 : b === 'eq3' ? d.n === 3 : b === 'le3' ? d.n <= 3 : b === 'le5' ? d.n <= 5 :
+    (d.n >= 3 && d.months >= 2 && d.rate <= 2));
+  if (FUN.last !== 'any') list = list.filter(d => FUN.last === 'old' ? d.since > 180 : d.since <= +FUN.last);
+  list = list.filter(d => funTagPass(d.id, FUN.tagLow));
+  if (q) list = list.filter(d => (d.name + ' ' + d.practice + ' ' + funTagsOf(d.id).join(' ') + ' ' + funNotesOf(d.id).map(n => n.note).join(' ')).toLowerCase().includes(q));
+  const k = FUN.sk, dir = FUN.sd;
+  const val = d => k === 'name' ? d.name.toLowerCase() : k === 'practice' ? d.practice.toLowerCase() : k === 'state' ? d.state : d[k];
+  list.sort((a, b2) => { const x = val(a), y = val(b2); return (x > y ? 1 : x < y ? -1 : 0) * dir || b2.revenue - a.revenue; });
+  return { C, list };
+}
+
+function paintFunLow() {
+  const box = document.getElementById('funLow'); if (!box) return;
+  const { list } = funLowDoctors();
+  const tot = list.reduce((t, d) => t + d.revenue, 0);
+  const COLS = [['name', 'Doctor'], ['state', 'State'], ['n', 'Cases'], ['revenue', 'Revenue'], ['avg', 'Avg / case'], ['first', 'First case'], ['last', 'Last case'], ['since', 'Days since'], ['rate', 'Cases / mo'], ['remakes', 'Remakes'], ['', 'Cases — date · type'], ['', 'Product mix']];
+  const shown = list.slice(0, FUN.ln);
+  const mix = d => { const t = d.cats.reduce((s, x) => s + x[1], 0) || 1;
+    return d.cats.slice(0, 3).map(([c, v]) => `<span style="display:inline-block;padding:1px 7px;margin:1px 3px 1px 0;border-radius:10px;background:var(--bg2,#f1f5f9);font-size:11px;white-space:nowrap">${esc(c)} <b>${Math.round(v / t * 100)}%</b></span>`).join('') || '<span class="text-mut">—</span>'; };
+  const right = new Set(['n', 'revenue', 'avg', 'since', 'rate', 'remakes']);
+  box.innerHTML = `<div class="text-mut" style="font-size:12.5px;margin-bottom:8px"><b style="color:var(--ink,#0f172a)">${list.length.toLocaleString()} doctor${list.length === 1 ? '' : 's'}</b> · ${fmtUSDFull(tot)} lifetime revenue${list.length ? ' · ' + fmtUSDFull(tot / list.length) + ' per doctor' : ''}${FUN.bucket === 'sparing' ? ' · sparing = 3+ cases, active 2+ months, 2 or fewer a month on average' : ''}</div>
+    ${list.length ? `<div style="overflow-x:auto"><table style="width:100%;font-size:12.5px;border-collapse:collapse"><thead><tr style="text-align:left;font-size:11px;color:var(--mut)">
+      ${COLS.map(([k, l]) => `<th${k ? ` data-k="${k}"` : ''} style="padding:5px 6px;white-space:nowrap;${k ? 'cursor:pointer;' : ''}${right.has(k) ? 'text-align:right' : ''}">${l}${FUN.sk === k ? (FUN.sd > 0 ? ' ▲' : ' ▼') : ''}</th>`).join('')}</tr></thead>
+      <tbody>${shown.map(d => `<tr style="border-top:1px solid var(--line,#eef1f5)">
+        <td style="padding:5px 6px;min-width:200px"><a href="#" class="fun-dr" data-id="${esc(d.id)}" style="font-weight:700">${esc(d.name)}</a><div style="font-size:11px;color:var(--mut)">${esc(d.practice)}</div>${funBadges(d)}</td>
+        <td style="padding:5px 6px">${esc(d.state)}</td><td style="padding:5px 6px;text-align:right;font-weight:700">${d.n}</td>
+        <td style="padding:5px 6px;text-align:right">${fmtUSDFull(d.revenue)}</td><td style="padding:5px 6px;text-align:right">${fmtUSDFull(d.avg)}</td>
+        <td style="padding:5px 6px;white-space:nowrap">${fmtDateShort(d.first)}</td><td style="padding:5px 6px;white-space:nowrap">${fmtDateShort(d.last)}</td>
+        <td style="padding:5px 6px;text-align:right">${d.since}</td><td style="padding:5px 6px;text-align:right">${d.rate.toFixed(1)}</td><td style="padding:5px 6px;text-align:right">${d.remakes || ''}</td>
+        <td style="padding:5px 6px;min-width:260px">${funChips(d.caseList.slice(-8), 8)}${d.n > 8 ? `<span style="font-size:11px;color:var(--mut)"> +${d.n - 8} earlier</span>` : ''}</td>
+        <td style="padding:5px 6px;min-width:220px">${mix(d)}</td></tr>`).join('')}</tbody></table></div>
+      ${list.length > shown.length ? `<div style="text-align:center;margin-top:8px"><button class="btn-text" id="funLowMore" style="font-size:12px">Show ${Math.min(200, list.length - shown.length)} more (${(list.length - shown.length).toLocaleString()} not shown)</button></div>` : ''}`
+      : '<div class="text-mut" style="padding:8px 0">No doctors match.</div>'}`;
+  box.querySelectorAll('th[data-k]').forEach(th => th.onclick = () => { const k = th.dataset.k; FUN.sd = FUN.sk === k ? -FUN.sd : (k === 'name' || k === 'practice' || k === 'state' ? 1 : -1); FUN.sk = k; paintFunLow(); });
+  box.querySelectorAll('.fun-dr').forEach(a => a.onclick = ev => { ev.preventDefault(); APP.selectedDoctorId = a.dataset.id; switchTab('docdetail'); });
+  const more = document.getElementById('funLowMore'); if (more) more.onclick = () => { FUN.ln += 200; paintFunLow(); };
+  funBindEdits(box);
+}
+
+async function xlFunnelWorkbook() {
+  const ExcelJS = await loadExcelJS(), wb = new ExcelJS.Workbook(); wb.creator = 'Lab Sales Dashboard'; wb.created = new Date();
+  const { W, news } = funNewDoctors(), { list } = funLowDoctors();
+  { const ws = wb.addWorksheet('New clients'); const weeks = 12;
+    ws.columns = [{ width: 28 }, { width: 34 }, { width: 7 }, { width: 13 }, { width: 8 }, { width: 13 }, { width: 13 }, { width: 26 }].concat(Array.from({ length: weeks }, () => ({ width: 7 })));
+    let r = xlTitle(ws, 'New clients — first case in ' + W.label, news.length + ' doctors · cases per week from each doctor’s first invoice', null);
+    ws.columns = ws.columns.concat([{ width: 22 }, { width: 40 }, { width: 70 }]);
+    xlHeader(ws, r, ['Doctor', 'Practice', 'State', 'First case', 'Cases', 'Revenue', '2nd case', 'Mostly'].concat(Array.from({ length: weeks }, (_, i) => 'Wk ' + (i + 1)), ['Tags', 'Latest note', 'Cases — date · type']));
+    news.forEach(d => { r++; const f = funDay(d.first), wk = Array(weeks).fill(0);
+      d.caseList.forEach(c => { const i = Math.floor((funDay(c.date) - f) / 7); if (i < weeks) wk[i]++; });
+      const row = ws.getRow(r); row.values = [d.name, d.practice, d.state, d.first, d.n, d.revenue, d.caseList[1] ? d.caseList[1].date : null, (d.cats[0] || [''])[0]].concat(wk.map(x => x || null),
+        [funTagsOf(d.id).join(', '), (funNotesOf(d.id)[0] || {}).note || '', d.caseList.map(c => fmtDateShort(c.date) + ' ' + funShort(c.type)).join('; ')]);
+      row.getCell(4).numFmt = 'm/d/yyyy'; row.getCell(7).numFmt = 'm/d/yyyy'; row.getCell(6).numFmt = '$#,##0'; });
+    ws.views = [{ state: 'frozen', ySplit: 4 }]; }
+  { const ws = wb.addWorksheet('Low-volume doctors');
+    ws.columns = [{ width: 28 }, { width: 34 }, { width: 7 }, { width: 7 }, { width: 13 }, { width: 12 }, { width: 12 }, { width: 12 }, { width: 10 }, { width: 10 }, { width: 9 }, { width: 50 }, { width: 22 }, { width: 40 }, { width: 70 }];
+    const bl = (FUN_BUCKETS.find(b => b[0] === FUN.bucket) || ['', ''])[1];
+    let r = xlTitle(ws, 'Low-volume doctors — ' + bl, list.length + ' doctors · whole history', null);
+    xlHeader(ws, r, ['Doctor', 'Practice', 'State', 'Cases', 'Revenue', 'Avg / case', 'First case', 'Last case', 'Days since', 'Cases / mo', 'Remakes', 'Product mix', 'Tags', 'Latest note', 'Cases — date · type']);
+    list.forEach(d => { r++; const t = d.cats.reduce((s, x) => s + x[1], 0) || 1; const row = ws.getRow(r);
+      row.values = [d.name, d.practice, d.state, d.n, d.revenue, d.avg, d.first, d.last, d.since, Math.round(d.rate * 10) / 10, d.remakes, d.cats.slice(0, 4).map(([c, v]) => c + ' ' + Math.round(v / t * 100) + '%').join(' · '),
+        funTagsOf(d.id).join(', '), (funNotesOf(d.id)[0] || {}).note || '', d.caseList.map(c => fmtDateShort(c.date) + ' ' + funShort(c.type)).join('; ')];
+      [5, 6].forEach(c => { row.getCell(c).numFmt = '$#,##0'; }); [7, 8].forEach(c => { row.getCell(c).numFmt = 'm/d/yyyy'; }); });
+    ws.views = [{ state: 'frozen', ySplit: 4 }]; }
+  return wb;
 }
 
 function renderOverview() {
@@ -15222,10 +15592,23 @@ function renderBridge() {
       sbLog('  loading (only rows that are new get processed)…');
       let batchId = null, totalLoaded = 0, guard = 0, totalReplaced = 0, replaceSkipped = false;
       const source = (APP.meta && APP.meta.fileName) || 'dashboard upload';
+      /* DL79 — signed-in requests are cut off after 8 SECONDS. The credits loader does more per line
+         than the old one, and a 20,000-line piece ran out of time (the database rolls it back, so
+         nothing is half-written — but nothing loads either). Pieces of 4,000 lines stay well inside;
+         if one still times out, it is retried in smaller pieces instead of failing the upload. */
+      let sliceLimit = 4000;
       for (;;) {
         const { data: ch, error: cErr } = await db.rpc('lab_load_chunk',
-          { p_batch: batchId, p_source: source, p_limit: 20000, p_replace: replaceDays });
-        if (cErr) throw new Error(cErr.message);
+          { p_batch: batchId, p_source: source, p_limit: sliceLimit, p_replace: replaceDays });
+        if (cErr) {
+          if (/statement timeout|canceling statement/i.test(cErr.message || '') && sliceLimit > 500) {
+            sliceLimit = Math.max(500, Math.floor(sliceLimit / 2));
+            sbLog('  that piece took too long — retrying in pieces of ' + sliceLimit.toLocaleString() + ' lines…', 'warn');
+            if (++guard > 400) throw new Error('load did not finish');
+            continue;
+          }
+          throw new Error(cErr.message);
+        }
         batchId = ch.batch_id;
         totalLoaded += Number(ch.loaded || 0);
         totalReplaced += Number(ch.replaced || 0); replaceSkipped = replaceSkipped || !!ch.replace_skipped;
@@ -15234,7 +15617,7 @@ function renderBridge() {
         sbLog('  loaded ' + totalLoaded.toLocaleString() +
               (remaining ? ' · ' + remaining.toLocaleString() + ' to go' : ''));
         if (ch.done) break;
-        if (++guard > 200) throw new Error('load did not finish after 200 passes');
+        if (++guard > 400) throw new Error('load did not finish after 400 passes');
       }
       const { data: sumAfter } = await db.rpc('lab_summary');
       const d = { batch_id: batchId, loaded: totalLoaded,
