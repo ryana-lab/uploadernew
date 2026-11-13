@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.11.12-DL81</title>
+<title>Lab Sales Dashboard v2026.11.13-DL83</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -1470,7 +1470,18 @@ tr.cs-open td { background: var(--card-2); white-space: normal; cursor: default;
 .sb-log .ok { color: var(--grn); font-weight: 700; }
 .sb-log .warn { color: var(--amb); font-weight: 700; }
 .sb-log .err { color: var(--red); font-weight: 700; }
-.sb-log .warn { color: var(--amb, #b45309); font-weight: 700; }   /* DL76: e.g. "sending is paused" */
+.sb-log .warn { color: var(--amb, #b45309); font-weight: 700; }
+/* DL83 — Sales Funnel: doctor names as buttons; collapsible sections */
+#panel-funnel a.fun-dr { display: inline-block; padding: 2px 10px; border: 1px solid var(--line, #d7dde5); border-radius: 8px;
+  background: var(--card, #fff); color: var(--ink, #0f172a) !important; font-weight: 700; text-decoration: none !important; line-height: 1.5; transition: background .12s, border-color .12s; }
+#panel-funnel a.fun-dr::after { content: ' \203A'; color: var(--mut, #64748b); font-weight: 400; }
+#panel-funnel a.fun-dr:hover { background: #e6f7f9; border-color: #24bfcd; }
+#panel-funnel .fun-toggle { cursor: pointer; user-select: none; }
+#panel-funnel .fun-caret { display: inline-block; width: 14px; color: var(--mut, #64748b); transition: transform .15s; }
+#panel-funnel .fun-collapsed .fun-caret { transform: rotate(-90deg); }
+#panel-funnel .fun-collapsed .fun-body, #panel-funnel .fun-collapsed .fun-head > :not(.fun-toggle) { display: none !important; }
+#panel-funnel .fun-collapsed .fun-head { margin-bottom: 0 !important; }
+#panel-funnel .fun-step:hover { box-shadow: 0 0 0 3px rgba(15,139,153,.12); }   /* DL76: e.g. "sending is paused" */
 .sb-conn-status { font-size: 13px; margin-left: 8px; }
 .rp-preview { border: 1px solid var(--border); border-radius: 10px; background: #fff; max-height: 520px; overflow-y: auto; padding: 14px; margin-top: 12px; }
 .rp-preview:empty { display: none; }
@@ -2093,7 +2104,7 @@ const APP = {
 
 /* Bump when normalization logic changes, so it's possible to tell at a glance
    (bottom of the Avg Turnaround card) which build a browser is running. */
-const BUILD_ID = 'DL81 · 2026-11-12';
+const BUILD_ID = 'DL83 · 2026-11-13';
 
 const DB_NAME = 'LabOpsCache';
 const DB_STORE = 'datasets';
@@ -4821,7 +4832,21 @@ function ddCreditsHTML(rows) {
    Uses each doctor's WHOLE history (a "first case" can't depend on the date bar); the State
    and Group filters still apply. A case = one case number, dated by its first invoice.
    Revenue = net, including shipping and fees; the product mix uses main products only. */
-const FUN = { win: '90', view: 'weeks', sort: 'first', open: null, n: 40, bucket: 'eq1', last: 'any', q: '', sk: 'revenue', sd: -1, ln: 100, cache: null, tagNew: 'all', tagLow: 'all' };
+const FUN = { win: '90', view: 'weeks', sort: 'first', open: null, n: 10, bucket: 'eq1', last: 'any', q: '', sk: 'revenue', sd: -1, ln: 10, cache: null, tagNew: 'all', tagLow: 'all',
+              gapMode: 'product', gapProd: '', gapCat: '', gapWin: '90', gapMin: '1', gapTag: 'all', gapN: 10, gapSk: 'winRev', gapSd: -1,
+              col: { new: false, low: false, gap: false },   // DL83: collapsed sections
+              step: 0, stepNot: false };                     // DL83: funnel card clicked (2/3/5/10) — and "who haven't"
+const FUN_PAGE = 25;   // DL83: lists open at their top 10; "Show 25 more" / "Show all"
+function funMoreBtns(id, shown, total) {
+  if (total <= shown) return '';
+  return `<div style="display:flex;gap:8px;justify-content:center;margin-top:10px">
+    <button class="btn-text fun-more" data-list="${id}" data-add="${FUN_PAGE}" style="font-size:12px;border:1px solid var(--line,#d7dde5);border-radius:8px;padding:4px 12px">Show ${Math.min(FUN_PAGE, total - shown)} more</button>
+    <button class="btn-text fun-more" data-list="${id}" data-add="all" style="font-size:12px;border:1px solid var(--line,#d7dde5);border-radius:8px;padding:4px 12px">Show all ${total.toLocaleString()}</button>
+    <span style="align-self:center;font-size:11.5px;color:var(--mut)">showing ${shown.toLocaleString()} of ${total.toLocaleString()}</span></div>`;
+}
+function funBindMore(box, key, paint) {
+  box.querySelectorAll('.fun-more').forEach(b => b.onclick = () => { FUN[key] = b.dataset.add === 'all' ? 1e9 : FUN[key] + FUN_PAGE; paint(); });
+}
 /* ── DL81: case chips (date · case type, colour-coded) and shared NOTES & TAGS per doctor ──
    Notes and tags live in public.client_notes / public.client_tags (admins only), keyed by the
    dashboard's doctor id, so everyone signed in sees the same ones. */
@@ -4890,7 +4915,7 @@ function funOpenClient(id) {
   const m = document.createElement('div'); m.id = 'funModal';
   m.style.cssText = 'position:fixed;inset:0;z-index:90;background:rgba(15,23,42,.45);display:flex;align-items:flex-start;justify-content:center;padding:6vh 12px;overflow:auto';
   document.body.appendChild(m);
-  const close = () => { m.remove(); document.removeEventListener('keydown', onKey); paintFunNew(); paintFunLow(); };
+  const close = () => { m.remove(); document.removeEventListener('keydown', onKey); paintFunNew(); paintFunLow(); paintFunGap(); };
   const onKey = ev => { if (ev.key === 'Escape') close(); }; document.addEventListener('keydown', onKey);
   m.addEventListener('click', ev => { if (ev.target === m) close(); });
   const paint = (msg) => {
@@ -4994,6 +5019,93 @@ function funDoctors() {
   return (FUN.cache = { key, list, max, maxDay });
 }
 
+/* ── DL82: 🎯 NEVER SENT A PRODUCT — doctors who sent cases in a recent period but have never
+   (in their whole history) sent a chosen product or case type. Main products only. ── */
+function funGapIndex() {
+  const C = funDoctors();
+  if (C.gap) return C.gap;
+  const prods = new Map(), cats = new Map();
+  C.list.forEach(d => {
+    d.prodSet = new Set(); d.catSet = new Set();
+    d.caseList.forEach(c => { c.products.forEach((q, p) => d.prodSet.add(p)); c.cats.forEach((v, k) => d.catSet.add(k)); });
+    d.prodSet.forEach(p => prods.set(p, (prods.get(p) || 0) + 1));
+    d.catSet.forEach(k => cats.set(k, (cats.get(k) || 0) + 1));
+  });
+  C.gap = { prods: [...prods.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])), cats: [...cats.entries()].sort((a, b) => b[1] - a[1]) };
+  return C.gap;
+}
+function funGapDoctors() {
+  const C = funDoctors(), G = funGapIndex();
+  const pick = FUN.gapMode === 'cat' ? FUN.gapCat : FUN.gapProd;
+  if (!pick) return { C, G, pick, active: [], list: [] };
+  const from = FUN.gapWin === 'all' ? -Infinity : C.maxDay - (+FUN.gapWin) + 1;
+  const active = [];
+  C.list.forEach(d => {
+    const inWin = d.caseList.filter(c => funDay(c.date) >= from);
+    if (inWin.length < (+FUN.gapMin || 1)) return;
+    d.winN = inWin.length; d.winRev = inWin.reduce((t, c) => t + c.rev, 0);
+    active.push(d);
+  });
+  const has = d => FUN.gapMode === 'cat' ? d.catSet.has(pick) : d.prodSet.has(pick);
+  let list = active.filter(d => !has(d) && funTagPass(d.id, FUN.gapTag));
+  const k = FUN.gapSk, dir = FUN.gapSd;
+  const val = d => k === 'name' ? d.name.toLowerCase() : k === 'state' ? d.state : d[k];
+  list.sort((a, b) => { const x = val(a), y = val(b); return (x > y ? 1 : x < y ? -1 : 0) * dir || b.winRev - a.winRev; });
+  return { C, G, pick, active, list, haveIt: active.filter(has).length };
+}
+function funGapHeader() {
+  const G = funGapIndex(), o = (v, l, cur) => `<option value="${esc(v)}"${String(v) === String(cur) ? ' selected' : ''}>${esc(l)}</option>`;
+  return `<div class="fun-head" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+      <div class="chart-title fun-toggle" style="margin:0;flex:1 1 100%"><span class="fun-caret">▾</span> 🎯 Never sent a product <span style="font-weight:400;font-size:12px;color:var(--mut)">· doctors sending cases recently who have never sent this — cross-sell targets</span></div>
+      <div class="pill-group" id="funGapMode"><button class="pill${FUN.gapMode !== 'cat' ? ' active' : ''}" data-v="product">Product</button><button class="pill${FUN.gapMode === 'cat' ? ' active' : ''}" data-v="cat">Case type</button></div>
+      ${FUN.gapMode === 'cat'
+        ? `<select id="funGapCat"><option value="">Choose a case type…</option>${G.cats.map(([c, n]) => o(c, c + '  (' + n.toLocaleString() + ' doctors send it)', FUN.gapCat)).join('')}</select>`
+        : `<input id="funGapProd" list="funGapProdList" placeholder="Search all ${G.prods.length.toLocaleString()} products…" value="${esc(FUN.gapProd)}" style="padding:5px 8px;border:1px solid var(--line,#dfe3ea);border-radius:8px;font-size:12.5px;min-width:320px">
+           <datalist id="funGapProdList">${G.prods.map(([p, n]) => `<option value="${esc(p)}">${n.toLocaleString()} doctor${n === 1 ? '' : 's'} have sent it</option>`).join('')}</datalist>`}
+      <label style="font-size:12px">sent a case in <select id="funGapWin">${o('30', 'the last 30 days', FUN.gapWin)}${o('60', 'the last 60 days', FUN.gapWin)}${o('90', 'the last 90 days', FUN.gapWin)}${o('180', 'the last 180 days', FUN.gapWin)}${o('365', 'the last 365 days', FUN.gapWin)}${o('all', 'any time', FUN.gapWin)}</select></label>
+      <label style="font-size:12px">at least <select id="funGapMin">${[1, 2, 3, 5, 10].map(n => o(n, n + ' case' + (n === 1 ? '' : 's'), FUN.gapMin)).join('')}</select></label>
+      ${funTagSelect('funGapTagSel', FUN.gapTag)}
+    </div>`;
+}
+function paintFunGap() {
+  const box = document.getElementById('funGap'); if (!box) return;
+  const { pick, active, list, haveIt } = funGapDoctors();
+  if (!pick) { box.innerHTML = `<div class="text-mut" style="padding:6px 0">Choose a ${FUN.gapMode === 'cat' ? 'case type' : 'product — start typing to search the full list'} to see which active doctors have never sent it.</div>`; return; }
+  const winTxt = FUN.gapWin === 'all' ? 'at any time' : 'in the last ' + FUN.gapWin + ' days';
+  const shown = list.slice(0, FUN.gapN);
+  const COLS = [['name', 'Doctor'], ['state', 'State'], ['winN', 'Cases (period)'], ['winRev', 'Revenue (period)'], ['revenue', 'Lifetime revenue'], ['last', 'Last case'], ['', 'Case types they send'], ['', 'Recent cases']];
+  const right = new Set(['winN', 'winRev', 'revenue']);
+  const mix = d => d.cats.slice(0, 4).map(([c]) => `<span style="display:inline-block;padding:1px 7px;margin:1px 3px 1px 0;border-radius:10px;font-size:11px;background:${funColor(c)}1a;border:1px solid ${funColor(c)}55;white-space:nowrap">${esc(funShort(c))}</span>`).join('') || '<span class="text-mut">—</span>';
+  const pct = active.length ? Math.round((active.length - haveIt) / active.length * 100) : 0;
+  box.innerHTML = `<div style="font-size:13px;margin-bottom:8px"><b>${list.length.toLocaleString()}</b> doctor${list.length === 1 ? '' : 's'} sent a case ${winTxt}${+FUN.gapMin > 1 ? ' (at least ' + FUN.gapMin + ')' : ''} but have <b>never</b> sent <b>${esc(pick)}</b>
+      <span class="text-mut">· ${(active.length - haveIt).toLocaleString()} of ${active.length.toLocaleString()} active doctors (${pct}%)${FUN.gapTag !== 'all' ? ' before the tag filter' : ''} · ${haveIt.toLocaleString()} have sent it</span></div>
+    ${list.length ? `<div style="overflow-x:auto"><table style="width:100%;font-size:12.5px;border-collapse:collapse"><thead><tr style="text-align:left;font-size:11px;color:var(--mut)">
+      ${COLS.map(([k, l]) => `<th${k ? ` data-k="${k}"` : ''} style="padding:5px 6px;white-space:nowrap;${k ? 'cursor:pointer;' : ''}${right.has(k) ? 'text-align:right' : ''}">${l}${FUN.gapSk === k ? (FUN.gapSd > 0 ? ' ▲' : ' ▼') : ''}</th>`).join('')}</tr></thead>
+      <tbody>${shown.map(d => `<tr style="border-top:1px solid var(--line,#eef1f5)">
+        <td style="padding:5px 6px;min-width:200px"><a href="#" class="fun-dr" data-id="${esc(d.id)}" style="font-weight:700">${esc(d.name)}</a><div style="font-size:11px;color:var(--mut)">${esc(d.practice)}</div>${funBadges(d)}</td>
+        <td style="padding:5px 6px">${esc(d.state)}</td><td style="padding:5px 6px;text-align:right;font-weight:700">${d.winN}</td>
+        <td style="padding:5px 6px;text-align:right">${fmtUSDFull(d.winRev)}</td><td style="padding:5px 6px;text-align:right">${fmtUSDFull(d.revenue)}</td>
+        <td style="padding:5px 6px;white-space:nowrap">${fmtDateShort(d.last)}</td><td style="padding:5px 6px;min-width:180px">${mix(d)}</td>
+        <td style="padding:5px 6px;min-width:260px">${funChips(d.caseList.slice(-6), 6)}${d.n > 6 ? `<span style="font-size:11px;color:var(--mut)"> +${d.n - 6} earlier</span>` : ''}</td></tr>`).join('')}</tbody></table></div>
+      ${funMoreBtns('gap', shown.length, list.length)}`
+      : '<div class="text-mut" style="padding:8px 0">Every active doctor has sent it.</div>'}`;
+  box.querySelectorAll('th[data-k]').forEach(th => th.onclick = () => { const k = th.dataset.k; FUN.gapSd = FUN.gapSk === k ? -FUN.gapSd : (k === 'name' || k === 'state' ? 1 : -1); FUN.gapSk = k; paintFunGap(); });
+  box.querySelectorAll('.fun-dr').forEach(a => a.onclick = ev => { ev.preventDefault(); APP.selectedDoctorId = a.dataset.id; switchTab('docdetail'); });
+  funBindMore(box, 'gapN', paintFunGap);
+  funBindEdits(box);
+}
+function bindFunGap() {
+  const repaint = () => { FUN.gapN = 10; paintFunGap(); };
+  document.querySelectorAll('#funGapMode .pill').forEach(b => b.onclick = () => { FUN.gapMode = b.dataset.v; document.getElementById('funGapHead').innerHTML = funGapHeader(); bindFunGap(); repaint(); });
+  const p = document.getElementById('funGapProd');
+  if (p) { const set = () => { const v = p.value.trim(); const hit = funGapIndex().prods.find(([n]) => n.toLowerCase() === v.toLowerCase()); FUN.gapProd = hit ? hit[0] : ''; repaint(); };
+           p.onchange = set; p.oninput = () => { if (funGapIndex().prods.some(([n]) => n.toLowerCase() === p.value.trim().toLowerCase())) set(); }; }
+  const c = document.getElementById('funGapCat'); if (c) c.onchange = ev => { FUN.gapCat = ev.target.value; repaint(); };
+  document.getElementById('funGapWin').onchange = ev => { FUN.gapWin = ev.target.value; repaint(); };
+  document.getElementById('funGapMin').onchange = ev => { FUN.gapMin = ev.target.value; repaint(); };
+  document.getElementById('funGapTagSel').onchange = ev => { FUN.gapTag = ev.target.value; repaint(); };
+}
+
 function funNewWindow(C) {
   if (FUN.win === 'bar') {
     const f = APP.filters || {};
@@ -5011,39 +5123,54 @@ function renderFunnel() {
   el.innerHTML = `
     <div class="section-head" style="margin-bottom:14px"><h2 style="margin:0">🧭 Sales Funnel</h2>
       <div class="text-mut" style="font-size:13px">New clients from their first invoice, and doctors who send few cases · whole history up to ${fmtDateShort(C.max)} · State &amp; Group filters apply</div></div>
-    <div class="card mb20" style="padding:16px">
-      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">
-        <div class="chart-title" style="margin:0;flex:1">🌱 New clients <span style="font-weight:400;font-size:12px;color:var(--mut)">· first-ever case in the window, followed from that invoice</span></div>
+    <div class="card mb20 fun-card${FUN.col.new ? ' fun-collapsed' : ''}" data-sec="new" style="padding:16px">
+      <div class="fun-head" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+        <div class="chart-title fun-toggle" style="margin:0;flex:1"><span class="fun-caret">▾</span> 🌱 New clients <span style="font-weight:400;font-size:12px;color:var(--mut)">· first-ever case in the window, followed from that invoice</span></div>
         <label style="font-size:12px">First case in <select id="funWin">${opt('30', 'last 30 days', FUN.win)}${opt('60', 'last 60 days', FUN.win)}${opt('90', 'last 90 days', FUN.win)}${opt('180', 'last 180 days', FUN.win)}${opt('bar', 'the top bar’s dates', FUN.win)}</select></label>
         <div class="pill-group" id="funView"><button class="pill${FUN.view === 'weeks' ? ' active' : ''}" data-v="weeks">Weeks</button><button class="pill${FUN.view === 'months' ? ' active' : ''}" data-v="months">Months</button></div>
         ${funTagSelect('funTagNewSel', FUN.tagNew)}
         <label style="font-size:12px">Sort <select id="funSort">${opt('first', 'newest first', FUN.sort)}${opt('revenue', 'revenue', FUN.sort)}${opt('cases', 'cases', FUN.sort)}</select></label>
         <button class="btn-text" id="funXl" style="font-size:12px">⬇ Excel</button>
       </div>
-      <div id="funNew"></div>
+      <div id="funNew" class="fun-body"></div>
     </div>
-    <div class="card mb20" style="padding:16px">
-      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">
-        <div class="chart-title" style="margin:0;flex:1">🐢 Low-volume doctors</div>
+    <div class="card mb20 fun-card${FUN.col.low ? ' fun-collapsed' : ''}" data-sec="low" style="padding:16px">
+      <div class="fun-head" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+        <div class="chart-title fun-toggle" style="margin:0;flex:1"><span class="fun-caret">▾</span> 🐢 Low-volume doctors</div>
         <select id="funBucket">${FUN_BUCKETS.map(([v, l]) => opt(v, l, FUN.bucket)).join('')}</select>
         <label style="font-size:12px">Last case <select id="funLast">${opt('any', 'any time', FUN.last)}${opt('30', 'in the last 30 days', FUN.last)}${opt('90', 'in the last 90 days', FUN.last)}${opt('180', 'in the last 180 days', FUN.last)}${opt('old', 'over 180 days ago', FUN.last)}</select></label>
         ${funTagSelect('funTagLowSel', FUN.tagLow)}
         <input id="funQ" type="search" placeholder="Search doctor, practice, tag or note" value="${esc(FUN.q)}" style="padding:5px 8px;border:1px solid var(--line,#dfe3ea);border-radius:8px;font-size:12.5px;min-width:200px">
       </div>
-      <div id="funLow"></div>
+      <div id="funLow" class="fun-body"></div>
+    </div>
+    <div class="card mb20 fun-card${FUN.col.gap ? ' fun-collapsed' : ''}" data-sec="gap" style="padding:16px">
+      <div id="funGapHead">${funGapHeader()}</div>
+      <div id="funGap" class="fun-body"></div>
     </div>`;
+  // DL83: click a section's title to collapse / open it
+  el.onclick = ev => {
+    const t = ev.target.closest('.fun-toggle'); if (!t || ev.target.closest('select,input,button,a')) return;
+    const card = t.closest('.fun-card'), sec = card.dataset.sec;
+    FUN.col[sec] = !FUN.col[sec]; card.classList.toggle('fun-collapsed', FUN.col[sec]);
+  };
   const re = () => { paintFunNew(); };
-  document.getElementById('funWin').onchange = ev => { FUN.win = ev.target.value; FUN.open = null; FUN.n = 40; re(); };
+  document.getElementById('funWin').onchange = ev => { FUN.win = ev.target.value; FUN.open = null; FUN.n = 10; FUN.step = 0; re(); };
   document.getElementById('funSort').onchange = ev => { FUN.sort = ev.target.value; re(); };
   document.querySelectorAll('#funView .pill').forEach(b => b.onclick = () => { FUN.view = b.dataset.v; document.querySelectorAll('#funView .pill').forEach(x => x.classList.toggle('active', x === b)); re(); });
-  document.getElementById('funBucket').onchange = ev => { FUN.bucket = ev.target.value; FUN.ln = 100; paintFunLow(); };
-  document.getElementById('funLast').onchange = ev => { FUN.last = ev.target.value; FUN.ln = 100; paintFunLow(); };
-  let qt = null; document.getElementById('funQ').oninput = ev => { clearTimeout(qt); qt = setTimeout(() => { FUN.q = ev.target.value; FUN.ln = 100; paintFunLow(); }, 200); };
+  document.getElementById('funBucket').onchange = ev => { FUN.bucket = ev.target.value; FUN.ln = 10; paintFunLow(); };
+  document.getElementById('funLast').onchange = ev => { FUN.last = ev.target.value; FUN.ln = 10; paintFunLow(); };
+  let qt = null; document.getElementById('funQ').oninput = ev => { clearTimeout(qt); qt = setTimeout(() => { FUN.q = ev.target.value; FUN.ln = 10; paintFunLow(); }, 200); };
   document.getElementById('funXl').onclick = ev => xlDownload(() => xlFunnelWorkbook(), 'sales-funnel-' + new Date().toISOString().slice(0, 10) + '.xlsx', ev.currentTarget);
-  document.getElementById('funTagNewSel').onchange = ev => { FUN.tagNew = ev.target.value; FUN.n = 40; paintFunNew(); };
-  document.getElementById('funTagLowSel').onchange = ev => { FUN.tagLow = ev.target.value; FUN.ln = 100; paintFunLow(); };
-  paintFunNew(); paintFunLow();
-  if (!FUN.meta.loaded && !FUN.meta.loading) funLoadMeta().then(() => { if (document.getElementById('panel-funnel')?.classList.contains('active')) renderFunnel(); });
+  document.getElementById('funTagNewSel').onchange = ev => { FUN.tagNew = ev.target.value; FUN.n = 10; paintFunNew(); };
+  document.getElementById('funTagLowSel').onchange = ev => { FUN.tagLow = ev.target.value; FUN.ln = 10; paintFunLow(); };
+  bindFunGap();
+  paintFunNew(); paintFunLow(); paintFunGap();
+  // load notes & tags ONCE (not on every redraw — signed out, that looped forever); signing in allows a retry
+  if (!FUN.meta.loaded && !FUN.meta.loading && !FUN.meta.tried) {
+    FUN.meta.tried = true;
+    funLoadMeta().then(() => { if (FUN.meta.loaded && document.getElementById('panel-funnel')?.classList.contains('active')) renderFunnel(); });
+  }
 }
 
 function funNewDoctors() {
@@ -5053,6 +5180,11 @@ function funNewDoctors() {
   return { C, W, news };
 }
 
+// DL83: the new-client list after a funnel card is clicked (sent a 2nd/3rd/5th/10th case — or haven't)
+function funNewVisible(news) {
+  if (!(FUN.step > 1)) return news;
+  return news.filter(d => FUN.stepNot ? d.n < FUN.step : d.n >= FUN.step);
+}
 function paintFunNew() {
   const box = document.getElementById('funNew'); if (!box) return;
   const { C, W, news } = funNewDoctors();
@@ -5063,14 +5195,20 @@ function paintFunNew() {
   const rev = news.reduce((t, d) => t + d.revenue, 0);
   const ord = k => k === 1 ? '1st' : k === 2 ? '2nd' : k === 3 ? '3rd' : k + 'th';
   const strip = `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px">${steps.map(([k, c], i) => {
-      const pct = Math.round(c / news.length * 100);
-      return `<div style="flex:1 1 120px;padding:10px 12px;border-radius:10px;background:rgba(36,191,205,${0.08 + 0.32 * c / news.length});border:1px solid var(--line,#e6e9ee)">
+      const pct = Math.round(c / news.length * 100), on = (FUN.step || 1) === k;
+      return `<div class="fun-step" data-k="${k}" title="${i ? 'Show the doctors who sent a ' + ord(k) + ' case' : 'Show every new doctor'}" style="flex:1 1 120px;padding:10px 12px;border-radius:10px;cursor:pointer;background:rgba(36,191,205,${0.08 + 0.32 * c / news.length});border:${on ? '2px solid #0f8b99' : '1px solid var(--line,#e6e9ee)'};${on ? 'box-shadow:0 0 0 3px rgba(15,139,153,.12);' : ''}">
         <div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--mut)">${i ? 'Sent a ' + ord(k) + ' case' : 'New doctors'}</div>
         <div style="font-size:20px;font-weight:800">${c.toLocaleString()}</div><div style="font-size:11.5px;color:var(--mut)">${i ? pct + '% of new' : funK(rev) + ' revenue so far'}</div></div>`; }).join('')}</div>
     <div class="text-mut" style="font-size:12px;margin-bottom:12px">First case in ${W.label}${med != null ? ' · median ' + med + ' day' + (med === 1 ? '' : 's') + ' from 1st to 2nd case' : ''} · click a doctor’s row to see each case</div>`;
   const weeks = FUN.view === 'weeks', cols = weeks ? 12 : 6, span = weeks ? 7 : 30.44;
   const label = i => (weeks ? 'Wk ' : 'Mo ') + (i + 1);
-  const rows = news.slice(0, FUN.n);
+  const vis = funNewVisible(news);
+  const banner = FUN.step > 1 ? (() => { const reached = news.filter(d => d.n >= FUN.step).length, not = news.length - reached;
+      return `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 10px;padding:8px 12px;border-radius:10px;background:#e6f7f9;border:1px solid #9fdde4;font-size:12.5px">
+        <span>Showing the <b>${vis.length}</b> new doctor${vis.length === 1 ? '' : 's'} who ${FUN.stepNot ? '<b>haven’t</b> sent' : 'sent'} a ${ord(FUN.step)} case</span>
+        <button class="btn-text" id="funStepFlip" style="font-size:12px;border:1px solid #9fdde4;border-radius:8px;padding:2px 10px;background:var(--card,#fff)">${FUN.stepNot ? 'Show the ' + reached + ' who did' : 'Show the ' + not + ' who haven’t'}</button>
+        <button class="btn-text" id="funStepClear" style="font-size:12px;margin-left:auto">✕ Show all new doctors</button></div>`; })() : '';
+  const rows = vis.slice(0, FUN.n);
   let maxCell = 1;
   const grid = rows.map(d => { const f = funDay(d.first), cells = Array.from({ length: cols + 1 }, () => ({ n: 0, rev: 0 }));
     d.caseList.forEach(c => { const i = Math.min(cols, Math.floor((funDay(c.date) - f) / span)); cells[i].n++; cells[i].rev += c.rev; (cells[i].cs = cells[i].cs || []).push(c); });
@@ -5091,7 +5229,7 @@ function paintFunNew() {
         <td style="padding:3px 4px;color:var(--mut)">${funDay(c.date) - funDay(d.first) === 0 ? 'first' : 'day ' + (funDay(c.date) - funDay(d.first))}</td><td style="padding:3px 4px">${esc(c.no)}${c.remake ? ' <span title="remake">🔁</span>' : ''}</td>
         <td style="padding:3px 4px;max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc([...c.products.keys()].join(', '))}">${esc([...c.products.entries()].map(([p, q]) => (q > 1 ? q + '× ' : '') + p).join(', ') || '—')}</td>
         <td style="padding:3px 4px">${esc(c.type || '—')}</td><td style="padding:3px 4px;text-align:right;font-weight:600">${fmtUSDFull(c.rev)}</td></tr>`).join('')}</tbody></table></td></tr>`;
-  box.innerHTML = strip + `<div style="overflow-x:auto"><table style="width:100%;font-size:12.5px;border-collapse:separate;border-spacing:2px">
+  box.innerHTML = strip + banner + `<div style="overflow-x:auto"><table style="width:100%;font-size:12.5px;border-collapse:separate;border-spacing:2px">
     <thead><tr style="text-align:left;font-size:11px;color:var(--mut)"><th style="padding:4px">Doctor</th><th style="padding:4px">First case</th><th style="padding:4px;text-align:right">Cases</th><th style="padding:4px;text-align:right">Revenue</th><th style="padding:4px">Mostly</th>
       ${Array.from({ length: cols }, (_, i) => `<th style="padding:4px;text-align:center">${label(i)}</th>`).join('')}<th style="padding:4px;text-align:center">Later</th></tr></thead>
     <tbody>${grid.map(({ d, f, cells }) => `<tr class="fun-row" data-id="${esc(d.id)}" style="cursor:pointer">
@@ -5100,12 +5238,15 @@ function paintFunNew() {
         <td style="padding:4px;font-size:11.5px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc((d.cats[0] || [''])[0])}</td>
         ${cells.map((x, i) => cell(x, i, f)).join('')}</tr>
         <tr class="fun-chiprow"><td colspan="${cols + 6}" style="padding:0 4px 8px 4px;border-bottom:1px solid var(--line,#eef1f5)">${funChips(d.caseList, 14)}</td></tr>${FUN.open === d.id ? caseRows(d) : ''}`).join('')}</tbody></table></div>
-    ${news.length > rows.length ? `<div style="text-align:center;margin-top:8px"><button class="btn-text" id="funMore" style="font-size:12px">Show ${Math.min(40, news.length - rows.length)} more (${(news.length - rows.length).toLocaleString()} not shown)</button></div>` : ''}
+    ${funMoreBtns('new', rows.length, vis.length)}
     <div class="text-mut" style="font-size:11px;margin-top:6px">${weeks ? 'Wk 1 = the 7 days starting with the first invoice' : 'Mo 1 = the first 30 days from the first invoice'} · hatched = not reached yet · shading follows revenue · each dot is a case, coloured by type — hover a cell for dates</div>
     <div style="margin-top:6px">${funLegend(news)}</div>`;
   box.querySelectorAll('.fun-row').forEach(tr => tr.onclick = ev => { if (ev.target.closest('.fun-dr')) return; FUN.open = FUN.open === tr.dataset.id ? null : tr.dataset.id; paintFunNew(); });
   box.querySelectorAll('.fun-dr').forEach(a => a.onclick = ev => { ev.preventDefault(); ev.stopPropagation(); APP.selectedDoctorId = a.dataset.id; switchTab('docdetail'); });
-  const more = document.getElementById('funMore'); if (more) more.onclick = () => { FUN.n += 40; paintFunNew(); };
+  funBindMore(box, 'n', paintFunNew);
+  box.querySelectorAll('.fun-step').forEach(c => c.onclick = () => { const k = +c.dataset.k; FUN.step = k > 1 && FUN.step !== k ? k : 0; FUN.stepNot = false; FUN.n = 10; FUN.open = null; paintFunNew(); });
+  const flip = document.getElementById('funStepFlip'); if (flip) flip.onclick = () => { FUN.stepNot = !FUN.stepNot; FUN.n = 10; paintFunNew(); };
+  const clr = document.getElementById('funStepClear'); if (clr) clr.onclick = () => { FUN.step = 0; FUN.stepNot = false; FUN.n = 10; paintFunNew(); };
   funBindEdits(box);
 }
 
@@ -5143,17 +5284,17 @@ function paintFunLow() {
         <td style="padding:5px 6px;text-align:right">${d.since}</td><td style="padding:5px 6px;text-align:right">${d.rate.toFixed(1)}</td><td style="padding:5px 6px;text-align:right">${d.remakes || ''}</td>
         <td style="padding:5px 6px;min-width:260px">${funChips(d.caseList.slice(-8), 8)}${d.n > 8 ? `<span style="font-size:11px;color:var(--mut)"> +${d.n - 8} earlier</span>` : ''}</td>
         <td style="padding:5px 6px;min-width:220px">${mix(d)}</td></tr>`).join('')}</tbody></table></div>
-      ${list.length > shown.length ? `<div style="text-align:center;margin-top:8px"><button class="btn-text" id="funLowMore" style="font-size:12px">Show ${Math.min(200, list.length - shown.length)} more (${(list.length - shown.length).toLocaleString()} not shown)</button></div>` : ''}`
+      ${funMoreBtns('low', shown.length, list.length)}`
       : '<div class="text-mut" style="padding:8px 0">No doctors match.</div>'}`;
   box.querySelectorAll('th[data-k]').forEach(th => th.onclick = () => { const k = th.dataset.k; FUN.sd = FUN.sk === k ? -FUN.sd : (k === 'name' || k === 'practice' || k === 'state' ? 1 : -1); FUN.sk = k; paintFunLow(); });
   box.querySelectorAll('.fun-dr').forEach(a => a.onclick = ev => { ev.preventDefault(); APP.selectedDoctorId = a.dataset.id; switchTab('docdetail'); });
-  const more = document.getElementById('funLowMore'); if (more) more.onclick = () => { FUN.ln += 200; paintFunLow(); };
+  funBindMore(box, 'ln', paintFunLow);
   funBindEdits(box);
 }
 
 async function xlFunnelWorkbook() {
   const ExcelJS = await loadExcelJS(), wb = new ExcelJS.Workbook(); wb.creator = 'Lab Sales Dashboard'; wb.created = new Date();
-  const { W, news } = funNewDoctors(), { list } = funLowDoctors();
+  const { W, news: allNew } = funNewDoctors(), news = funNewVisible(allNew), { list } = funLowDoctors();
   { const ws = wb.addWorksheet('New clients'); const weeks = 12;
     ws.columns = [{ width: 28 }, { width: 34 }, { width: 7 }, { width: 13 }, { width: 8 }, { width: 13 }, { width: 13 }, { width: 26 }].concat(Array.from({ length: weeks }, () => ({ width: 7 })));
     let r = xlTitle(ws, 'New clients — first case in ' + W.label, news.length + ' doctors · cases per week from each doctor’s first invoice', null);
@@ -5175,6 +5316,18 @@ async function xlFunnelWorkbook() {
         funTagsOf(d.id).join(', '), (funNotesOf(d.id)[0] || {}).note || '', d.caseList.map(c => fmtDateShort(c.date) + ' ' + funShort(c.type)).join('; ')];
       [5, 6].forEach(c => { row.getCell(c).numFmt = '$#,##0'; }); [7, 8].forEach(c => { row.getCell(c).numFmt = 'm/d/yyyy'; }); });
     ws.views = [{ state: 'frozen', ySplit: 4 }]; }
+  { const g = funGapDoctors();
+    if (g.pick) {
+      const ws = wb.addWorksheet('Never sent');
+      ws.columns = [{ width: 28 }, { width: 34 }, { width: 7 }, { width: 10 }, { width: 14 }, { width: 14 }, { width: 12 }, { width: 44 }, { width: 22 }, { width: 40 }, { width: 70 }];
+      let r = xlTitle(ws, 'Never sent: ' + g.pick, g.list.length + ' doctors with a case ' + (FUN.gapWin === 'all' ? 'at any time' : 'in the last ' + FUN.gapWin + ' days') + ' who have never sent it', null);
+      xlHeader(ws, r, ['Doctor', 'Practice', 'State', 'Cases (period)', 'Revenue (period)', 'Lifetime revenue', 'Last case', 'Case types they send', 'Tags', 'Latest note', 'Cases — date · type']);
+      g.list.forEach(d => { r++; const row = ws.getRow(r);
+        row.values = [d.name, d.practice, d.state, d.winN, d.winRev, d.revenue, d.last, d.cats.map(([c]) => c).join(', '), funTagsOf(d.id).join(', '), (funNotesOf(d.id)[0] || {}).note || '',
+          d.caseList.map(c => fmtDateShort(c.date) + ' ' + funShort(c.type)).join('; ')];
+        [5, 6].forEach(c => { row.getCell(c).numFmt = '$#,##0'; }); row.getCell(7).numFmt = 'm/d/yyyy'; });
+      ws.views = [{ state: 'frozen', ySplit: 4 }];
+    } }
   return wb;
 }
 
@@ -14833,6 +14986,7 @@ async function pgSignInAgain() {
 }
 function pgSessionRestored() {
   const b = document.getElementById('pgSessionBanner'); if (b) b.remove();
+  if (typeof FUN !== 'undefined' && FUN.meta) { FUN.meta.tried = false; FUN.meta.err = ''; }   // DL82: notes & tags may load now
   if (PROD.error === PG_SESSION_MSG) { PROD.error = null; PROD.loaded = false; }
 }
 
