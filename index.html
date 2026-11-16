@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.11.16-DL86</title>
+<title>Lab Sales Dashboard v2026.11.16-DL87</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -2106,7 +2106,7 @@ const APP = {
 
 /* Bump when normalization logic changes, so it's possible to tell at a glance
    (bottom of the Avg Turnaround card) which build a browser is running. */
-const BUILD_ID = 'DL86 · 2026-11-16';
+const BUILD_ID = 'DL87 · 2026-11-16';
 
 const DB_NAME = 'LabOpsCache';
 const DB_STORE = 'datasets';
@@ -12749,6 +12749,7 @@ async function xlEmployeeWorkbook(e, mine) {
       row.getCell(3).numFmt = '#,##0'; row.getCell(4).numFmt = '0%'; });
   }
   xlEmployeeScans(wb, e, edScanData(mine));   // DL74
+  xlEmployeeBacklog(wb, e, mine);             // DL87
   xlRawSheet(wb, mine);
   return wb;
 }
@@ -13002,6 +13003,157 @@ function xlEmployeeScans(wb, e, D) {
       row.getCell(5).numFmt = '0%'; [2, 3, 4, 6].forEach(c => { row.getCell(c).numFmt = '#,##0'; }); }); }
 }
 
+/* ══ DL87: BACKLOG — scanned in, not yet scanned out ══════════════════════════════════════════
+   One production row = one task. For the tasks scanned in on a day:
+     scanned out = has a scan-out time · completed = marked complete · open = neither.
+   Each task also carries when Pilot last re-checked it (checked_at). An open task that hasn't been
+   re-checked within ED_STALE_DAYS of the latest pull may already be finished, so it is kept out of
+   the backlog numbers by default and flagged instead. */
+const ED_STALE_DAYS = 3, ED_BL_WINDOW = 30;
+const edIsTask = r => !!r.task_id && ('started_at' in r || 'resolved_at' in r || 'is_completed' in r);
+const edDone = r => /^(true|yes|1)$/i.test(String(r.is_completed || '').trim());
+const edOut = r => !!(r.resolved_at && String(r.resolved_at).trim());
+function edLatestCheck() {   // the most recent Pilot pull, read from the feed
+  if (PROD._lcArr === PROD.rows) return PROD._lc;
+  let m = 0; for (const r of PROD.rows) { if (r.checked_at) { const t = Date.parse(r.checked_at); if (t > m) m = t; } }
+  PROD._lcArr = PROD.rows; return (PROD._lc = m || null);
+}
+const edStale = r => { const L = edLatestCheck(); if (!L || !r.checked_at) return false; const t = Date.parse(r.checked_at); return isFinite(t) && L - t > ED_STALE_DAYS * 864e5; };
+const edWhen = ms => new Date(ms).toLocaleString('en-US', { timeZone: ED_TZ, weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+const edDayOnly = ms => new Date(ms).toLocaleDateString('en-US', { timeZone: ED_TZ, month: 'short', day: 'numeric' });
+// add one row's task status to a day (or a product within a day)
+function edTally(o, r) {
+  if (!edIsTask(r)) return;
+  o.taskN = (o.taskN || 0) + 1;
+  const out = edOut(r), done = edDone(r);
+  if (out) o.out = (o.out || 0) + 1;
+  if (done) o.done = (o.done || 0) + 1;
+  if (!out && !done) { o.open = (o.open || 0) + 1; if (edStale(r)) o.stale = (o.stale || 0) + 1; }
+}
+function edOpenCell(n, stale) {
+  if (n == null) return '<span class="text-mut">—</span>';
+  if (!n) return '<span style="color:#16a34a">0</span>';
+  return `<span style="display:inline-block;padding:0 8px;border-radius:9px;background:#fff7e6;color:#b45309;font-weight:700">${n.toLocaleString()}</span>`
+    + (stale ? ` <span title="${stale} of these ${stale === 1 ? 'hasn’t' : 'haven’t'} been re-checked in Pilot for ${ED_STALE_DAYS}+ days — ${stale === 1 ? 'it' : 'they'} may already be done" style="cursor:help;color:#b45309;font-size:11px">⚠${stale}</span>` : '');
+}
+// a day's (or week's) products: units plus scanned in / out / completed / open
+function edDayProductsTable(o) {
+  const names = new Set([...Object.keys(o.products || {}), ...Object.keys(o.pst || {})]);
+  const rows = [...names].map(n => ({ n, u: (o.products || {})[n] || 0, s: (o.pst || {})[n] || {} }))
+    .sort((a, b) => b.u - a.u || (b.s.taskN || 0) - (a.s.taskN || 0));
+  const hasTasks = !!o.taskN, num = v => hasTasks ? (v || 0).toLocaleString() : '<span class="text-mut">—</span>';
+  return `<table style="width:100%;font-size:12px;border-collapse:collapse;background:var(--card,#fff);border:1px solid var(--line,#eef1f5);border-radius:8px">
+    <thead><tr style="text-align:left;font-size:10.5px;color:var(--mut);text-transform:uppercase;letter-spacing:.3px">
+      <th style="padding:5px 8px">Product</th><th style="padding:5px 8px;text-align:right">Units</th><th style="padding:5px 8px;text-align:right">Scanned in</th>
+      <th style="padding:5px 8px;text-align:right">Scanned out</th><th style="padding:5px 8px;text-align:right">Completed</th><th style="padding:5px 8px;text-align:right">Open</th></tr></thead>
+    <tbody>${rows.map(({ n, u, s }) => `<tr style="border-top:1px solid var(--line,#eef1f5);${s.open ? 'background:#fffbf2' : ''}">
+      <td style="padding:4px 8px">${esc(n)}</td>
+      <td style="padding:4px 8px;text-align:right"><b>${u.toLocaleString()}</b> <span class="text-mut" style="font-size:11px">${o.units ? Math.round(u / o.units * 100) : 0}%</span></td>
+      <td style="padding:4px 8px;text-align:right">${num(s.taskN)}</td><td style="padding:4px 8px;text-align:right">${num(s.out)}</td>
+      <td style="padding:4px 8px;text-align:right">${num(s.done)}</td><td style="padding:4px 8px;text-align:right">${hasTasks ? edOpenCell(s.open || 0, s.stale) : '—'}</td></tr>`).join('')}</tbody></table>`;
+}
+// everything this person has open right now (all dates, last 30 days of scan-ins)
+function edBacklogData(emp) {
+  const L = edLatestCheck();
+  let refDay = 0;
+  if (L) { const [y, m, d] = edYmd(new Date(L)).split('-').map(Number); refDay = funDay(new Date(y, m - 1, d)); }
+  else PROD.rows.forEach(r => { const dt = prodDate(r.scan_in_date); if (dt) refDay = Math.max(refDay, funDay(dt)); });
+  const live = [], stale = []; let older = 0, olderChecked = 0;
+  for (const r of PROD.rows) {
+    if (String(r.employee || '').trim() !== emp || !edIsTask(r) || edOut(r) || edDone(r)) continue;
+    const dt = prodDate(r.scan_in_date); if (!dt) continue;
+    const age = refDay - funDay(dt);
+    if (age > ED_BL_WINDOW) { older++; const c = r.checked_at ? Date.parse(r.checked_at) : 0; if (c > olderChecked) olderChecked = c; continue; }
+    const t = { r, age, dt, product: (r.product_name || '').trim() || '(no product)', units: prodNum(r.total_units != null ? r.total_units : r.units),
+                tin: r.started_at ? new Date(r.started_at) : null, checked: r.checked_at ? Date.parse(r.checked_at) : null };
+    (edStale(r) ? stale : live).push(t);
+  }
+  return { live, stale, older, olderChecked, refDay, L };
+}
+const ED_AGE = [['Scanned in today', a => a <= 0], ['1–3 days ago', a => a >= 1 && a <= 3], ['4–7 days ago', a => a >= 4 && a <= 7], ['Over a week', a => a > 7]];
+function edBacklogHTML(B) {
+  const list = PROD.blShowStale ? B.live.concat(B.stale) : B.live;
+  const card = 'class="card" style="padding:14px;border:1px solid var(--line,#e6e9ee);border-radius:12px;margin-top:16px"';
+  const asOf = B.L ? ' · status as of the last Pilot pull, ' + edWhen(B.L) : '';
+  const staleFrom = B.stale.length ? Math.min(...B.stale.map(t => t.checked || Infinity)) : null;
+  const notes = (B.stale.length ? `<div style="margin:0 0 10px;padding:8px 12px;border-radius:10px;background:#fff7e6;border:1px solid #f5c97a;font-size:12.5px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <span>⚠ <b>${B.stale.length}</b> more task${B.stale.length === 1 ? '' : 's'} still show${B.stale.length === 1 ? 's' : ''} as open, but Pilot hasn’t re-checked ${B.stale.length === 1 ? 'it' : 'them'} since ${edDayOnly(staleFrom)} or later — ${B.stale.length === 1 ? 'it' : 'they'} may already be finished.</span>
+        <button class="btn-text" id="edBlStale" style="font-size:12px;border:1px solid #f5c97a;border-radius:8px;padding:2px 10px;background:var(--card,#fff)">${PROD.blShowStale ? 'Hide them' : 'Include them'}</button></div>` : '')
+    + (B.older ? `<div class="text-mut" style="font-size:11.5px;margin:0 0 10px">${B.older.toLocaleString()} task${B.older === 1 ? '' : 's'} scanned in over ${ED_BL_WINDOW} days ago also show as open; their status was last updated ${B.olderChecked ? edDayOnly(B.olderChecked) : 'long ago'}, so they’re left out.</div>` : '');
+  const head = `<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:10px"><div style="font-weight:700;font-size:15px">🚧 Backlog — scanned in, not yet scanned out</div>
+      <div class="text-mut" style="font-size:12px">right now, all dates${asOf}</div></div>`;
+  if (!list.length) return `<div ${card}>${head}${notes}<div style="font-size:13px;color:#16a34a;padding:4px 0">✓ Nothing open — every task scanned in has been scanned out or completed${B.stale.length && !PROD.blShowStale ? ' (apart from the unconfirmed ones above)' : ''}.</div></div>`;
+  const units = list.reduce((t, x) => t + x.units, 0), oldest = list.reduce((a, b) => (b.age > a.age ? b : a));
+  const kpi = (l, v, sub, warn) => `<div class="kpi-card" style="flex:1 1 130px;padding:10px 12px;border:1px solid ${warn ? '#f5c97a' : 'var(--line,#e6e9ee)'};border-radius:10px;${warn ? 'background:#fffbf2' : ''}">
+      <div class="text-mut" style="font-size:10px;text-transform:uppercase;letter-spacing:.4px">${l}</div><div style="font-size:19px;font-weight:700;margin-top:2px">${v}</div>${sub ? `<div class="text-mut" style="font-size:11px">${sub}</div>` : ''}</div>`;
+  const byP = new Map();
+  list.forEach(t => { const p = byP.get(t.product) || byP.set(t.product, { n: 0, units: 0, b: [0, 0, 0, 0], oldest: null, tasks: [] }).get(t.product);
+    p.n++; p.units += t.units; ED_AGE.forEach(([, f], i) => { if (f(t.age)) p.b[i]++; }); if (!p.oldest || t.age > p.oldest.age) p.oldest = t; p.tasks.push(t); });
+  const prods = [...byP.entries()].sort((a, b) => b[1].n - a[1].n || b[1].oldest.age - a[1].oldest.age);
+  const ageTxt = a => a <= 0 ? 'today' : a + ' day' + (a === 1 ? '' : 's');
+  const taskRows = p => `<tr><td colspan="8" style="padding:0 0 10px 18px;background:var(--bg2,#f8fafc)"><table style="width:100%;font-size:12px;border-collapse:collapse">
+      <thead><tr style="text-align:left;color:var(--mut)"><th style="padding:4px">Case #</th><th style="padding:4px">Task</th><th style="padding:4px">Scanned in</th><th style="padding:4px;text-align:right">Open for</th><th style="padding:4px">Status checked</th></tr></thead>
+      <tbody>${p.tasks.slice().sort((a, b) => b.age - a.age).slice(0, PROD.blAllTasks ? 1e9 : 50).map(t => `<tr style="border-top:1px solid var(--line,#eef1f5)">
+        <td style="padding:3px 4px">${esc(t.r.case_number || '')}</td><td style="padding:3px 4px">${esc(t.r.task_name || t.r.step || '')}</td>
+        <td style="padding:3px 4px;white-space:nowrap">${t.tin ? edFmtDay(t.tin) + ' · ' + edFmtTime(t.tin) : esc(t.r.scan_in_date)}</td>
+        <td style="padding:3px 4px;text-align:right;font-weight:600;${t.age > 7 ? 'color:#b91c1c' : t.age > 3 ? 'color:#b45309' : ''}">${ageTxt(t.age)}</td>
+        <td style="padding:3px 4px;white-space:nowrap;${edStale(t.r) ? 'color:#b45309' : 'color:var(--mut)'}">${t.checked ? edWhen(t.checked) : '—'}${edStale(t.r) ? ' ⚠' : ''}</td></tr>`).join('')}</tbody></table>
+      ${p.tasks.length > 50 && !PROD.blAllTasks ? `<div style="padding:6px 4px"><button class="btn-text" id="edBlAll" style="font-size:12px;border:1px solid var(--line,#d7dde5);border-radius:8px;padding:3px 12px">Show all ${p.tasks.length} open cases</button> <span class="text-mut" style="font-size:11.5px">showing the 50 oldest</span></div>` : ''}</td></tr>`;
+  return `<div ${card} id="edBacklog">${head}${notes}
+    <div class="kpi-row" style="gap:10px;margin-bottom:12px">
+      ${kpi('Open now', list.length.toLocaleString(), units.toLocaleString() + ' units', true)}
+      ${ED_AGE.map(([l, f], i) => { const n = list.filter(t => f(t.age)).length; return kpi(l, n.toLocaleString(), '', i >= 2 && n > 0); }).join('')}
+      ${kpi('Oldest open', ageTxt(oldest.age), esc(oldest.product).slice(0, 40), oldest.age > 7)}
+    </div>
+    <div style="overflow-x:auto"><table style="width:100%;font-size:12.5px;border-collapse:collapse">
+      <thead><tr style="text-align:left;font-size:11px;color:var(--mut)"><th style="padding:5px 6px">Product</th><th style="padding:5px 6px;text-align:right">Open</th><th style="padding:5px 6px;text-align:right">Units</th>
+        ${ED_AGE.map(([l]) => `<th style="padding:5px 6px;text-align:right">${l.replace('Scanned in today', 'Today')}</th>`).join('')}<th style="padding:5px 6px">Oldest</th></tr></thead>
+      <tbody>${prods.map(([n, p]) => `<tr class="ed-bl-row" data-p="${esc(n)}" style="border-top:1px solid var(--line,#eef1f5);cursor:pointer" title="Click to see the open cases">
+        <td style="padding:5px 6px"><span style="display:inline-block;width:12px;color:#94a3b8;font-size:11px">${PROD.blOpenProd === n ? '▾' : '▸'}</span>${esc(n)}</td>
+        <td style="padding:5px 6px;text-align:right">${edOpenCell(p.n)}</td><td style="padding:5px 6px;text-align:right">${p.units.toLocaleString()}</td>
+        ${p.b.map((v, i) => `<td style="padding:5px 6px;text-align:right;${v && i === 3 ? 'color:#b91c1c;font-weight:700' : v && i === 2 ? 'color:#b45309;font-weight:700' : v ? '' : 'color:#cbd5e1'}">${v || '–'}</td>`).join('')}
+        <td style="padding:5px 6px;white-space:nowrap">${fmtDateShort(p.oldest.dt)} <span class="text-mut" style="font-size:11px">· ${ageTxt(p.oldest.age)}</span></td></tr>
+        ${PROD.blOpenProd === n ? taskRows(p) : ''}`).join('')}</tbody></table></div>
+    <div class="text-mut" style="font-size:11px;margin-top:6px">Open = scanned in, with no scan-out and not marked complete · age counts from the scan-in date · click a product to see its open cases</div></div>`;
+}
+function edBacklogBind() {
+  const box = document.getElementById('edBacklog')?.parentElement || document;
+  document.querySelectorAll('.ed-bl-row').forEach(tr => tr.onclick = () => { PROD.blOpenProd = PROD.blOpenProd === tr.dataset.p ? null : tr.dataset.p; PROD.blAllTasks = false; edBacklogRepaint(); });
+  const all = document.getElementById('edBlAll'); if (all) all.onclick = () => { PROD.blAllTasks = true; edBacklogRepaint(); };
+  const s = document.getElementById('edBlStale'); if (s) s.onclick = () => { PROD.blShowStale = !PROD.blShowStale; edBacklogRepaint(); };
+}
+function edBacklogRepaint() {
+  const el = document.getElementById('edBacklogWrap'); if (!el) return;
+  el.innerHTML = edBacklogHTML(edBacklogData(PROD.employee)); edBacklogBind();
+}
+// Excel: per product per day, and the open tasks
+function xlEmployeeBacklog(wb, e, mine) {
+  const byDay = new Map();
+  mine.forEach(r => { if (!edIsTask(r)) return; const d = r.scan_in_date || '—', pn = (r.product_name || '').trim() || '(no product)';
+    const m = byDay.get(d) || byDay.set(d, new Map()).get(d); const o = m.get(pn) || m.set(pn, { units: 0 }).get(pn);
+    o.units += prodNum(r.total_units != null ? r.total_units : r.units); edTally(o, r); });
+  if (!byDay.size) return;
+  { const ws = wb.addWorksheet('Per product per day');
+    ws.columns = [{ width: 12 }, { width: 52 }, { width: 8 }, { width: 11 }, { width: 12 }, { width: 11 }, { width: 8 }, { width: 14 }];
+    let r = xlTitle(ws, e.employee + ' — scanned in, scanned out, completed and open, per product per day', 'For the tasks scanned in each day · open = no scan-out and not complete', null);
+    xlHeader(ws, r, ['Date', 'Product', 'Units', 'Scanned in', 'Scanned out', 'Completed', 'Open', 'Not re-checked']);
+    [...byDay.entries()].sort((a, b) => (prodDate(b[0]) || 0) - (prodDate(a[0]) || 0)).forEach(([d, m]) =>
+      [...m.entries()].sort((a, b) => b[1].units - a[1].units).forEach(([pn, o]) => { r++;
+        ws.getRow(r).values = [prodDate(d) || d, pn, o.units, o.taskN || 0, o.out || 0, o.done || 0, o.open || 0, o.stale || null];
+        ws.getRow(r).getCell(1).numFmt = 'm/d/yyyy'; }));
+    ws.views = [{ state: 'frozen', ySplit: 4 }]; ws.autoFilter = { from: { row: 4, column: 1 }, to: { row: 4, column: 8 } }; }
+  { const B = edBacklogData(e.employee), all = B.live.concat(B.stale);
+    if (!all.length) return;
+    const ws = wb.addWorksheet('Open tasks');
+    ws.columns = [{ width: 14 }, { width: 52 }, { width: 30 }, { width: 12 }, { width: 10 }, { width: 22 }, { width: 14 }];
+    let r = xlTitle(ws, e.employee + ' — open tasks (scanned in, not scanned out)', all.length + ' open · scanned in within the last ' + ED_BL_WINDOW + ' days' + (B.L ? ' · status as of ' + edWhen(B.L) : ''), null);
+    xlHeader(ws, r, ['Case #', 'Product', 'Task', 'Scanned in', 'Days open', 'Status last checked', 'Re-checked recently']);
+    all.sort((a, b) => b.age - a.age).forEach(t => { r++;
+      ws.getRow(r).values = [t.r.case_number || '', t.product, t.r.task_name || '', t.dt, t.age, t.checked ? edWhen(t.checked) : '', edStale(t.r) ? 'No — may be done' : 'Yes'];
+      ws.getRow(r).getCell(4).numFmt = 'm/d/yyyy'; });
+    ws.views = [{ state: 'frozen', ySplit: 4 }]; }
+}
+
 async function renderEmployeeDetail() {
   const el = document.getElementById('panel-empdetail');
   el.innerHTML = '<div class="empty-state"><div class="empty-icon">⏳</div>Loading…</div>';
@@ -13018,12 +13170,14 @@ async function renderEmployeeDetail() {
   // per day
   const byDay = {};
   mine.forEach(r => { const d = r.scan_in_date || '—';
-    const o = byDay[d] || (byDay[d] = { units:0, cases:0, tasksIn:0, tasksDone:0, products:{} });
+    const o = byDay[d] || (byDay[d] = { units:0, cases:0, tasksIn:0, tasksDone:0, products:{}, pst:{} });
     o.units += prodNum(r.total_units); o.cases += prodNum(r.cases_touched);
     o.tasksIn += prodNum(r.tasks_scanned_in); o.tasksDone += prodNum(r.tasks_completed);
     // what they actually made that day, so a busy day can be read at a glance
     const pn = (r.product_name || '').trim();
-    if (pn) o.products[pn] = (o.products[pn] || 0) + prodNum(r.total_units); });
+    if (pn) o.products[pn] = (o.products[pn] || 0) + prodNum(r.total_units);
+    // DL87: what happened to the tasks scanned in that day — scanned out / completed / still open
+    edTally(o, r); if (edIsTask(r)) edTally(o.pst[pn || '(no product)'] || (o.pst[pn || '(no product)'] = {}), r); });
   const days = Object.entries(byDay).sort((a,b) => (prodDate(b[0])||0) - (prodDate(a[0])||0));
 
   /* ── Daily production window ───────────────────────────────────────────────
@@ -13059,9 +13213,11 @@ async function renderEmployeeDetail() {
       const dt = prodDate(d); if (!dt) return;
       const mon = new Date(dt); mon.setDate(dt.getDate() - ((dt.getDay() + 6) % 7));
       const k = (mon.getMonth()+1) + '/' + mon.getDate() + '/' + mon.getFullYear();
-      const w = weeks[k] || (weeks[k] = { units:0, cases:0, tasksIn:0, tasksDone:0, products:{}, _d: mon, days: 0 });
+      const w = weeks[k] || (weeks[k] = { units:0, cases:0, tasksIn:0, tasksDone:0, products:{}, pst:{}, _d: mon, days: 0 });
       w.units += o.units; w.cases += o.cases; w.tasksIn += o.tasksIn; w.tasksDone += o.tasksDone; w.days++;
       Object.entries(o.products).forEach(([pn, u]) => { w.products[pn] = (w.products[pn] || 0) + u; });
+      const add = (a, b) => ['taskN', 'out', 'done', 'open', 'stale'].forEach(f => { if (b[f]) a[f] = (a[f] || 0) + b[f]; });   // DL87
+      add(w, o); Object.entries(o.pst || {}).forEach(([pn, ps]) => add(w.pst[pn] || (w.pst[pn] = {}), ps));
     });
     rowsShown = Object.entries(weeks).sort((a,b) => b[1]._d - a[1]._d);
   }
@@ -13160,12 +13316,13 @@ async function renderEmployeeDetail() {
       </div>
     </div>
     ${edScanHTML(ED_SCAN)}
+    <div id="edBacklogWrap">${edBacklogHTML(edBacklogData(PROD.employee))}</div>
 
     <div class="card" style="padding:14px;border:1px solid var(--line,#e6e9ee);border-radius:12px;margin-top:16px">
       <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px">
         <div style="font-weight:700;flex:1">${groupedByWeek ? 'Weekly production' : 'Daily production'}
           <span class="text-mut" style="font-weight:400;font-size:12px;margin-left:6px">
-            ${rowsShown.length} ${groupedByWeek ? 'week' : 'day'}${rowsShown.length===1?'':'s'} of ${days.length} on record</span></div>
+            ${rowsShown.length} ${groupedByWeek ? 'week' : 'day'}${rowsShown.length===1?'':'s'} of ${days.length} on record · scanned out, completed and open are for the tasks scanned in that ${groupedByWeek ? 'week' : 'day'} · click a ${groupedByWeek ? 'week' : 'day'} for its products</span></div>
         <button class="btn-text" id="edToggleAll" style="font-size:12px">
           ${rowsShown.length && rowsShown.every(([k]) => isOpen(k)) ? 'Collapse all' : 'Expand all'}</button>
         <div class="pill-group" id="edWin">
@@ -13181,8 +13338,10 @@ async function renderEmployeeDetail() {
       <table class="tbl" style="width:100%;font-size:13px;border-collapse:collapse">
         <thead><tr style="text-align:left">
           <th style="padding:6px 4px">${groupedByWeek ? 'Week of' : 'Date'}</th><th style="padding:6px 4px">Units</th>
-          <th style="padding:6px 4px">Cases</th><th style="padding:6px 4px">Scanned</th>
-          <th style="padding:6px 4px">Completed</th><th style="padding:6px 4px;width:34%"></th>
+          <th style="padding:6px 4px">Cases</th><th style="padding:6px 4px">Scanned in</th>
+          <th style="padding:6px 4px" title="Of the tasks scanned in that day, how many have been scanned out">Scanned out</th>
+          <th style="padding:6px 4px">Completed</th>
+          <th style="padding:6px 4px" title="Scanned in that day, not yet scanned out or completed">Open</th><th style="padding:6px 4px;width:24%"></th>
         </tr></thead>
         <tbody>${rowsShown.map(([d,o]) => `<tr class="ed-dayrow" data-day="${esc(d)}"
               style="border-top:1px solid var(--line,#eef1f5);cursor:${Object.keys(o.products).length ? 'pointer' : 'default'}">
@@ -13192,22 +13351,13 @@ async function renderEmployeeDetail() {
           <td style="padding:6px 4px;font-weight:600">${o.units.toLocaleString()}</td>
           <td style="padding:6px 4px">${o.cases.toLocaleString()}</td>
           <td style="padding:6px 4px">${o.tasksIn.toLocaleString()}</td>
+          <td style="padding:6px 4px">${o.taskN ? (o.out || 0).toLocaleString() : '<span class="text-mut">—</span>'}</td>
           <td style="padding:6px 4px">${o.tasksDone.toLocaleString()}</td>
+          <td style="padding:6px 4px">${o.taskN ? edOpenCell(o.open || 0, o.stale) : '<span class="text-mut">—</span>'}</td>
           <td style="padding:6px 4px"><div style="height:7px;background:#eef1f5;border-radius:4px;overflow:hidden">
             <div style="width:${Math.round(o.units/maxDayUnits*100)}%;height:100%;background:#24bfcd"></div></div></td>
         </tr>
-        ${(Object.keys(o.products).length && isOpen(d)) ? `<tr><td colspan="6" style="padding:0 4px 10px 22px">
-          <div style="display:flex;flex-wrap:wrap;gap:6px">
-            ${(() => { const all = Object.entries(o.products).sort((a,b) => b[1]-a[1]);
-                       return all.map(([name,u]) => {
-              const pct = o.units ? Math.round(u / o.units * 100) : 0;
-              return `<span style="display:inline-flex;align-items:center;gap:6px;font-size:11.5px;
-                        background:#f1f5f9;border:1px solid #e2e8f0;border-radius:999px;padding:3px 10px">
-                <span style="color:#334155">${esc(name)}</span>
-                <b style="color:#0f172a">${u.toLocaleString()}</b>
-                <span style="color:#94a3b8">${pct}%</span></span>`;
-            }).join(''); })()}
-          </div></td></tr>` : ''}`).join('')}</tbody>
+        ${(Object.keys(o.products).length && isOpen(d)) ? `<tr><td colspan="8" style="padding:2px 4px 12px 22px">${edDayProductsTable(o)}</td></tr>` : ''}`).join('')}</tbody>
       </table>
     </div>`;
 
@@ -13217,6 +13367,7 @@ async function renderEmployeeDetail() {
     if (t && l) t.addEventListener('click', () => { PROD.edMixOpen = !PROD.edMixOpen; l.classList.toggle('open', PROD.edMixOpen);
       t.textContent = PROD.edMixOpen ? 'Show top 10 ▴' : 'Show all ' + e.mix.length + ' ▾'; }); }
   edScanBind(ED_SCAN);
+  edBacklogBind();   // DL87
   document.querySelectorAll('.ed-dayrow').forEach(tr => tr.addEventListener('click', () => {
     const k = openKey(tr.dataset.day);
     PROD.openDaysTouched = true;            // stop re-opening the latest day after the user chooses
