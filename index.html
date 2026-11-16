@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.11.16-DL87</title>
+<title>Lab Sales Dashboard v2026.11.16-DL88</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -2106,7 +2106,7 @@ const APP = {
 
 /* Bump when normalization logic changes, so it's possible to tell at a glance
    (bottom of the Avg Turnaround card) which build a browser is running. */
-const BUILD_ID = 'DL87 · 2026-11-16';
+const BUILD_ID = 'DL88 · 2026-11-16';
 
 const DB_NAME = 'LabOpsCache';
 const DB_STORE = 'datasets';
@@ -8861,7 +8861,7 @@ async function prodPushRows(rows, label) {
   } catch (e) {
     const m = (e && e.message) || String(e);
     sbLog('✗ production: ' + m, 'err');
-    if (/Admins only/i.test(m)) sbLog('   This login is not role=\'admin\' in the reps table.', 'warn');
+    if (/Admins only/i.test(m)) sbLog(pgAdminsOnlyHint() || '   This login is not role=\'admin\' in the reps table.', 'warn');
     else if (/ptask_/i.test(m))
       sbLog('   Run salesly_production_tasks.sql in Supabase first — this is the new task export.', 'warn');
     else if (/prod_stage_rows|prod_load|schema cache|does not exist/i.test(m))
@@ -15214,6 +15214,7 @@ function pgClient() {
       PG.auth.onAuthStateChange((evt) => {
         if (evt === 'SIGNED_OUT' && !window.__pgSigningOut) { pgUser = null; pgSessionExpired(); }
         if (evt === 'SIGNED_IN' || evt === 'TOKEN_REFRESHED') { const b = document.getElementById('pgSessionBanner'); if (b) b.remove(); }
+        if (evt === 'SIGNED_IN') setTimeout(pgDashCheck, 0);   // DL88: a new sign-in restarts the 2-hour clock
       });
     } catch (e) {}
   }
@@ -15298,7 +15299,7 @@ async function labPullAll(opts) {
     try { hideProgress(); } catch (x) {}
     if (opts.diagnose) {
       if (/Admins only/i.test(m))
-        return 'Signed in, but this account is not role=\'admin\' in the reps table, so the database refused the request.';
+        return pgAdminsOnlyHint().trim() || 'Signed in, but this account is not role=\'admin\' in the reps table, so the database refused the request.';
       if (/lab_fetch_rows|lab_summary|Could not find the function|does not exist/i.test(m))
         return 'The database functions are missing — run salesly_lab_bridge.sql in Supabase. (' + m + ')';
       return m;
@@ -15306,7 +15307,7 @@ async function labPullAll(opts) {
     if (opts.silent) return false;          // startup: stay quiet, show upload UI
     log('✗ ' + m, 'err');
     if (/Admins only/i.test(m)) {
-      log('   This login is not role=\'admin\' in the reps table.', 'warn');
+      log(pgAdminsOnlyHint() || '   This login is not role=\'admin\' in the reps table.', 'warn');
     } else if (/lab_fetch_rows|lab_summary|function/i.test(m)) {
       log('   Run the latest salesly_lab_bridge.sql — the pull functions are missing.', 'warn');
     }
@@ -15323,7 +15324,10 @@ let pgUser = null;
 async function pgSession() {
   const db = pgClient();
   if (!db) { pgUser = null; return null; }
-  try { const { data } = await db.auth.getSession(); pgUser = data?.session?.user || null; }
+  try {
+    const { data } = await db.auth.getSession(); pgUser = data?.session?.user || null;
+    if (pgUser && await pgDashOver(db, data.session)) { await pgDashTimeout(); pgUser = null; }   // DL88
+  }
   catch (e) { pgUser = null; }
   return pgUser;
 }
@@ -15338,7 +15342,10 @@ async function pgSignIn(email, password) {
 async function pgSignOut() {
   const db = pgClient();
   window.__pgSigningOut = true;            // a sign-out the user asked for is not an "expired session"
-  if (db) { try { await db.auth.signOut(); } catch (e) {} }
+  // DL88: 'local' = this dashboard only. The default ('global') also signed the same
+  // person out of Salesly on every phone, which defeats keeping Salesly signed in.
+  if (db) { try { await db.auth.signOut({ scope: 'local' }); } catch (e) {} }
+  PG_DASH.sid = null;
   window.__pgSigningOut = false;
   pgUser = null;
   pgReset();
@@ -15354,20 +15361,30 @@ async function pgSignOut() {
 const PG_SESSION_MSG = 'Your sign-in has expired — sign in again to load and save data.';
 async function pgSessionValid() {
   const db = pgClient(); if (!db) return false;
-  try { const { data, error } = await db.auth.getUser(); return !error && !!(data && data.user); }
+  try {
+    const { data, error } = await db.auth.getUser();
+    if (error || !(data && data.user)) return false;
+    const s = (await db.auth.getSession()).data.session;            // DL88: also past the 2-hour mark?
+    if (s && await pgDashOver(db, s)) { await pgDashTimeout(); return false; }
+    return true;
+  }
   catch (e) { return false; }
 }
 function pgIsAuthError(e) {
   const t = String((e && (e.message || e.msg)) || e || '') + ' ' + String((e && e.code) || '') + ' ' + String((e && e.status) || '');
   return /\bJWT\b|jwt expired|PGRST30[0-3]|invalid claim|refresh token|session (has )?expired|not signed in|\b401\b/i.test(t);
 }
-function pgSessionExpired() {
+function pgSessionExpired(reason) {
+  const w = document.getElementById('pgSessionWarn'); if (w) w.remove();
   if (document.getElementById('pgSessionBanner')) return;
   const b = document.createElement('div');
   b.id = 'pgSessionBanner';
   b.setAttribute('role', 'alert');
   b.style.cssText = 'position:sticky;top:0;z-index:60;display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 16px;margin:0 0 12px;background:#fef3c7;border:1px solid #f59e0b;border-radius:10px;color:#78350f;font-size:13.5px';
-  b.innerHTML = '<span style="font-size:18px">🔒</span><span style="flex:1;min-width:220px"><b>Your sign-in has expired.</b> Data can’t load or save until you sign in again.</span>' +
+  b.innerHTML = '<span style="font-size:18px">🔒</span><span style="flex:1;min-width:220px">' +
+    (reason === 'timeout'
+      ? '<b>Signed out — the dashboard needs a fresh sign-in every ' + pgDashHoursText() + '.</b> Sign in again to load and save data. Salesly isn’t affected.'
+      : '<b>Your sign-in has expired.</b> Data can’t load or save until you sign in again.') + '</span>' +
     '<button class="btn-primary" style="padding:6px 14px" onclick="pgSignInAgain()">🔑 Sign in again</button>';
   const host = document.querySelector('.content') || document.body;   // the area that holds the tab pages
   host.insertBefore(b, host.firstChild);
@@ -15379,8 +15396,125 @@ async function pgSignInAgain() {
 }
 function pgSessionRestored() {
   const b = document.getElementById('pgSessionBanner'); if (b) b.remove();
+  const w = document.getElementById('pgSessionWarn'); if (w) w.remove();
+  PG_DASH.sid = null;                       // DL88: a new sign-in — look its 2 hours up afresh
   if (typeof FUN !== 'undefined' && FUN.meta) { FUN.meta.tried = false; FUN.meta.err = ''; }   // DL82: notes & tags may load now
   if (PROD.error === PG_SESSION_MSG) { PROD.error = null; PROD.loaded = false; }
+}
+
+/* ══ DL88: the DASHBOARD signs out 2 hours after sign-in — Salesly doesn't ══════
+   Supabase's sign-in limit (Authentication → Sessions) covers the whole project,
+   so it logged Salesly reps out every 2 hours as well. That limit is now off, and
+   the 2 hours lives on the dashboard alone:
+     • the database serves dashboard data (everything behind lab.is_admin) only to
+       a sign-in younger than app_settings.dashboard_session_hours (default 2,
+       0 = no limit) — so it holds even if this page is edited or left open;
+     • this code signs the dashboard out at that moment and says so plainly,
+       instead of letting the next load fail with "Admins only".
+   The sign-in time is the "amr" timestamp inside Supabase's signed login token; it
+   survives token refreshes, so staying active doesn't stretch the 2 hours. The
+   database's own clock (seconds_left) decides, so a wrong PC clock doesn't matter. */
+const PG_DASH = { sid: null, hours: 2, expMs: null, warned: false, busy: false };
+function pgJwtClaims(tok) {
+  try {
+    let p = String(tok || '').split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    while (p.length % 4) p += '=';
+    const bin = atob(p), u = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+    return JSON.parse(new TextDecoder().decode(u));
+  } catch (e) { return null; }
+}
+function pgSignedInMs(claims) {
+  let t = 0;
+  (claims && Array.isArray(claims.amr) ? claims.amr : []).forEach(x => { const v = Number(x && x.timestamp); if (v > t) t = v; });
+  return t ? t * 1000 : null;
+}
+function pgDashHoursText() {
+  const h = Number(PG_DASH.hours) || 2;
+  return h === 1 ? '1 hour' : (h % 1 ? (Math.round(h * 60) + ' minutes') : h + ' hours');
+}
+/* When does this sign-in end? Asked once per sign-in; null = no limit. */
+async function pgDashExpiry(db, session) {
+  if (!session || !session.access_token) return null;
+  const c = pgJwtClaims(session.access_token);
+  const sid = (c && c.session_id) || String(pgSignedInMs(c) || 'unknown');
+  if (sid === PG_DASH.sid) return PG_DASH.expMs;
+  let fromDb = false;
+  try {
+    const { data, error } = await db.rpc('dashboard_session');
+    if (!error && data) {
+      fromDb = true;
+      PG_DASH.hours = Number(data.hours);
+      if (!(PG_DASH.hours > 0)) PG_DASH.expMs = null;
+      else if (data.seconds_left != null) PG_DASH.expMs = Date.now() + Number(data.seconds_left) * 1000;
+      else fromDb = false;
+    }
+  } catch (e) {}
+  if (!fromDb) {                            // offline / function missing: read the token itself
+    if (!(PG_DASH.hours > 0)) PG_DASH.hours = 2;
+    const t = pgSignedInMs(c);
+    PG_DASH.expMs = t ? t + PG_DASH.hours * 3600e3 : null;
+  }
+  PG_DASH.sid = sid; PG_DASH.warned = false;
+  return PG_DASH.expMs;
+}
+async function pgDashOver(db, session) {
+  const exp = await pgDashExpiry(db, session);
+  return exp != null && Date.now() >= exp;
+}
+/* Already known to be past the limit? (no network — for error messages) */
+function pgDashLapsed() { return PG_DASH.expMs != null && Date.now() >= PG_DASH.expMs; }
+function pgDashEndsText() {
+  if (PG_DASH.expMs == null) return '';
+  return new Date(PG_DASH.expMs).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
+async function pgDashTimeout() {
+  const db = PG;
+  window.__pgSigningOut = true;            // our own sign-out: say "signed out after 2 hours", not "expired"
+  if (db) { try { await db.auth.signOut({ scope: 'local' }); } catch (e) {} }
+  window.__pgSigningOut = false;
+  pgUser = null; pgReset(); PG_DASH.sid = null; PG_DASH.expMs = null;
+  try { if (typeof PROD !== 'undefined' && PROD) PROD.error = PG_SESSION_MSG; } catch (e) {}
+  pgSessionExpired('timeout');
+  try { if (document.getElementById('pgAuthBox')) pgPaintAuth(); } catch (e) {}
+}
+function pgDashWarn(exp) {
+  if (document.getElementById('pgSessionWarn') || document.getElementById('pgSessionBanner')) return;
+  const b = document.createElement('div');
+  b.id = 'pgSessionWarn';
+  b.setAttribute('role', 'status');
+  b.style.cssText = 'position:sticky;top:0;z-index:60;display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:8px 14px;margin:0 0 12px;background:#eff6ff;border:1px solid #93c5fd;border-radius:10px;color:#1e3a8a;font-size:13px';
+  b.innerHTML = '<span style="font-size:16px">⏳</span><span style="flex:1;min-width:220px">The dashboard signs you out at <b>' +
+    esc(new Date(exp).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })) + '</b> (' + esc(pgDashHoursText()) +
+    ' after sign-in). Finish any upload first, or sign in again now to start a fresh ' + esc(pgDashHoursText()) + '.</span>' +
+    '<button class="btn-text" style="padding:4px 10px" onclick="pgSignInAgain()">🔑 Sign in again now</button>' +
+    '<button class="btn-text" style="padding:4px 8px" title="Hide" onclick="this.parentNode.remove()">✕</button>';
+  const host = document.querySelector('.content') || document.body;
+  host.insertBefore(b, host.firstChild);
+}
+async function pgDashCheck() {
+  const db = PG;                            // never create a client just to check
+  if (!db || PG_DASH.busy) return;
+  PG_DASH.busy = true;
+  try {
+    const s = (await db.auth.getSession()).data.session;
+    if (!s) return;
+    const exp = await pgDashExpiry(db, s);
+    if (exp == null) return;
+    const left = exp - Date.now();
+    if (left <= 0) { await pgDashTimeout(); return; }
+    if (left <= 5 * 60e3 && !PG_DASH.warned) { PG_DASH.warned = true; pgDashWarn(exp); }
+  } catch (e) {}
+  finally { PG_DASH.busy = false; }
+}
+/* Every 30 s, and the moment the tab or window comes back (timers sleep with the PC). */
+setInterval(pgDashCheck, 30000);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') pgDashCheck(); });
+window.addEventListener('focus', () => pgDashCheck());
+/* The right words when the database answers "Admins only". */
+function pgAdminsOnlyHint() {
+  if (pgDashLapsed()) { setTimeout(pgDashCheck, 0); return '   Your dashboard sign-in has ended (' + pgDashHoursText() + ' limit) — sign in again (🔗 Salesly Bridge).'; }
+  return '';
 }
 
 function pgRequire() {
@@ -16189,7 +16323,9 @@ function renderBridge() {
     } catch (e) {
       const m = (e && e.message) || String(e);
       sbLog('✗ ' + m, 'err');
-      if (/Admins only/i.test(m)) {
+      if (/Admins only/i.test(m) && pgDashLapsed()) {
+        sbLog(pgAdminsOnlyHint(), 'warn');
+      } else if (/Admins only/i.test(m)) {
         sbLog('   This login is not marked role=\'admin\' in the reps table, so the', 'warn');
         sbLog('   database refused the load. Fix that row, or load from the SQL editor.', 'warn');
       } else if (/lab_stage_rows|lab_load|function/i.test(m)) {
@@ -18655,7 +18791,8 @@ async function pgPaintAuth() {
   const box = document.getElementById('pgAuthBox');
   if (!box) return;
   if (user) {
-    box.innerHTML = `<div class="sb-hint" style="color:var(--ok,#16a34a)">● Signed in as <b>${esc(user.email || '')}</b>
+    const ends = pgDashEndsText();   // DL88
+    box.innerHTML = `<div class="sb-hint" style="color:var(--ok,#16a34a)">● Signed in as <b>${esc(user.email || '')}</b>${ends ? ` <span style="color:var(--text-muted,#64748b)">· dashboard signs out at ${esc(ends)} (${esc(pgDashHoursText())} after sign-in)</span>` : ''}
       <button class="btn-text" id="pgOut" style="margin-left:10px">Sign out</button></div>`;
     box.querySelector('#pgOut').onclick = () => pgSignOut();
     return;
