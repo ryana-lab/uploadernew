@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.11.13-DL85</title>
+<title>Lab Sales Dashboard v2026.11.16-DL86</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -1482,7 +1482,8 @@ tr.cs-open td { background: var(--card-2); white-space: normal; cursor: default;
 #panel-funnel .fun-collapsed .fun-caret { transform: rotate(-90deg); }
 #panel-funnel .fun-collapsed .fun-body, #panel-funnel .fun-collapsed .fun-head > :not(.fun-toggle) { display: none !important; }
 #panel-funnel .fun-collapsed .fun-head { margin-bottom: 0 !important; }
-#panel-funnel .fun-step:hover { box-shadow: 0 0 0 3px rgba(15,139,153,.12); }   /* DL76: e.g. "sending is paused" */
+#panel-funnel .fun-step:hover { box-shadow: 0 0 0 3px rgba(15,139,153,.12); }
+#panel-funnel select.fun-who { font: inherit; font-weight: 700; font-size: 14px; padding: 3px 8px; border: 1px solid var(--line, #d7dde5); border-radius: 8px; background: var(--card, #fff); color: var(--ink, #0f172a); cursor: pointer; }   /* DL76: e.g. "sending is paused" */
 .sb-conn-status { font-size: 13px; margin-left: 8px; }
 .rp-preview { border: 1px solid var(--border); border-radius: 10px; background: #fff; max-height: 520px; overflow-y: auto; padding: 14px; margin-top: 12px; }
 .rp-preview:empty { display: none; }
@@ -2105,7 +2106,7 @@ const APP = {
 
 /* Bump when normalization logic changes, so it's possible to tell at a glance
    (bottom of the Avg Turnaround card) which build a browser is running. */
-const BUILD_ID = 'DL85 · 2026-11-13';
+const BUILD_ID = 'DL86 · 2026-11-16';
 
 const DB_NAME = 'LabOpsCache';
 const DB_STORE = 'datasets';
@@ -4836,7 +4837,8 @@ function ddCreditsHTML(rows) {
 const FUN = { win: '90', view: 'weeks', sort: 'first', open: null, n: 10, bucket: 'eq1', last: 'any', q: '', sk: 'revenue', sd: -1, ln: 10, cache: null, tagNew: 'all', tagLow: 'all',
               gapMode: 'product', gapProd: '', gapCat: '', gapWin: '90', gapMin: '1', gapTag: 'all', gapN: 10, gapSk: 'winRev', gapSd: -1,
               col: { new: false, low: false, gap: false },   // DL83: collapsed sections
-              step: 0, stepNot: false };                     // DL83: funnel card clicked (2/3/5/10) — and "who haven't"
+              step: 0, stepNot: false,                       // DL83: funnel card clicked (2/3/5/10) — and "who haven't"
+              who: 'new' };                                  // DL86: new / current / all active clients
 const FUN_PAGE = 25;   // DL83: lists open at their top 10; "Show 25 more" / "Show all"
 function funMoreBtns(id, shown, total) {
   if (total <= shown) return '';
@@ -5151,6 +5153,154 @@ function bindFunGap() {
   document.getElementById('funGapTagSel').onchange = ev => { FUN.gapTag = ev.target.value; repaint(); };
 }
 
+/* ══ DL86: CURRENT / ALL ACTIVE CLIENTS — the same calendar for clients who aren't new ═════════════
+   🤝 Current clients = first case BEFORE the period, and at least one case IN it.
+   📋 All active clients = anyone with a case in the period (new ones marked 🌱).
+   The calendar shows the most recent calendar weeks (Mon–Sun) or months, newest on the right, with
+   "Earlier" for cases in the period before them. Cards: sent 5+/10+/25+/50+ cases in the period, and
+   "Quiet 30+ days" — active in the period but nothing in the last 30 days. */
+const FUN_WHO_SUB = {
+  new: '· first-ever case in the window, followed from that invoice',
+  current: '· clients from before the window who sent a case in it — most recent weeks on the right',
+  all: '· everyone who sent a case in the window, new or current — most recent weeks on the right' };
+const FUN_QUIET = 30;
+function funFromDay(n) { const u = new Date(n * 864e5); return new Date(u.getUTCFullYear(), u.getUTCMonth(), u.getUTCDate()); }
+function funCurDoctors() {
+  const C = funDoctors(), W = funNewWindow(C), to = isFinite(W.to) ? W.to : C.maxDay, cur = FUN.who === 'current';
+  const list = [];
+  for (const d of C.list) {
+    const isNew = funDay(d.first) >= W.from;
+    if (cur && isNew) continue;
+    if (!funTagPass(d.id, FUN.tagNew)) continue;
+    const wc = d.caseList.filter(c => { const x = funDay(c.date); return x >= W.from && x <= to; });
+    if (!wc.length) continue;
+    const cats = new Map(); wc.forEach(c => c.cats.forEach((v, k) => cats.set(k, (cats.get(k) || 0) + v)));
+    const wlast = wc[wc.length - 1].date;
+    list.push({ d, wc, wn: wc.length, wrev: wc.reduce((t, c) => t + c.rev, 0), wlast, quiet: to - funDay(wlast), isNew,
+                wcats: [...cats.entries()].sort((a, b) => b[1] - a[1]) });
+  }
+  const s = FUN.sort;
+  list.sort(s === 'revenue' ? (a, b) => b.wrev - a.wrev
+          : s === 'cases' ? (a, b) => b.wn - a.wn || b.wrev - a.wrev
+          : s === 'since' ? (a, b) => a.d.first - b.d.first || b.wrev - a.wrev
+          : (a, b) => b.wlast - a.wlast || b.wrev - a.wrev);
+  return { C, W, to, list };
+}
+function funCurVisible(list) {
+  const k = FUN.step;
+  if (k === 'quiet') return list.filter(x => FUN.stepNot ? x.quiet < FUN_QUIET : x.quiet >= FUN_QUIET);
+  if (!(k > 1)) return list;
+  return list.filter(x => FUN.stepNot ? x.wn < k : x.wn >= k);
+}
+// the calendar: the last 12 calendar weeks (Mon–Sun) or 6 calendar months, ending with the period's last day
+function funCurGrid(W) {
+  const C = funDoctors(), to = isFinite(W.to) ? W.to : C.maxDay, u = new Date(to * 864e5);
+  if (FUN.view === 'months') {
+    const n = 6, last = u.getUTCFullYear() * 12 + u.getUTCMonth(), first = last - n + 1;
+    const monthEnd = new Date(Date.UTC(u.getUTCFullYear(), u.getUTCMonth() + 1, 0)).getUTCDate();
+    const cols = Array.from({ length: n }, (_, i) => { const m = first + i, y = Math.floor(m / 12), mo = m % 12;
+      return { label: new Date(Date.UTC(y, mo, 1)).toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' }) + (i === 0 || mo === 0 ? ' ’' + String(y).slice(2) : '')
+                      + (i === n - 1 && u.getUTCDate() < monthEnd ? ' (MTD)' : '') }; });
+    return { cols, unit: 'months', idx: c => c.date.getFullYear() * 12 + c.date.getMonth() - first,
+             note: 'Columns are calendar months, most recent on the right' };
+  }
+  const n = 12, mon = to - (((to + 3) % 7) + 7) % 7, first = mon - (n - 1) * 7;
+  const cols = Array.from({ length: n }, (_, i) => ({ label: new Date((first + i * 7) * 864e5).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }) }));
+  return { cols, unit: 'weeks', idx: c => Math.floor((funDay(c.date) - first) / 7),
+           note: 'Columns are calendar weeks (Mon–Sun), labelled by their Monday — most recent on the right' };
+}
+function paintFunCur() {
+  const box = document.getElementById('funNew'); if (!box) return;
+  const { W, to, list } = funCurDoctors();
+  const noun = FUN.who === 'current' ? 'current client' : 'active client', nouns = noun + 's';
+  if (!list.length) { box.innerHTML = `<div class="text-mut" style="padding:10px 0">No ${noun} sent a case in ${W.label}${FUN.who === 'current' ? ' (a current client’s first case was before that)' : ''}.</div>`; return; }
+  const rev = list.reduce((t, x) => t + x.wrev, 0);
+  const ns = list.map(x => x.wn).sort((a, b) => a - b), med = ns[Math.floor((ns.length - 1) / 2)];
+  const showQuiet = (to - W.from) > FUN_QUIET, quietN = list.filter(x => x.quiet >= FUN_QUIET).length;
+  const quietSince = fmtDateShort(funFromDay(to - FUN_QUIET + 1));
+  const card = (key, label, value, sub, ratio, amber) => { const on = String(FUN.step || 1) === String(key);
+    const bg = amber ? `rgba(245,158,11,${(0.08 + 0.3 * ratio).toFixed(2)})` : `rgba(36,191,205,${(0.08 + 0.32 * ratio).toFixed(2)})`;
+    return `<div class="fun-step" data-k="${key}" style="flex:1 1 120px;padding:10px 12px;border-radius:10px;cursor:pointer;background:${bg};border:${on ? '2px solid ' + (amber ? '#b45309' : '#0f8b99') : '1px solid var(--line,#e6e9ee)'};${on ? 'box-shadow:0 0 0 3px rgba(15,139,153,.12);' : ''}">
+      <div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--mut)">${label}</div>
+      <div style="font-size:20px;font-weight:800">${value.toLocaleString()}</div><div style="font-size:11.5px;color:var(--mut)">${sub}</div></div>`; };
+  const strip = `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+      ${card(1, FUN.who === 'current' ? 'Current clients' : 'Active clients', list.length, funK(rev) + ' in the period', 1)}
+      ${[5, 10, 25, 50].map(k => { const c = list.filter(x => x.wn >= k).length; return card(k, 'Sent ' + k + '+ cases', c, Math.round(c / list.length * 100) + '% of ' + nouns, c / list.length); }).join('')}
+      ${showQuiet ? card('quiet', 'Quiet ' + FUN_QUIET + '+ days', quietN, 'no case since ' + quietSince, quietN / list.length, true) : ''}</div>
+    <div class="text-mut" style="font-size:12px;margin-bottom:12px">${list.length.toLocaleString()} ${nouns} sent a case in ${W.label} · ${fmtUSDFull(rev)} · median ${med} case${med === 1 ? '' : 's'} each · click a card to list those doctors · click a doctor’s row to see their cases</div>`;
+  const vis = funCurVisible(list);
+  const banner = FUN.step === 'quiet' || FUN.step > 1 ? (() => {
+      const q = FUN.step === 'quiet', k = FUN.step;
+      const yes = q ? quietN : list.filter(x => x.wn >= k).length, no = list.length - yes;
+      const what = q ? (FUN.stepNot ? 'sent a case in the last ' + FUN_QUIET + ' days' : 'have had <b>no case since ' + quietSince + '</b>')
+                     : (FUN.stepNot ? 'sent <b>fewer than ' + k + '</b> cases in the period' : 'sent ' + k + '+ cases in the period');
+      const flip = q ? (FUN.stepNot ? 'Show the ' + yes + ' quiet ones' : 'Show the ' + no + ' active in the last ' + FUN_QUIET + ' days')
+                     : (FUN.stepNot ? 'Show the ' + yes + ' who sent ' + k + '+' : 'Show the ' + no + ' who sent fewer');
+      return `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 10px;padding:8px 12px;border-radius:10px;background:${q ? '#fff7e6' : '#e6f7f9'};border:1px solid ${q ? '#f5c97a' : '#9fdde4'};font-size:12.5px">
+        <span>Showing the <b>${vis.length}</b> ${vis.length === 1 ? noun : nouns} who ${what}</span>
+        <button class="btn-text" id="funStepFlip" style="font-size:12px;border:1px solid ${q ? '#f5c97a' : '#9fdde4'};border-radius:8px;padding:2px 10px;background:var(--card,#fff)">${flip}</button>
+        <button class="btn-text" id="funStepClear" style="font-size:12px;margin-left:auto">✕ Show all ${nouns}</button></div>`; })() : '';
+  const G = funCurGrid(W), nc = G.cols.length, rows = vis.slice(0, FUN.n);
+  let maxCell = 1;
+  const grid = rows.map(x => { const early = { n: 0, rev: 0, cs: [] }, cells = Array.from({ length: nc }, () => ({ n: 0, rev: 0, cs: [] }));
+    x.wc.forEach(c => { const i = G.idx(c), t = i < 0 ? early : cells[Math.min(i, nc - 1)]; t.n++; t.rev += c.rev; t.cs.push(c); });
+    [early].concat(cells).forEach(t => { if (t.rev > maxCell) maxCell = t.rev; });
+    return { x, early, cells }; });
+  const cell = t => {
+    if (!t.n) return `<td style="padding:3px;text-align:center;color:#cbd5e1">–</td>`;
+    const a = 0.12 + 0.6 * Math.max(0, t.rev) / maxCell;
+    const dots = t.cs.slice(0, 8).map(c => `<i style="display:inline-block;width:6px;height:6px;border-radius:50%;margin:0 1px;background:${funColor(c.type)}"></i>`).join('');
+    return `<td style="padding:3px 4px;text-align:center;background:rgba(36,191,205,${a.toFixed(2)});border-radius:4px" title="${esc(t.cs.map(funCaseTip).join('\n'))}"><b>${t.n}</b><div style="font-size:10px">${funK(t.rev)}</div><div style="line-height:6px">${dots}</div></td>`;
+  };
+  const span = 7 + nc, tenure = d => { const m = Math.round((to - funDay(d.first)) / 30.44); return m < 1 ? 'new' : m < 24 ? m + ' mo' : (m / 12).toFixed(1).replace(/\.0$/, '') + ' yr'; };
+  const caseRows = x => { const cs = x.wc.slice().reverse(), shown = cs.slice(0, 60);
+    return `<tr><td colspan="${span}" style="padding:0 0 10px 18px;background:var(--bg2,#f8fafc)">
+      <table style="width:100%;font-size:12px;border-collapse:collapse"><thead><tr style="text-align:left;color:var(--mut)"><th style="padding:4px">Date</th><th style="padding:4px">Ago</th><th style="padding:4px">Case #</th><th style="padding:4px">Products</th><th style="padding:4px">Case type</th><th style="padding:4px;text-align:right">Revenue</th></tr></thead>
+      <tbody>${shown.map(c => { const ago = to - funDay(c.date); return `<tr style="border-top:1px solid var(--line,#eef1f5)"><td style="padding:3px 4px;white-space:nowrap">${fmtDateShort(c.date)}</td>
+        <td style="padding:3px 4px;color:var(--mut)">${ago === 0 ? 'today' : ago + 'd'}</td><td style="padding:3px 4px">${esc(c.no)}${c.remake ? ' <span title="remake">🔁</span>' : ''}</td>
+        <td style="padding:3px 4px;max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc([...c.products.keys()].join(', '))}">${esc([...c.products.entries()].map(([p, q]) => (q > 1 ? q + '× ' : '') + p).join(', ') || '—')}</td>
+        <td style="padding:3px 4px">${esc(c.type || '—')}</td><td style="padding:3px 4px;text-align:right;font-weight:600">${fmtUSDFull(c.rev)}</td></tr>`; }).join('')}</tbody></table>
+      ${cs.length > shown.length ? `<div style="font-size:11.5px;color:var(--mut);padding:4px">+ ${cs.length - shown.length} earlier cases in the period — Doctor Detail has them all</div>` : ''}</td></tr>`; };
+  box.innerHTML = strip + banner + `<div style="overflow-x:auto"><table style="width:100%;font-size:12.5px;border-collapse:separate;border-spacing:2px">
+    <thead><tr style="text-align:left;font-size:11px;color:var(--mut)"><th style="padding:4px">Doctor</th><th style="padding:4px">Client since</th><th style="padding:4px;text-align:right" title="Cases in the period">Cases</th><th style="padding:4px;text-align:right" title="Revenue in the period">Revenue</th><th style="padding:4px">Last case</th><th style="padding:4px">Mostly</th>
+      <th style="padding:4px;text-align:center" title="Cases in the period before the ${G.unit} shown">Earlier</th>${G.cols.map(c => `<th style="padding:4px;text-align:center;white-space:nowrap">${c.label}</th>`).join('')}</tr></thead>
+    <tbody>${grid.map(({ x, early, cells }) => { const d = x.d; return `<tr class="fun-row" data-id="${esc(d.id)}" style="cursor:pointer">
+        <td style="padding:4px;min-width:190px"><a href="#" class="fun-dr" data-id="${esc(d.id)}" style="font-weight:700">${esc(d.name)}</a><div style="font-size:11px;color:var(--mut)">${esc(d.practice)}${d.state ? ' · ' + esc(d.state) : ''}</div>${funBadges(d)}</td>
+        <td style="padding:4px;white-space:nowrap">${fmtDate(d.first)}${x.isNew ? ' <span style="padding:0 6px;border-radius:8px;font-size:10px;background:#dcfce7;color:#166534">🌱 new</span>' : ''}<div style="font-size:11px;color:var(--mut)">${tenure(d)}</div></td>
+        <td style="padding:4px;text-align:right;font-weight:700">${x.wn}</td><td style="padding:4px;text-align:right">${fmtUSDFull(x.wrev)}</td>
+        <td style="padding:4px;white-space:nowrap">${fmtDateShort(x.wlast)}<div style="font-size:11px;color:${x.quiet >= FUN_QUIET ? '#b45309;font-weight:700' : 'var(--mut)'}">${x.quiet === 0 ? 'today' : x.quiet + 'd ago'}</div></td>
+        <td style="padding:4px;font-size:11.5px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc((x.wcats[0] || [''])[0])}</td>
+        ${cell(early)}${cells.map(cell).join('')}</tr>
+        <tr class="fun-chiprow"><td colspan="${span}" style="padding:0 4px 8px 4px;border-bottom:1px solid var(--line,#eef1f5)">${funChips(x.wc.slice(-14), 14)}${x.wn > 14 ? `<span style="font-size:11px;color:var(--mut)"> +${x.wn - 14} earlier in the period</span>` : ''}</td></tr>${FUN.open === d.id ? caseRows(x) : ''}`; }).join('')}</tbody></table></div>
+    ${funMoreBtns('new', rows.length, vis.length)}
+    <div class="text-mut" style="font-size:11px;margin-top:6px">${G.note} · Earlier = cases in the period before those ${G.unit} · Cases &amp; revenue are for the period · shading follows revenue · each dot is a case, coloured by type — hover a cell for dates</div>
+    <div style="margin-top:6px">${funLegend(vis.map(x => ({ caseList: x.wc })))}</div>`;
+  box.querySelectorAll('.fun-row').forEach(tr => tr.onclick = ev => { if (ev.target.closest('.fun-dr,.fun-edit,.fun-peers')) return; FUN.open = FUN.open === tr.dataset.id ? null : tr.dataset.id; paintFunNew(); });
+  box.querySelectorAll('.fun-dr').forEach(a => a.onclick = ev => { ev.preventDefault(); ev.stopPropagation(); APP.selectedDoctorId = a.dataset.id; switchTab('docdetail'); });
+  funBindMore(box, 'n', paintFunNew);
+  box.querySelectorAll('.fun-step').forEach(c => c.onclick = () => { const k = c.dataset.k === 'quiet' ? 'quiet' : +c.dataset.k;
+    FUN.step = (k === 'quiet' || k > 1) && FUN.step !== k ? k : 0; FUN.stepNot = false; FUN.n = 10; FUN.open = null; paintFunNew(); });
+  const flip = document.getElementById('funStepFlip'); if (flip) flip.onclick = () => { FUN.stepNot = !FUN.stepNot; FUN.n = 10; paintFunNew(); };
+  const clr = document.getElementById('funStepClear'); if (clr) clr.onclick = () => { FUN.step = 0; FUN.stepNot = false; FUN.n = 10; paintFunNew(); };
+  funBindEdits(box);
+}
+function xlFunCurSheet(wb) {
+  const { W, list } = funCurDoctors(), vis = funCurVisible(list), G = funCurGrid(W);
+  const name = FUN.who === 'current' ? 'Current clients' : 'Active clients', ws = wb.addWorksheet(name);
+  ws.columns = [{ width: 28 }, { width: 34 }, { width: 7 }, { width: 12 }, { width: 9 }, { width: 13 }, { width: 12 }, { width: 26 }, { width: 8 }]
+    .concat(G.cols.map(() => ({ width: 9 })), [{ width: 22 }, { width: 40 }, { width: 70 }]);
+  let r = xlTitle(ws, name + ' — sent a case in ' + W.label, vis.length + ' doctors · cases per calendar ' + (G.unit === 'weeks' ? 'week (Mon–Sun)' : 'month') + ', most recent on the right', null);
+  xlHeader(ws, r, ['Doctor', 'Practice', 'State', 'Client since', 'Cases (period)', 'Revenue (period)', 'Last case', 'Mostly', 'Earlier']
+    .concat(G.cols.map(c => c.label), ['Tags', 'Latest note', 'Cases in the period — date · type']));
+  vis.forEach(x => { r++; const d = x.d, cells = Array(G.cols.length).fill(0); let early = 0;
+    x.wc.forEach(c => { const i = G.idx(c); if (i < 0) early++; else cells[Math.min(i, cells.length - 1)]++; });
+    const row = ws.getRow(r);
+    row.values = [d.name, d.practice, d.state, d.first, x.wn, x.wrev, x.wlast, (x.wcats[0] || [''])[0], early || null]
+      .concat(cells.map(v => v || null), [funTagsOf(d.id).join(', '), (funNotesOf(d.id)[0] || {}).note || '', x.wc.map(c => fmtDateShort(c.date) + ' ' + funShort(c.type)).join('; ')]);
+    row.getCell(4).numFmt = 'm/d/yyyy'; row.getCell(7).numFmt = 'm/d/yyyy'; row.getCell(6).numFmt = '$#,##0'; });
+  ws.views = [{ state: 'frozen', ySplit: 4 }];
+}
+
 function funNewWindow(C) {
   if (FUN.win === 'bar') {
     const f = APP.filters || {};
@@ -5167,14 +5317,16 @@ function renderFunnel() {
   const opt = (v, l, cur) => `<option value="${v}"${v === cur ? ' selected' : ''}>${l}</option>`;
   el.innerHTML = `
     <div class="section-head" style="margin-bottom:14px"><h2 style="margin:0">🧭 Sales Funnel</h2>
-      <div class="text-mut" style="font-size:13px">New clients from their first invoice, and doctors who send few cases · whole history up to ${fmtDateShort(C.max)} · State &amp; Group filters apply</div></div>
+      <div class="text-mut" style="font-size:13px">New and current clients, doctors who send few cases, and cross-sell targets · whole history up to ${fmtDateShort(C.max)} · State &amp; Group filters apply</div></div>
     <div class="card mb20 fun-card${FUN.col.new ? ' fun-collapsed' : ''}" data-sec="new" style="padding:16px">
       <div class="fun-head" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">
-        <div class="chart-title fun-toggle" style="margin:0;flex:1"><span class="fun-caret">▾</span> 🌱 New clients <span style="font-weight:400;font-size:12px;color:var(--mut)">· first-ever case in the window, followed from that invoice</span></div>
-        <label style="font-size:12px">First case in <select id="funWin">${opt('30', 'last 30 days', FUN.win)}${opt('60', 'last 60 days', FUN.win)}${opt('90', 'last 90 days', FUN.win)}${opt('180', 'last 180 days', FUN.win)}${opt('bar', 'the top bar’s dates', FUN.win)}</select></label>
+        <div class="chart-title fun-toggle" style="margin:0;flex:1"><span class="fun-caret">▾</span> <select id="funWho" class="fun-who" title="Which clients to show">${opt('new', '🌱 New clients', FUN.who)}${opt('current', '🤝 Current clients', FUN.who)}${opt('all', '📋 All active clients', FUN.who)}</select> <span style="font-weight:400;font-size:12px;color:var(--mut)">${FUN_WHO_SUB[FUN.who]}</span></div>
+        <label style="font-size:12px">${FUN.who === 'new' ? 'First case in' : 'Sent a case in'} <select id="funWin">${opt('30', 'last 30 days', FUN.win)}${opt('60', 'last 60 days', FUN.win)}${opt('90', 'last 90 days', FUN.win)}${opt('180', 'last 180 days', FUN.win)}${opt('365', 'last 365 days', FUN.win)}${opt('bar', 'the top bar’s dates', FUN.win)}</select></label>
         <div class="pill-group" id="funView"><button class="pill${FUN.view === 'weeks' ? ' active' : ''}" data-v="weeks">Weeks</button><button class="pill${FUN.view === 'months' ? ' active' : ''}" data-v="months">Months</button></div>
         ${funTagSelect('funTagNewSel', FUN.tagNew)}
-        <label style="font-size:12px">Sort <select id="funSort">${opt('first', 'newest first', FUN.sort)}${opt('revenue', 'revenue', FUN.sort)}${opt('cases', 'cases', FUN.sort)}</select></label>
+        <label style="font-size:12px">Sort <select id="funSort">${FUN.who === 'new'
+          ? opt('first', 'newest first', FUN.sort) + opt('revenue', 'revenue', FUN.sort) + opt('cases', 'cases', FUN.sort)
+          : opt('first', 'most recent case', FUN.sort) + opt('revenue', 'revenue in the period', FUN.sort) + opt('cases', 'cases in the period', FUN.sort) + opt('since', 'longest-standing client', FUN.sort)}</select></label>
         <button class="btn-text" id="funXl" style="font-size:12px">⬇ Excel</button>
       </div>
       <div id="funNew" class="fun-body"></div>
@@ -5202,6 +5354,8 @@ function renderFunnel() {
   const re = () => { paintFunNew(); };
   document.getElementById('funWin').onchange = ev => { FUN.win = ev.target.value; FUN.open = null; FUN.n = 10; FUN.step = 0; re(); };
   document.getElementById('funSort').onchange = ev => { FUN.sort = ev.target.value; re(); };
+  document.getElementById('funWho').onchange = ev => { FUN.who = ev.target.value; FUN.step = 0; FUN.stepNot = false; FUN.n = 10; FUN.open = null;
+    if (FUN.who === 'new' && FUN.sort === 'since') FUN.sort = 'first'; renderFunnel(); };
   document.querySelectorAll('#funView .pill').forEach(b => b.onclick = () => { FUN.view = b.dataset.v; document.querySelectorAll('#funView .pill').forEach(x => x.classList.toggle('active', x === b)); re(); });
   document.getElementById('funBucket').onchange = ev => { FUN.bucket = ev.target.value; FUN.ln = 10; paintFunLow(); };
   document.getElementById('funLast').onchange = ev => { FUN.last = ev.target.value; FUN.ln = 10; paintFunLow(); };
@@ -5231,6 +5385,7 @@ function funNewVisible(news) {
   return news.filter(d => FUN.stepNot ? d.n < FUN.step : d.n >= FUN.step);
 }
 function paintFunNew() {
+  if (FUN.who && FUN.who !== 'new') return paintFunCur();   // DL86
   const box = document.getElementById('funNew'); if (!box) return;
   const { C, W, news } = funNewDoctors();
   if (!news.length) { box.innerHTML = `<div class="text-mut" style="padding:10px 0">No doctor sent their first case in ${W.label}.</div>`; return; }
@@ -5340,7 +5495,7 @@ function paintFunLow() {
 async function xlFunnelWorkbook() {
   const ExcelJS = await loadExcelJS(), wb = new ExcelJS.Workbook(); wb.creator = 'Lab Sales Dashboard'; wb.created = new Date();
   const { W, news: allNew } = funNewDoctors(), news = funNewVisible(allNew), { list } = funLowDoctors();
-  { const ws = wb.addWorksheet('New clients'); const weeks = 12;
+  if (FUN.who && FUN.who !== 'new') xlFunCurSheet(wb); else { const ws = wb.addWorksheet('New clients'); const weeks = 12;
     ws.columns = [{ width: 28 }, { width: 34 }, { width: 7 }, { width: 13 }, { width: 8 }, { width: 13 }, { width: 13 }, { width: 26 }].concat(Array.from({ length: weeks }, () => ({ width: 7 })));
     let r = xlTitle(ws, 'New clients — first case in ' + W.label, news.length + ' doctors · cases per week from each doctor’s first invoice', null);
     ws.columns = ws.columns.concat([{ width: 22 }, { width: 40 }, { width: 70 }]);
