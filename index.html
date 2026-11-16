@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.11.16-DL88</title>
+<title>Lab Sales Dashboard v2026.11.16-DL89</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -2106,7 +2106,7 @@ const APP = {
 
 /* Bump when normalization logic changes, so it's possible to tell at a glance
    (bottom of the Avg Turnaround card) which build a browser is running. */
-const BUILD_ID = 'DL88 · 2026-11-16';
+const BUILD_ID = 'DL89 · 2026-11-16';
 
 const DB_NAME = 'LabOpsCache';
 const DB_STORE = 'datasets';
@@ -8948,13 +8948,21 @@ async function prodLoadAllInner() {
 }
 
 // Roll the raw rows up per person, honouring the date filter.
+// DL89: the roll-up is shared, so a DEPARTMENT is summed exactly the way a person is
+function prodNewAcc(k) {
+  return { employee: k, units: 0, cases: 0, tasksIn: 0, tasksDone: 0,
+           minutes: 0, stepUnits: 0, days: new Set(), products: {}, steps: {}, stations: {}, depts: {} };
+}
+function prodRollup(rows, label) { const e = prodNewAcc(label); rows.forEach(r => prodAccAdd(e, r)); return prodAccFinish(e); }
 function prodByEmployee() {
   const by = {};
   PROD.rows.filter(prodInRange).forEach(r => {
     const k = String(r.employee || '').trim(); if (!k) return;
-    const e = by[k] || (by[k] = { employee: k, units: 0, cases: 0, tasksIn: 0, tasksDone: 0,
-                                  minutes: 0, stepUnits: 0, days: new Set(), products: {}, steps: {},
-                                  stations: {}, depts: {} });
+    prodAccAdd(by[k] || (by[k] = prodNewAcc(k)), r);
+  });
+  return Object.values(by).map(prodAccFinish);
+}
+function prodAccAdd(e, r) {
     e.units     += prodNum(r.total_units);
     e.cases     += prodNum(r.cases_touched);
     e.tasksIn   += prodNum(r.tasks_scanned_in);
@@ -8977,8 +8985,8 @@ function prodByEmployee() {
     e.minutes += prodNum(r.planned_minutes);
     if (r.workstation) e.stations[r.workstation] = (e.stations[r.workstation] || 0) + prodNum(r.total_units);
     if (r.department)  e.depts[r.department]     = (e.depts[r.department]     || 0) + prodNum(r.total_units);
-  });
-  return Object.values(by).map(e => {
+}
+function prodAccFinish(e) {
     const top = Object.entries(e.products).sort((a,b) => b[1]-a[1]);
     const steps = Object.entries(e.steps).sort((a,b) => b[1].units - a[1].units);
     return Object.assign(e, {
@@ -8998,7 +9006,6 @@ function prodByEmployee() {
       unitsPerCase: e.cases ? e.units / e.cases : 0,
       donePct:      e.tasksIn ? e.tasksDone / e.tasksIn : 0
     });
-  });
 }
 
 function prodEmptyState(el, title) {
@@ -12456,7 +12463,7 @@ function drawEGCharts() {
         <span class="text-mut" style="margin-left:auto;font-size:12px">${esc(prodRangeLabel())} · ${fmt(total)} ${esc(M.label.toLowerCase())} · ${top.length} people</span></div>
       <div class="eg-cgrid">
         <div class="card eg-cc"><div class="chart-title">Share of output — by person</div><div class="eg-pie"><canvas id="egPie1"></canvas></div><div class="eg-legend">${legend(pie, total)}</div></div>
-        <div class="card eg-cc"><div class="chart-title">Share of output — by department</div><div class="eg-pie"><canvas id="egPie2"></canvas></div><div class="eg-legend">${legend(depts, total)}</div></div>
+        <div class="card eg-cc"><div class="chart-title">Share of output — by department <small class="text-mut">· click a slice for that department</small></div><div class="eg-pie"><canvas id="egPie2"></canvas></div><div class="eg-legend">${legend(depts, total)}</div></div>
         <div class="card eg-cc eg-wide"><div class="chart-title">${esc(M.label)} by person <small class="text-mut">· in the order of the sort buttons above</small></div><div style="height:${Math.max(220, ranked.length * 22 + 40)}px"><canvas id="egBar"></canvas></div></div>
         <div class="card eg-cc eg-wide"><div class="chart-title">${esc(M.label)} over time <small class="text-mut">· ${weekly ? 'by week (Mon–Sun)' : 'by day'} · the top 6 people, everyone else together</small></div><div style="height:300px"><canvas id="egTime"></canvas></div></div>
       </div></div>`;
@@ -12466,9 +12473,12 @@ function drawEGCharts() {
   const pieCfg = list => ({ type: 'doughnut', data: { labels: list.map(x => x[0]), datasets: [{ data: list.map(x => Math.round(x[1])), backgroundColor: list.map((x, i) => EG_COLORS[i % EG_COLORS.length]), borderWidth: 1 }] },
     options: { maintainAspectRatio: false, cutout: '55%', plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => ` ${c.label}: ${fmt(c.parsed)} (${Math.round(c.parsed / total * 100)}%)` } } } } });
   PROD._charts.push(new Chart(document.getElementById('egPie1'), pieCfg(pie)), new Chart(document.getElementById('egPie2'), pieCfg(depts)));
+  // DL89: click a department slice → that department in Employee Detail
+  { const c2 = PROD._charts[PROD._charts.length - 1]; c2.options.onClick = (ev, el) => { if (el && el.length && depts[el[0].index][0] !== '—') { PROD.edDept = depts[el[0].index][0]; switchTab('empdetail'); } };
+    c2.options.onHover = (ev, el) => { if (ev.native && ev.native.target) ev.native.target.style.cursor = el && el.length ? 'pointer' : 'default'; }; c2.update(); }
   PROD._charts.push(new Chart(document.getElementById('egBar'), { type: 'bar', data: { labels: ranked.map(x => x[0]), datasets: [{ data: ranked.map(x => Math.round(x[1])), backgroundColor: '#0ea5b7', borderRadius: 4 }] },
     options: { indexAxis: 'y', maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: ink } }, y: { ticks: { color: ink, autoSkip: false } } },
-      onClick: (ev, el) => { if (el && el.length) { PROD.employee = ranked[el[0].index][0]; switchTab('empdetail'); } } } }));
+      onClick: (ev, el) => { if (el && el.length) { PROD.employee = ranked[el[0].index][0]; PROD.edDept = null; switchTab('empdetail'); } } } }));
   const lbl = b => new Date(b + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   PROD._charts.push(new Chart(document.getElementById('egTime'), { type: 'bar',
     data: { labels: buckets.map(b => (weekly ? 'wk ' : '') + lbl(b)), datasets: [...series.entries()].filter(([, m]) => m.size).map(([n, m], i) => ({ label: n, data: buckets.map(b => Math.round(m.get(b) || 0)),
@@ -12606,7 +12616,7 @@ function drawEGrid() {
   }).join('');
 
   grid.querySelectorAll('.clk').forEach(c => c.addEventListener('click', () => {
-    PROD.employee = c.dataset.emp; switchTab('empdetail');
+    PROD.employee = c.dataset.emp; PROD.edDept = null; switchTab('empdetail');
   }));
 }
 
@@ -12721,6 +12731,7 @@ async function xlEmployeeWorkbook(e, mine) {
   const ExcelJS = await loadExcelJS(), wb = new ExcelJS.Workbook(); wb.creator = 'Lab Sales Dashboard'; wb.created = new Date();
   const days = prodDayRollup(mine), range = xlRange(days.map(d => d[0]));
   xlEmployeeDaily(wb, 'Daily production', e, mine);
+  if (e.team) xlDeptPeople(wb, e, mine);       // DL89
   xlDaysSheet(wb, 'Weekly', e.employee + ' — by week', `Monday-starting weeks · ${range}`, null,
     prodWeekRollup(days).map(w => ({ label: 'Week of ' + fmtDateShort(w._d) + ' (' + w.days + ' day' + (w.days === 1 ? '' : 's') + ')', ...w })), 'Week / product', '% of week');
   { // products × days
@@ -12843,13 +12854,13 @@ function edBucket(t) {
 // one entry per task (the task's own row, not its subtask rows)
 function edScanData(mine) {
   const byTask = new Map();
-  mine.forEach(r => { const id = r.task_id || ('row' + byTask.size); const cur = byTask.get(id);
+  mine.forEach(r => { const id = String(r.employee || '').trim() + '\u0001' + (r.task_id || ('row' + byTask.size)); const cur = byTask.get(id);   // DL89: per person, so a department adds up
     if (!cur || (cur.subtask_id && !r.subtask_id)) byTask.set(id, r); });
   const tasks = [...byTask.values()].map(r => {
     const tin = edTs(r.started_at), tout = edTs(r.resolved_at), done = /true/i.test(String(r.is_completed || ''));
     const ms = tin && tout && tout >= tin ? tout - tin : null;
     return { r, in: tin, out: tout, ms, done, day: r.scan_in_date || '', product: (r.product_name || '').trim() || '(no product)',
-             task: r.step || r.task_name || '', units: prodNum(r.total_units != null ? r.total_units : r.units), case_number: r.case_number || '' };
+             task: r.step || r.task_name || '', units: prodNum(r.total_units != null ? r.total_units : r.units), case_number: r.case_number || '', who: String(r.employee || '').trim() };
   });
   const timed = tasks.filter(t => t.ms != null), durs = timed.map(t => t.ms);
   const sameDay = timed.filter(t => edYmd(t.in) === edYmd(t.out)).length;
@@ -12957,7 +12968,7 @@ function edScanBind(D) {
       if (car) car.textContent = PROD.edScanOpen ? '▾' : '▸'; const hint = h.querySelector('.text-mut');
       if (hint) hint.textContent = hint.textContent.replace(/click to (show|hide)/, PROD.edScanOpen ? 'click to hide' : 'click to show'); }); }
   const tbl = document.getElementById('edScanTbl'); if (!tbl) return;
-  const COLS = [['day', 'Date'], ['case_number', 'Case #'], ['product', 'Product'], ['task', 'Task'], ['in', 'Scanned in'], ['out', 'Scanned out'], ['ms', 'Time in → out']];
+  const COLS = [['day', 'Date'], ...(PROD.edDept ? [['who', 'Employee']] : []), ['case_number', 'Case #'], ['product', 'Product'], ['task', 'Task'], ['in', 'Scanned in'], ['out', 'Scanned out'], ['ms', 'Time in → out']];
   const st = PROD.edScanSort || (PROD.edScanSort = { k: 'in', dir: -1, n: 50 });
   const val = (t, k) => k === 'in' || k === 'out' ? (t[k] ? +t[k] : -Infinity) : k === 'ms' ? (t.ms == null ? -Infinity : t.ms) : k === 'day' ? (+prodDate(t.day) || 0) : String(t[k] || '').toLowerCase();
   const paint = () => {
@@ -12965,7 +12976,7 @@ function edScanBind(D) {
     const shown = rows.slice(0, st.n);
     tbl.innerHTML = `<thead><tr style="text-align:left">${COLS.map(([k, l]) => `<th data-k="${k}" style="padding:5px 4px;cursor:pointer;white-space:nowrap">${l}${st.k === k ? (st.dir > 0 ? ' ▲' : ' ▼') : ''}</th>`).join('')}</tr></thead>
       <tbody>${shown.map(t => `<tr style="border-top:1px solid var(--line,#eef1f5)">
-        <td style="padding:4px;white-space:nowrap">${esc(t.day)}</td><td style="padding:4px">${esc(t.case_number)}</td>
+        <td style="padding:4px;white-space:nowrap">${esc(t.day)}</td>${PROD.edDept ? `<td style="padding:4px;white-space:nowrap">${esc(t.who)}</td>` : ''}<td style="padding:4px">${esc(t.case_number)}</td>
         <td style="padding:4px;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(t.product)}">${esc(t.product)}</td>
         <td style="padding:4px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(t.task)}">${esc(t.task)}</td>
         <td style="padding:4px;white-space:nowrap">${t.in ? edFmtDay(t.in) + ' · ' + edFmtTime(t.in) : '—'}</td>
@@ -12987,12 +12998,13 @@ function xlEmployeeScans(wb, e, D) {
       .formatToParts(d).map(x => [x.type, x.value]));
     return new Date(Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour % 24, +p.minute, +p.second)); };
   { const ws = wb.addWorksheet('Scans');
-    ws.columns = [{ width: 12 }, { width: 14 }, { width: 44 }, { width: 30 }, { width: 18 }, { width: 18 }, { width: 12 }, { width: 10 }];
+    const W = !!e.team;                       // DL89: a department says who scanned it
+    ws.columns = [{ width: 12 }, ...(W ? [{ width: 24 }] : []), { width: 14 }, { width: 44 }, { width: 30 }, { width: 18 }, { width: 18 }, { width: 12 }, { width: 10 }];
     let r = xlTitle(ws, e.employee + ' — every scan', 'Scan-in and scan-out times (Chicago) · minutes are elapsed time, overnight included', null);
-    xlHeader(ws, r, ['Date', 'Case #', 'Product', 'Task', 'Scanned in', 'Scanned out', 'Minutes', 'Same day']);
+    xlHeader(ws, r, ['Date', ...(W ? ['Employee'] : []), 'Case #', 'Product', 'Task', 'Scanned in', 'Scanned out', 'Minutes', 'Same day']);
     D.tasks.slice().sort((a, b) => (+b.in || 0) - (+a.in || 0)).forEach(t => { r++; const row = ws.getRow(r);
-      row.values = [t.day, t.case_number, t.product, t.task, tz(t.in), tz(t.out), t.ms == null ? null : Math.round(t.ms / 6e4), t.ms == null ? null : (edYmd(t.in) === edYmd(t.out) ? 'Yes' : 'No')];
-      row.getCell(5).numFmt = 'm/d/yyyy h:mm AM/PM'; row.getCell(6).numFmt = 'm/d/yyyy h:mm AM/PM'; row.getCell(7).numFmt = '#,##0'; });
+      row.values = [t.day, ...(W ? [t.who] : []), t.case_number, t.product, t.task, tz(t.in), tz(t.out), t.ms == null ? null : Math.round(t.ms / 6e4), t.ms == null ? null : (edYmd(t.in) === edYmd(t.out) ? 'Yes' : 'No')];
+      const o = W ? 1 : 0; row.getCell(5 + o).numFmt = 'm/d/yyyy h:mm AM/PM'; row.getCell(6 + o).numFmt = 'm/d/yyyy h:mm AM/PM'; row.getCell(7 + o).numFmt = '#,##0'; });
     ws.views = [{ state: 'frozen', ySplit: 4 }]; }
   { const ws = wb.addWorksheet('Time by product');
     ws.columns = [{ width: 48 }, { width: 10 }, { width: 14 }, { width: 14 }, { width: 11 }, { width: 10 }];
@@ -13054,13 +13066,14 @@ function edDayProductsTable(o) {
 }
 // everything this person has open right now (all dates, last 30 days of scan-ins)
 function edBacklogData(emp) {
+  const want = typeof emp === 'function' ? emp : (r => String(r.employee || '').trim() === emp);   // DL89: a person or a department
   const L = edLatestCheck();
   let refDay = 0;
   if (L) { const [y, m, d] = edYmd(new Date(L)).split('-').map(Number); refDay = funDay(new Date(y, m - 1, d)); }
   else PROD.rows.forEach(r => { const dt = prodDate(r.scan_in_date); if (dt) refDay = Math.max(refDay, funDay(dt)); });
   const live = [], stale = []; let older = 0, olderChecked = 0;
   for (const r of PROD.rows) {
-    if (String(r.employee || '').trim() !== emp || !edIsTask(r) || edOut(r) || edDone(r)) continue;
+    if (!want(r) || !edIsTask(r) || edOut(r) || edDone(r)) continue;
     const dt = prodDate(r.scan_in_date); if (!dt) continue;
     const age = refDay - funDay(dt);
     if (age > ED_BL_WINDOW) { older++; const c = r.checked_at ? Date.parse(r.checked_at) : 0; if (c > olderChecked) olderChecked = c; continue; }
@@ -13092,9 +13105,9 @@ function edBacklogHTML(B) {
   const prods = [...byP.entries()].sort((a, b) => b[1].n - a[1].n || b[1].oldest.age - a[1].oldest.age);
   const ageTxt = a => a <= 0 ? 'today' : a + ' day' + (a === 1 ? '' : 's');
   const taskRows = p => `<tr><td colspan="8" style="padding:0 0 10px 18px;background:var(--bg2,#f8fafc)"><table style="width:100%;font-size:12px;border-collapse:collapse">
-      <thead><tr style="text-align:left;color:var(--mut)"><th style="padding:4px">Case #</th><th style="padding:4px">Task</th><th style="padding:4px">Scanned in</th><th style="padding:4px;text-align:right">Open for</th><th style="padding:4px">Status checked</th></tr></thead>
+      <thead><tr style="text-align:left;color:var(--mut)">${PROD.edDept ? '<th style="padding:4px">Employee</th>' : ''}<th style="padding:4px">Case #</th><th style="padding:4px">Task</th><th style="padding:4px">Scanned in</th><th style="padding:4px;text-align:right">Open for</th><th style="padding:4px">Status checked</th></tr></thead>
       <tbody>${p.tasks.slice().sort((a, b) => b.age - a.age).slice(0, PROD.blAllTasks ? 1e9 : 50).map(t => `<tr style="border-top:1px solid var(--line,#eef1f5)">
-        <td style="padding:3px 4px">${esc(t.r.case_number || '')}</td><td style="padding:3px 4px">${esc(t.r.task_name || t.r.step || '')}</td>
+        ${PROD.edDept ? `<td style="padding:3px 4px;white-space:nowrap">${esc(String(t.r.employee || '').trim())}</td>` : ''}<td style="padding:3px 4px">${esc(t.r.case_number || '')}</td><td style="padding:3px 4px">${esc(t.r.task_name || t.r.step || '')}</td>
         <td style="padding:3px 4px;white-space:nowrap">${t.tin ? edFmtDay(t.tin) + ' · ' + edFmtTime(t.tin) : esc(t.r.scan_in_date)}</td>
         <td style="padding:3px 4px;text-align:right;font-weight:600;${t.age > 7 ? 'color:#b91c1c' : t.age > 3 ? 'color:#b45309' : ''}">${ageTxt(t.age)}</td>
         <td style="padding:3px 4px;white-space:nowrap;${edStale(t.r) ? 'color:#b45309' : 'color:var(--mut)'}">${t.checked ? edWhen(t.checked) : '—'}${edStale(t.r) ? ' ⚠' : ''}</td></tr>`).join('')}</tbody></table>
@@ -13124,7 +13137,7 @@ function edBacklogBind() {
 }
 function edBacklogRepaint() {
   const el = document.getElementById('edBacklogWrap'); if (!el) return;
-  el.innerHTML = edBacklogHTML(edBacklogData(PROD.employee)); edBacklogBind();
+  el.innerHTML = edBacklogHTML(edBacklogData(edCurFilter())); edBacklogBind();
 }
 // Excel: per product per day, and the open tasks
 function xlEmployeeBacklog(wb, e, mine) {
@@ -13142,16 +13155,139 @@ function xlEmployeeBacklog(wb, e, mine) {
         ws.getRow(r).values = [prodDate(d) || d, pn, o.units, o.taskN || 0, o.out || 0, o.done || 0, o.open || 0, o.stale || null];
         ws.getRow(r).getCell(1).numFmt = 'm/d/yyyy'; }));
     ws.views = [{ state: 'frozen', ySplit: 4 }]; ws.autoFilter = { from: { row: 4, column: 1 }, to: { row: 4, column: 8 } }; }
-  { const B = edBacklogData(e.employee), all = B.live.concat(B.stale);
+  { const W = !!e.team, B = edBacklogData(W ? e.team.want : e.employee), all = B.live.concat(B.stale);
     if (!all.length) return;
     const ws = wb.addWorksheet('Open tasks');
-    ws.columns = [{ width: 14 }, { width: 52 }, { width: 30 }, { width: 12 }, { width: 10 }, { width: 22 }, { width: 14 }];
+    ws.columns = [...(W ? [{ width: 24 }] : []), { width: 14 }, { width: 52 }, { width: 30 }, { width: 12 }, { width: 10 }, { width: 22 }, { width: 14 }];
     let r = xlTitle(ws, e.employee + ' — open tasks (scanned in, not scanned out)', all.length + ' open · scanned in within the last ' + ED_BL_WINDOW + ' days' + (B.L ? ' · status as of ' + edWhen(B.L) : ''), null);
-    xlHeader(ws, r, ['Case #', 'Product', 'Task', 'Scanned in', 'Days open', 'Status last checked', 'Re-checked recently']);
+    xlHeader(ws, r, [...(W ? ['Employee'] : []), 'Case #', 'Product', 'Task', 'Scanned in', 'Days open', 'Status last checked', 'Re-checked recently']);
     all.sort((a, b) => b.age - a.age).forEach(t => { r++;
-      ws.getRow(r).values = [t.r.case_number || '', t.product, t.r.task_name || '', t.dt, t.age, t.checked ? edWhen(t.checked) : '', edStale(t.r) ? 'No — may be done' : 'Yes'];
-      ws.getRow(r).getCell(4).numFmt = 'm/d/yyyy'; });
+      ws.getRow(r).values = [...(W ? [String(t.r.employee || '').trim()] : []), t.r.case_number || '', t.product, t.r.task_name || '', t.dt, t.age, t.checked ? edWhen(t.checked) : '', edStale(t.r) ? 'No — may be done' : 'Yes'];
+      ws.getRow(r).getCell(W ? 5 : 4).numFmt = 'm/d/yyyy'; });
     ws.views = [{ state: 'frozen', ySplit: 4 }]; }
+}
+
+/* ══ DL89: DEPARTMENTS in Employee Detail ════════════════════════════════════════
+   A department page is the same page as a person's — KPIs, task mix, workstations,
+   product mix, scan in → out, backlog, daily production with products per day,
+   Excel — summed over the department's people, plus a table comparing them.
+   WHO COUNTS: everyone whose MAIN department (most units across all loaded production)
+   is this one — so 3D Printing is Nico and Ray, not someone's one stray 3D-printing scan.
+   Anyone else who scanned there is listed and can be added with a click (and anyone can
+   be removed); the choice is remembered in this browser. Only work done IN the department
+   counts, so a person's tasks elsewhere stay out. If nobody's main department is this one
+   (e.g. Staining), everyone who worked there counts. */
+const ED_DEPT_KEY = 'ed_dept_pick_v1';
+const edEmp = r => String(r.employee || '').trim();
+function edHomeDepts() {
+  if (PROD._homeArr === PROD.rows) return PROD._home;
+  const by = new Map();
+  for (const r of PROD.rows) { const k = edEmp(r), d = r.department; if (!k || !d) continue;
+    const m = by.get(k) || by.set(k, new Map()).get(k); m.set(d, (m.get(d) || 0) + (prodNum(r.total_units) || 1)); }
+  const home = new Map(); by.forEach((m, k) => home.set(k, [...m.entries()].sort((a, b) => b[1] - a[1])[0][0]));
+  PROD._homeArr = PROD.rows; return (PROD._home = home);
+}
+function edDeptPicks() {
+  if (!PROD.edDeptPick) { try { PROD.edDeptPick = JSON.parse(localStorage.getItem(ED_DEPT_KEY) || '{}') || {}; } catch (e) { PROD.edDeptPick = {}; } }
+  return PROD.edDeptPick;
+}
+function edDeptSave() { try { localStorage.setItem(ED_DEPT_KEY, JSON.stringify(PROD.edDeptPick || {})); } catch (e) {} }
+function edDeptTeam(dept) {
+  const home = edHomeDepts(), pick = edDeptPicks()[dept] || {}, by = new Map();
+  for (const r of PROD.rows) { if (r.department !== dept || !prodInRange(r)) continue; const k = edEmp(r); if (!k) continue;
+    const p = by.get(k) || by.set(k, { name: k, tasks: 0, units: 0 }).get(k); p.tasks += prodNum(r.tasks_scanned_in) || 1; p.units += prodNum(r.total_units); }
+  const people = [...by.values()].map(p => Object.assign(p, { home: home.get(p.name) || dept }));
+  const anyHome = people.some(p => p.home === dept);
+  people.forEach(p => { p.auto = anyHome ? p.home === dept : true; p.on = Object.prototype.hasOwnProperty.call(pick, p.name) ? !!pick[p.name] : p.auto; });
+  people.sort((a, b) => (b.on - a.on) || (b.units - a.units));
+  const on = new Set(people.filter(p => p.on).map(p => p.name));
+  return { dept, people, on, changed: people.some(p => p.on !== p.auto), want: r => r.department === dept && on.has(edEmp(r)) };
+}
+function edDeptList() {
+  const by = new Map();
+  PROD.rows.forEach(r => { if (r.department && prodInRange(r)) by.set(r.department, (by.get(r.department) || 0) + 1); });
+  return [...by.keys()].sort((a, b) => a.localeCompare(b)).map(name => ({ name, n: edDeptTeam(name).on.size }));
+}
+// the rows the page is showing: one person, or a department's counted people
+function edCurFilter() {
+  if (PROD.edDept) return edDeptTeam(PROD.edDept).want;
+  const emp = PROD.employee; return r => edEmp(r) === emp;
+}
+function edDeptBarHTML(DEPTS, T) {
+  return `<div class="xs-fg" id="edDeptBar" style="margin:0 0 14px;padding:8px 12px;border:1px solid var(--line,#e6e9ee);border-radius:12px;background:var(--card,#fff)">
+    <span class="xs-fl" style="width:auto;margin-right:4px">🏭 Departments</span>
+    ${DEPTS.map(d => `<button type="button" class="xs-pill${T && T.dept === d.name ? ' on' : ''}" data-dept="${esc(d.name)}" title="${d.n} ${d.n === 1 ? 'person' : 'people'} counted">${esc(d.name)} <span style="opacity:.6;font-size:11px">${d.n}</span></button>`).join('')}
+    ${T ? `<button type="button" class="btn-text" id="edDeptOff" style="margin-left:auto;font-size:12px">👤 Back to one person</button>` : ''}
+  </div>`;
+}
+// people in the department: who's counted (click to change) and how they compare
+function edTeamHTML(T, mine, B) {
+  const by = new Map();
+  mine.forEach(r => { const k = edEmp(r), q = by.get(k) || by.set(k, { units: 0, cases: 0, tasksIn: 0, tasksDone: 0, days: new Set() }).get(k);
+    q.units += prodNum(r.total_units); q.cases += prodNum(r.cases_touched); q.tasksIn += prodNum(r.tasks_scanned_in); q.tasksDone += prodNum(r.tasks_completed);
+    if (r.scan_in_date) q.days.add(r.scan_in_date); edTally(q, r); });
+  const openNow = new Map(); B.live.forEach(t => { const k = edEmp(t.r); openNow.set(k, (openNow.get(k) || 0) + 1); });
+  const tot = [...by.values()].reduce((a, q) => a + q.units, 0);
+  const rows = [...by.entries()].sort((a, b) => b[1].units - a[1].units);
+  const chip = p => `<button type="button" class="xs-pill${p.on ? ' on' : ''}" data-tp="${esc(p.name)}" title="${p.on ? 'Counted — click to leave out' : 'Not counted — click to add'}">${p.on ? '✓' : '+'} ${esc(p.name)} <span style="opacity:.65;font-size:11px">· ${p.tasks.toLocaleString()} task${p.tasks === 1 ? '' : 's'}${p.home !== T.dept ? ' · mostly ' + esc(p.home) : ''}</span></button>`;
+  const ins = T.people.filter(p => p.on), outs = T.people.filter(p => !p.on);
+  const th = (l, t) => `<th style="padding:5px 6px;text-align:right"${t ? ` title="${t}"` : ''}>${l}</th>`;
+  return `<div class="card" id="edTeam" style="padding:14px;border:1px solid var(--line,#e6e9ee);border-radius:12px;margin-bottom:16px">
+    <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:8px"><div style="font-weight:700;font-size:15px">👥 People in ${esc(T.dept)}</div>
+      <div class="text-mut" style="font-size:12px">only their ${esc(T.dept)} work counts · click a name below to open that person</div></div>
+    <div class="xs-fg" style="margin-bottom:6px"><span class="xs-fl" style="width:120px">Counted</span>${ins.map(chip).join('') || '<span class="text-mut" style="font-size:12px">nobody — add someone below</span>'}</div>
+    ${outs.length ? `<div class="xs-fg" style="margin-bottom:6px"><span class="xs-fl" style="width:120px">Also scanned here</span>${outs.map(chip).join('')}</div>` : ''}
+    <div class="text-mut" style="font-size:11.5px;margin-bottom:10px">Counted by default: people whose main department is ${esc(T.dept)}. Click a name to add or remove them — remembered in this browser.${T.changed ? ' <a href="#" id="edTeamReset">Reset to default</a>' : ''}</div>
+    ${rows.length ? `<div style="overflow-x:auto"><table style="width:100%;font-size:12.5px;border-collapse:collapse">
+      <thead><tr style="text-align:left;font-size:11px;color:var(--mut)"><th style="padding:5px 6px">Person</th>${th('Units')}${th('Share')}${th('Units / day')}${th('Days')}${th('Cases')}
+        ${th('Scanned in')}${th('Scanned out', 'Of the tasks they scanned in during this period, how many have been scanned out')}${th('Completed')}${th('Open now', 'Scanned in (last ' + ED_BL_WINDOW + ' days), not yet scanned out or completed — the same as the Backlog below')}</tr></thead>
+      <tbody>${rows.map(([n, q]) => `<tr style="border-top:1px solid var(--line,#eef1f5)">
+        <td style="padding:5px 6px"><a href="#" class="ed-tpl" data-emp="${esc(n)}" style="font-weight:600">${esc(n)}</a></td>
+        <td style="padding:5px 6px;text-align:right;font-weight:600">${q.units.toLocaleString()}</td>
+        <td style="padding:5px 6px;text-align:right"><span style="display:inline-block;width:56px;height:6px;background:#eef1f5;border-radius:3px;overflow:hidden;vertical-align:middle;margin-right:6px"><span style="display:block;width:${tot ? Math.round(q.units / tot * 100) : 0}%;height:100%;background:#24bfcd"></span></span>${tot ? Math.round(q.units / tot * 100) : 0}%</td>
+        <td style="padding:5px 6px;text-align:right">${q.days.size ? (Math.round(q.units / q.days.size * 10) / 10).toLocaleString() : '—'}</td>
+        <td style="padding:5px 6px;text-align:right">${q.days.size}</td><td style="padding:5px 6px;text-align:right">${q.cases.toLocaleString()}</td>
+        <td style="padding:5px 6px;text-align:right">${q.tasksIn.toLocaleString()}</td>
+        <td style="padding:5px 6px;text-align:right">${q.taskN ? (q.out || 0).toLocaleString() : '—'}</td>
+        <td style="padding:5px 6px;text-align:right">${q.tasksDone.toLocaleString()}</td>
+        <td style="padding:5px 6px;text-align:right">${edOpenCell(openNow.get(n) || 0)}</td></tr>`).join('')}</tbody></table></div>`
+      : '<div class="text-mut" style="font-size:12.5px">No production from the people counted in this date range.</div>'}
+  </div>`;
+}
+// inside an opened day (department view): each person's share of that day
+function edDayPeopleHTML(o) {
+  const ps = Object.entries(o.people || {}).sort((a, b) => b[1].units - a[1].units);
+  if (!ps.length) return '';
+  return `<div style="display:flex;flex-wrap:wrap;gap:6px;margin:0 0 8px">${ps.map(([n, q]) => `<span style="font-size:11.5px;padding:3px 10px;border-radius:999px;border:1px solid var(--line,#e2e8f0);background:var(--card,#fff)">
+    <b>${esc(n)}</b> ${q.units.toLocaleString()} u${q.taskN ? ` · ${q.taskN.toLocaleString()} in · ${(q.out || 0).toLocaleString()} out · ${(q.done || 0).toLocaleString()} done${q.open ? ` · <b style="color:#b45309">${q.open.toLocaleString()} open</b>` : ''}` : ''}</span>`).join('')}</div>`;
+}
+function edDeptBind(T) {
+  document.querySelectorAll('#edDeptBar [data-dept]').forEach(b => b.onclick = () => { PROD.edDept = b.dataset.dept; PROD.blOpenProd = null; renderEmployeeDetail(); });
+  { const o = document.getElementById('edDeptOff'); if (o) o.onclick = () => { PROD.edDept = null; PROD.blOpenProd = null; renderEmployeeDetail(); }; }
+  if (!T) return;
+  document.querySelectorAll('#edTeam [data-tp]').forEach(b => b.onclick = () => {
+    const P = edDeptPicks(), m = P[T.dept] || (P[T.dept] = {}), p = T.people.find(x => x.name === b.dataset.tp); if (!p) return;
+    const next = !p.on; if (next === p.auto) delete m[p.name]; else m[p.name] = next;
+    if (!Object.keys(m).length) delete P[T.dept];
+    edDeptSave(); renderEmployeeDetail(); });
+  { const r = document.getElementById('edTeamReset'); if (r) r.onclick = ev => { ev.preventDefault(); delete edDeptPicks()[T.dept]; edDeptSave(); renderEmployeeDetail(); }; }
+  document.querySelectorAll('#edTeam .ed-tpl').forEach(a => a.onclick = ev => { ev.preventDefault(); PROD.employee = a.dataset.emp; PROD.edDept = null; PROD.blOpenProd = null; renderEmployeeDetail(); });
+}
+// Excel (department): one row per person
+function xlDeptPeople(wb, e, mine) {
+  const by = new Map();
+  mine.forEach(r => { const k = edEmp(r), q = by.get(k) || by.set(k, { units: 0, cases: 0, tasksIn: 0, tasksDone: 0, days: new Set() }).get(k);
+    q.units += prodNum(r.total_units); q.cases += prodNum(r.cases_touched); q.tasksIn += prodNum(r.tasks_scanned_in); q.tasksDone += prodNum(r.tasks_completed);
+    if (r.scan_in_date) q.days.add(r.scan_in_date); edTally(q, r); });
+  const openNow = new Map(); edBacklogData(e.team.want).live.forEach(t => { const k = edEmp(t.r); openNow.set(k, (openNow.get(k) || 0) + 1); });
+  const tot = [...by.values()].reduce((a, q) => a + q.units, 0) || 1;
+  const ws = wb.addWorksheet('People');
+  ws.columns = [{ width: 26 }, { width: 10 }, { width: 9 }, { width: 11 }, { width: 7 }, { width: 9 }, { width: 11 }, { width: 12 }, { width: 11 }, { width: 10 }];
+  let r = xlTitle(ws, e.employee + ' — people', 'Counted: ' + [...e.team.on].join(', ') + ' · only their ' + e.team.dept + ' work', null);
+  xlHeader(ws, r, ['Person', 'Units', 'Share', 'Units / day', 'Days', 'Cases', 'Scanned in', 'Scanned out', 'Completed', 'Open now']);
+  [...by.entries()].sort((a, b) => b[1].units - a[1].units).forEach(([n, q]) => { r++; const row = ws.getRow(r);
+    row.values = [n, q.units, q.units / tot, q.days.size ? Math.round(q.units / q.days.size * 10) / 10 : null, q.days.size, q.cases, q.tasksIn, q.taskN ? (q.out || 0) : null, q.tasksDone, openNow.get(n) || 0];
+    [2, 6, 7, 8, 9, 10].forEach(c => row.getCell(c).numFmt = '#,##0'); row.getCell(3).numFmt = '0%'; row.getCell(4).numFmt = '#,##0.0'; });
 }
 
 async function renderEmployeeDetail() {
@@ -13164,8 +13300,14 @@ async function renderEmployeeDetail() {
   if (!PROD.employee || !all.some(e => e.employee === PROD.employee)) {
     PROD.employee = all.sort((a,b) => b.units - a.units)[0].employee;
   }
-  const e = all.find(x => x.employee === PROD.employee);
-  const mine = PROD.rows.filter(r => String(r.employee||'').trim() === PROD.employee && prodInRange(r));
+  // DL89: a department is the same page, summed over its counted people
+  const DEPTS = edDeptList();
+  if (PROD.edDept && !DEPTS.some(d => d.name === PROD.edDept)) PROD.edDept = null;
+  const T = PROD.edDept ? edDeptTeam(PROD.edDept) : null;
+  const mine = T ? PROD.rows.filter(r => T.want(r) && prodInRange(r))
+                 : PROD.rows.filter(r => String(r.employee||'').trim() === PROD.employee && prodInRange(r));
+  const e = T ? Object.assign(prodRollup(mine, T.dept + ' (department)'), { team: T }) : all.find(x => x.employee === PROD.employee);
+  const BL = edBacklogData(T ? T.want : PROD.employee);
 
   // per day
   const byDay = {};
@@ -13177,7 +13319,9 @@ async function renderEmployeeDetail() {
     const pn = (r.product_name || '').trim();
     if (pn) o.products[pn] = (o.products[pn] || 0) + prodNum(r.total_units);
     // DL87: what happened to the tasks scanned in that day — scanned out / completed / still open
-    edTally(o, r); if (edIsTask(r)) edTally(o.pst[pn || '(no product)'] || (o.pst[pn || '(no product)'] = {}), r); });
+    edTally(o, r); if (edIsTask(r)) edTally(o.pst[pn || '(no product)'] || (o.pst[pn || '(no product)'] = {}), r);
+    if (T) { const pp = o.people || (o.people = {}), wn = String(r.employee || '').trim(), q = pp[wn] || (pp[wn] = { units: 0 });   // DL89: who did it
+             q.units += prodNum(r.total_units); edTally(q, r); } });
   const days = Object.entries(byDay).sort((a,b) => (prodDate(b[0])||0) - (prodDate(a[0])||0));
 
   /* ── Daily production window ───────────────────────────────────────────────
@@ -13218,6 +13362,7 @@ async function renderEmployeeDetail() {
       Object.entries(o.products).forEach(([pn, u]) => { w.products[pn] = (w.products[pn] || 0) + u; });
       const add = (a, b) => ['taskN', 'out', 'done', 'open', 'stale'].forEach(f => { if (b[f]) a[f] = (a[f] || 0) + b[f]; });   // DL87
       add(w, o); Object.entries(o.pst || {}).forEach(([pn, ps]) => add(w.pst[pn] || (w.pst[pn] = {}), ps));
+      Object.entries(o.people || {}).forEach(([pn, q]) => { const wp = w.people || (w.people = {}), t = wp[pn] || (wp[pn] = { units: 0 }); t.units += q.units; add(t, q); });   // DL89
     });
     rowsShown = Object.entries(weeks).sort((a,b) => b[1]._d - a[1]._d);
   }
@@ -13249,20 +13394,22 @@ async function renderEmployeeDetail() {
   el.innerHTML = `
     <div class="section-header">
       <div>
-        <div class="section-title">${esc(e.employee)}</div>
-        <div class="section-sub">${esc(e.dept)} · ${esc(e.station)} · ${e.dayCount} day${e.dayCount===1?'':'s'} of production.
+        <div class="section-title">${T ? `🏭 ${esc(T.dept)} <span class="tag tag-blu" style="vertical-align:middle;margin-left:6px">Department</span>` : esc(e.employee)}</div>
+        <div class="section-sub">${T ? `${T.on.size} ${T.on.size === 1 ? 'person' : 'people'} counted · ${esc(e.station)}` : `${esc(e.dept)} · ${esc(e.station)}`} · ${e.dayCount} day${e.dayCount===1?'':'s'} of production.
           ${PROD.from || PROD.to ? `<span class="eg-chip">📅 ${esc(prodRangeLabel())} · <a href="#" id="edDatesAll">show all dates</a></span>` : ''}</div>
       </div>
       <div class="section-actions">
         <select class="gf-select" id="edPick">
-          ${all.sort((a,b)=>b.units-a.units).map(x => `<option value="${esc(x.employee)}"${x.employee===e.employee?' selected':''}>${esc(x.employee)}</option>`).join('')}
+          ${T ? `<option value="" selected>🏭 ${esc(T.dept)} — pick a person…</option>` : ''}
+          ${all.sort((a,b)=>b.units-a.units).map(x => `<option value="${esc(x.employee)}"${!T && x.employee===e.employee?' selected':''}>${esc(x.employee)}</option>`).join('')}
         </select>
         <button class="btn-text" id="edExport" title="An Excel workbook laid out like this page: each day with its products underneath">⬇ Excel report</button>
       </div>
     </div>
 
+    ${edDeptBarHTML(DEPTS, T)}
     <div class="kpi-row" style="gap:12px;margin-bottom:16px">
-      ${[['Total units', e.units.toLocaleString()],
+      ${[...(T ? [['People', T.on.size.toLocaleString()]] : []), ['Total units', e.units.toLocaleString()],
          ['Total cases', e.cases.toLocaleString()],
          ['Units / day', (Math.round(e.unitsPerDay*10)/10).toLocaleString()],
          ['Units / case', (Math.round(e.unitsPerCase*100)/100).toLocaleString()],
@@ -13273,6 +13420,7 @@ async function renderEmployeeDetail() {
             <div class="text-mut" style="font-size:10px;text-transform:uppercase;letter-spacing:.4px">${l}</div>
             <div style="font-size:21px;font-weight:700;margin-top:2px">${v}</div></div>`).join('')}
     </div>
+    ${T ? edTeamHTML(T, mine, BL) : ''}
 
     <div class="ed-top">
       <div class="ed-left">
@@ -13316,7 +13464,7 @@ async function renderEmployeeDetail() {
       </div>
     </div>
     ${edScanHTML(ED_SCAN)}
-    <div id="edBacklogWrap">${edBacklogHTML(edBacklogData(PROD.employee))}</div>
+    <div id="edBacklogWrap">${edBacklogHTML(BL)}</div>
 
     <div class="card" style="padding:14px;border:1px solid var(--line,#e6e9ee);border-radius:12px;margin-top:16px">
       <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px">
@@ -13357,12 +13505,13 @@ async function renderEmployeeDetail() {
           <td style="padding:6px 4px"><div style="height:7px;background:#eef1f5;border-radius:4px;overflow:hidden">
             <div style="width:${Math.round(o.units/maxDayUnits*100)}%;height:100%;background:#24bfcd"></div></div></td>
         </tr>
-        ${(Object.keys(o.products).length && isOpen(d)) ? `<tr><td colspan="8" style="padding:2px 4px 12px 22px">${edDayProductsTable(o)}</td></tr>` : ''}`).join('')}</tbody>
+        ${(Object.keys(o.products).length && isOpen(d)) ? `<tr><td colspan="8" style="padding:2px 4px 12px 22px">${T ? edDayPeopleHTML(o) : ''}${edDayProductsTable(o)}</td></tr>` : ''}`).join('')}</tbody>
       </table>
     </div>`;
 
   { const a = document.getElementById('edDatesAll'); if (a) a.onclick = ev => { ev.preventDefault(); PROD.from = ''; PROD.to = ''; EG.preset = 'all'; renderEmployeeDetail(); }; }
-  document.getElementById('edPick').addEventListener('change', ev => { PROD.employee = ev.target.value; renderEmployeeDetail(); });
+  document.getElementById('edPick').addEventListener('change', ev => { if (!ev.target.value) return; PROD.employee = ev.target.value; PROD.edDept = null; PROD.blOpenProd = null; renderEmployeeDetail(); });
+  edDeptBind(T);   // DL89
   { const t = document.getElementById('edMixToggle'), l = document.getElementById('edMixList');   // DL75: product mix top 10 / all
     if (t && l) t.addEventListener('click', () => { PROD.edMixOpen = !PROD.edMixOpen; l.classList.toggle('open', PROD.edMixOpen);
       t.textContent = PROD.edMixOpen ? 'Show top 10 ▴' : 'Show all ' + e.mix.length + ' ▾'; }); }
@@ -13387,7 +13536,7 @@ async function renderEmployeeDetail() {
     renderEmployeeDetail();
   }));
   document.getElementById('edExport').addEventListener('click', ev =>
-    xlDownload(() => xlEmployeeWorkbook(e, mine), e.employee.replace(/[^a-z0-9]+/gi, '-').toLowerCase() + '-production.xlsx', ev.currentTarget));
+    xlDownload(() => xlEmployeeWorkbook(e, mine), (T ? T.dept + ' department' : e.employee).replace(/[^a-z0-9]+/gi, '-').toLowerCase() + '-production.xlsx', ev.currentTarget));
 }
 
 /* ═══════════════════════════════════════════════════════════════
