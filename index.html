@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.11.16-DL89</title>
+<title>Lab Sales Dashboard v2026.11.17-DL90</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -2106,7 +2106,7 @@ const APP = {
 
 /* Bump when normalization logic changes, so it's possible to tell at a glance
    (bottom of the Avg Turnaround card) which build a browser is running. */
-const BUILD_ID = 'DL89 · 2026-11-16';
+const BUILD_ID = 'DL90 · 2026-11-17';
 
 const DB_NAME = 'LabOpsCache';
 const DB_STORE = 'datasets';
@@ -13192,9 +13192,9 @@ function edDeptPicks() {
   return PROD.edDeptPick;
 }
 function edDeptSave() { try { localStorage.setItem(ED_DEPT_KEY, JSON.stringify(PROD.edDeptPick || {})); } catch (e) {} }
-function edDeptTeam(dept) {
-  const home = edHomeDepts(), pick = edDeptPicks()[dept] || {}, by = new Map();
-  for (const r of PROD.rows) { if (r.department !== dept || !prodInRange(r)) continue; const k = edEmp(r); if (!k) continue;
+function edDeptTeam(dept, keep) {
+  const home = edHomeDepts(), pick = edDeptPicks()[dept] || {}, by = new Map(), ok = keep || prodInRange;
+  for (const r of PROD.rows) { if (r.department !== dept || !ok(r)) continue; const k = edEmp(r); if (!k) continue;
     const p = by.get(k) || by.set(k, { name: k, tasks: 0, units: 0 }).get(k); p.tasks += prodNum(r.tasks_scanned_in) || 1; p.units += prodNum(r.total_units); }
   const people = [...by.values()].map(p => Object.assign(p, { home: home.get(p.name) || dept }));
   const anyHome = people.some(p => p.home === dept);
@@ -13290,6 +13290,51 @@ function xlDeptPeople(wb, e, mine) {
     [2, 6, 7, 8, 9, 10].forEach(c => row.getCell(c).numFmt = '#,##0'); row.getCell(3).numFmt = '0%'; row.getCell(4).numFmt = '#,##0.0'; });
 }
 
+/* ══ DL90: PERIOD for the top of Employee Detail ═════════════════════════════════
+   Headline numbers, the People table, task / workstation / product mix and the
+   scan in → out times can be read over:
+     Last 5 days / Last 7 days → the most recent 5 or 7 PRODUCTION days
+     Month / Quarter           → the last 30 / 90 calendar days
+       (all four exactly as the Daily production table counts them, ending on the
+        latest production day, and picking one sets that table to match)
+     Top bar range             → the From / To in the bar at the top of the page;
+                                 on "All" that's every production day (the default).
+   The backlog is always "right now" and doesn't change with the period. */
+const ED_PERIODS = [['5', 'Last 5 days'], ['7', 'Last 7 days'], ['30', 'Month'], ['90', 'Quarter'], ['top', 'Top bar range']];
+function edTopBarSpan() {   // null = the top bar is on "All" (or not set)
+  const a = document.querySelector('#quickRange button.active');
+  if (a && a.dataset.range === 'all') return null;
+  const f = APP && APP.filters ? APP.filters.fromDate : null, t = APP && APP.filters ? APP.filters.toDate : null;
+  if (!f && !t) return null;
+  return { from: f ? new Date(f.getFullYear(), f.getMonth(), f.getDate()) : null, to: t ? new Date(t.getFullYear(), t.getMonth(), t.getDate(), 23, 59, 59) : null };
+}
+// which production days fall in the period (null = no extra limit)
+function edPeriodDays(rows, per) {
+  const ds = [...new Set(rows.map(r => r.scan_in_date).filter(Boolean))].map(d => [d, prodDate(d)]).filter(x => x[1]).sort((a, b) => b[1] - a[1]);
+  if (per === 'top') {
+    const sp = edTopBarSpan(); if (!sp) return null;
+    return new Set(ds.filter(([, dt]) => (!sp.from || dt >= sp.from) && (!sp.to || dt <= sp.to)).map(x => x[0]));
+  }
+  if (!ds.length) return new Set();
+  if (per === '5' || per === '7') return new Set(ds.slice(0, +per).map(x => x[0]));
+  const latest = ds[0][1], n = +per || 90;
+  return new Set(ds.filter(([, dt]) => (latest - dt) / 864e5 < n).map(x => x[0]));
+}
+const edFmtD = d => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', ...(d.getFullYear() !== new Date().getFullYear() ? { year: 'numeric' } : {}) });
+function edPeriodBarHTML(per, perDays, mine) {
+  const ds = (perDays ? [...perDays] : [...new Set(mine.map(r => r.scan_in_date).filter(Boolean))]).map(prodDate).filter(Boolean).sort((a, b) => a - b);
+  const sp = per === 'top' ? edTopBarSpan() : null;
+  const span = !ds.length ? 'no production in this period'
+    : (ds.length === 1 ? edFmtD(ds[0]) : edFmtD(ds[0]) + ' – ' + edFmtD(ds[ds.length - 1])) + ' · ' + ds.length + ' production day' + (ds.length === 1 ? '' : 's');
+  const what = per === 'top' ? (sp ? 'top bar ' + (sp.from ? edFmtD(sp.from) : '…') + ' – ' + (sp.to ? edFmtD(sp.to) : '…') + ' → ' : 'top bar is on All · ') : '';
+  return `<div class="xs-fg" id="edPeriodBar" style="margin:0 0 14px">
+    <span class="xs-fl" style="width:auto;margin-right:4px">📅 Period</span>
+    ${ED_PERIODS.map(([k, l]) => `<button type="button" class="xs-pill${per === k ? ' on' : ''}" data-per="${k}">${l}</button>`).join('')}
+    <span class="text-mut" id="edPeriodSpan" style="font-size:12px;margin-left:6px">${esc(what + span)}</span>
+    <span class="text-mut" style="font-size:11.5px;margin-left:auto" title="The backlog is always right now; Daily production has its own window">numbers · people · mix · scan times</span>
+  </div>`;
+}
+
 async function renderEmployeeDetail() {
   const el = document.getElementById('panel-empdetail');
   el.innerHTML = '<div class="empty-state"><div class="empty-icon">⏳</div>Loading…</div>';
@@ -13306,7 +13351,12 @@ async function renderEmployeeDetail() {
   const T = PROD.edDept ? edDeptTeam(PROD.edDept) : null;
   const mine = T ? PROD.rows.filter(r => T.want(r) && prodInRange(r))
                  : PROD.rows.filter(r => String(r.employee||'').trim() === PROD.employee && prodInRange(r));
-  const e = T ? Object.assign(prodRollup(mine, T.dept + ' (department)'), { team: T }) : all.find(x => x.employee === PROD.employee);
+  // DL90: the period for the top of the page (Daily production below keeps its own window)
+  const PER = ED_PERIODS.some(([k]) => k === PROD.edPeriod) ? PROD.edPeriod : 'top';
+  const perDays = edPeriodDays(mine, PER);
+  const mineP = perDays ? mine.filter(r => perDays.has(r.scan_in_date)) : mine;
+  const TP = T && perDays ? edDeptTeam(T.dept, r => prodInRange(r) && perDays.has(r.scan_in_date)) : T;
+  const e = T ? Object.assign(prodRollup(mineP, T.dept + ' (department)'), { team: T }) : prodRollup(mineP, PROD.employee);
   const BL = edBacklogData(T ? T.want : PROD.employee);
 
   // per day
@@ -13386,16 +13436,16 @@ async function renderEmployeeDetail() {
 
   // per workstation
   const byStation = {};
-  mine.forEach(r => { const k = (r.workstation || '—') + ' · ' + (r.department || '—');
+  mineP.forEach(r => { const k = (r.workstation || '—') + ' · ' + (r.department || '—');   // DL90: the period
     byStation[k] = (byStation[k] || 0) + prodNum(r.total_units); });
   const stations = Object.entries(byStation).sort((a,b) => b[1]-a[1]);
-  const ED_SCAN = edScanData(mine);   // DL74: scan in → scan out
+  const ED_SCAN = edScanData(mineP);   // DL74: scan in → scan out · DL90: over the period
 
   el.innerHTML = `
     <div class="section-header">
       <div>
         <div class="section-title">${T ? `🏭 ${esc(T.dept)} <span class="tag tag-blu" style="vertical-align:middle;margin-left:6px">Department</span>` : esc(e.employee)}</div>
-        <div class="section-sub">${T ? `${T.on.size} ${T.on.size === 1 ? 'person' : 'people'} counted · ${esc(e.station)}` : `${esc(e.dept)} · ${esc(e.station)}`} · ${e.dayCount} day${e.dayCount===1?'':'s'} of production.
+        <div class="section-sub">${T ? `${TP.on.size} ${TP.on.size === 1 ? 'person' : 'people'} counted · ${esc(e.station)}` : `${esc(e.dept)} · ${esc(e.station)}`} · ${e.dayCount} day${e.dayCount===1?'':'s'} of production.
           ${PROD.from || PROD.to ? `<span class="eg-chip">📅 ${esc(prodRangeLabel())} · <a href="#" id="edDatesAll">show all dates</a></span>` : ''}</div>
       </div>
       <div class="section-actions">
@@ -13408,8 +13458,9 @@ async function renderEmployeeDetail() {
     </div>
 
     ${edDeptBarHTML(DEPTS, T)}
+    ${edPeriodBarHTML(PER, perDays, mine)}
     <div class="kpi-row" style="gap:12px;margin-bottom:16px">
-      ${[...(T ? [['People', T.on.size.toLocaleString()]] : []), ['Total units', e.units.toLocaleString()],
+      ${[...(T ? [['People', TP.on.size.toLocaleString()]] : []), ['Total units', e.units.toLocaleString()],
          ['Total cases', e.cases.toLocaleString()],
          ['Units / day', (Math.round(e.unitsPerDay*10)/10).toLocaleString()],
          ['Units / case', (Math.round(e.unitsPerCase*100)/100).toLocaleString()],
@@ -13420,7 +13471,7 @@ async function renderEmployeeDetail() {
             <div class="text-mut" style="font-size:10px;text-transform:uppercase;letter-spacing:.4px">${l}</div>
             <div style="font-size:21px;font-weight:700;margin-top:2px">${v}</div></div>`).join('')}
     </div>
-    ${T ? edTeamHTML(T, mine, BL) : ''}
+    ${T ? edTeamHTML(TP, mineP, BL) : ''}
 
     <div class="ed-top">
       <div class="ed-left">
@@ -13511,7 +13562,11 @@ async function renderEmployeeDetail() {
 
   { const a = document.getElementById('edDatesAll'); if (a) a.onclick = ev => { ev.preventDefault(); PROD.from = ''; PROD.to = ''; EG.preset = 'all'; renderEmployeeDetail(); }; }
   document.getElementById('edPick').addEventListener('change', ev => { if (!ev.target.value) return; PROD.employee = ev.target.value; PROD.edDept = null; PROD.blOpenProd = null; renderEmployeeDetail(); });
-  edDeptBind(T);   // DL89
+  edDeptBind(TP);   // DL89 · DL90: the people shown for the period
+  document.querySelectorAll('#edPeriodBar [data-per]').forEach(b => b.onclick = () => {
+    PROD.edPeriod = b.dataset.per;
+    if (b.dataset.per !== 'top') PROD.dayWindow = b.dataset.per;   // Daily production follows the same window
+    renderEmployeeDetail(); });
   { const t = document.getElementById('edMixToggle'), l = document.getElementById('edMixList');   // DL75: product mix top 10 / all
     if (t && l) t.addEventListener('click', () => { PROD.edMixOpen = !PROD.edMixOpen; l.classList.toggle('open', PROD.edMixOpen);
       t.textContent = PROD.edMixOpen ? 'Show top 10 ▴' : 'Show all ' + e.mix.length + ' ▾'; }); }
@@ -13536,7 +13591,7 @@ async function renderEmployeeDetail() {
     renderEmployeeDetail();
   }));
   document.getElementById('edExport').addEventListener('click', ev =>
-    xlDownload(() => xlEmployeeWorkbook(e, mine), (T ? T.dept + ' department' : e.employee).replace(/[^a-z0-9]+/gi, '-').toLowerCase() + '-production.xlsx', ev.currentTarget));
+    xlDownload(() => xlEmployeeWorkbook(e, mineP), (T ? T.dept + ' department' : e.employee).replace(/[^a-z0-9]+/gi, '-').toLowerCase() + '-production.xlsx', ev.currentTarget));   // DL90: the period shown
 }
 
 /* ═══════════════════════════════════════════════════════════════
