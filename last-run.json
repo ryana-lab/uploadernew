@@ -1,5 +1,5 @@
 {
-  "ran_at": "2026-11-18T14:16:16.504Z",
+  "ran_at": "2026-11-18T20:38:15.795Z",
   "ok": true,
   "dry_run": false,
   "days": [
@@ -8,16 +8,17 @@
     "2026-11-18"
   ],
   "invoices": {
-    "fetched": 0,
-    "loaded": 0,
+    "fetched": 129,
+    "loaded": 129,
     "updated": 0,
     "removed": 0,
     "replaced": 0,
-    "layout": "new (with credits)"
+    "layout": "new (with credits)",
+    "replace_skipped": false
   },
   "production": {
-    "fetched": 179,
-    "loaded": 179
+    "fetched": 1976,
+    "loaded": 1976
   },
   "production_days": [
     "2026-11-05",
