@@ -6,11 +6,13 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lab Sales Dashboard v2026.11.17-DL90</title>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; font-src 'self' data:; img-src 'self' data: blob: https://cdn.jsdelivr.net https://maps.geoapify.com; connect-src 'self' https://hfzizrzqrneuciykpuez.supabase.co wss://hfzizrzqrneuciykpuez.supabase.co https://api.geocod.io https://api.geoapify.com https://api.openrouteservice.org https://nominatim.openstreetmap.org; frame-src https://www.google.com https://maps.google.com; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'self'">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<title>Lab Sales Dashboard v2026.11.20-DL96</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js" integrity="sha384-D/t0ZMqQW31H3az8ktEiNb39wyKnS82iFY52QPACM+IjKW3jDUhyIgh2PApRqJZs" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js" integrity="sha384-dug+JxfBvklEQdJ4AYuBBAIScUz0bVN73xpy273gcAwHjb3qI0fXmuYNaNfdyYJG" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.119.0/dist/umd/supabase.js" integrity="sha384-uteMfOloLDGt042uDz+xHGF3ym63/WQ6rFq7murQRG8Ih7QrXGEGNtWd8688sb4O" crossorigin="anonymous"></script>
 <style>
 :root {
   --bg: #f8f9fb;
@@ -1523,6 +1525,24 @@ tr.cs-open td { background: var(--card-2); white-space: normal; cursor: default;
   .sub-tab { min-width: 130px; padding: 10px 14px; }
   .sub-tab .sub-tab-count { font-size: 18px; }
 }
+  /* DL94: two-step login guide + Bridge tidy-up */
+  .sec-mfa { margin-top: 10px; padding: 14px 16px; border: 1px solid var(--border, #e6e9ee); border-radius: 12px; background: var(--card, #fff); }
+  .sec-mfa.off { border-color: #fcd9a8; background: #fffbf3; }
+  .sec-mfa-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13.5px; }
+  .sec-mfa-head > span:first-child { flex: 1; min-width: 220px; }
+  .sec-mfa-sub { font-size: 12.5px; color: var(--mut); margin: 6px 0 4px; line-height: 1.5; }
+  .sec-badge { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: #fef3c7; color: #92400e; margin-left: 6px; vertical-align: 1px; }
+  .sec-steps { margin: 8px 0 12px; padding-left: 22px; font-size: 13px; line-height: 1.55; }
+  .sec-steps li { margin: 5px 0; }
+  .sec-tip { font-size: 12px; color: var(--mut); line-height: 1.5; margin: 0 0 12px; }
+  .sec-mfa .sb-btn-primary { margin-top: 2px; }
+  details.sb-conn { border-top: 1px solid var(--border, #e6e9ee); padding-top: 10px; margin-top: 4px; }
+  details.sb-conn > summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--mut); list-style: none; }
+  details.sb-conn > summary::-webkit-details-marker { display: none; }
+  details.sb-conn > summary::after { content: ' ▸'; } details.sb-conn[open] > summary::after { content: ' ▾'; }
+  html.sec-viewonly .sb-admin-only { display: none !important; }
+  /* DL93: a view-only (production) login doesn't print the data */
+  @media print { html.sec-viewonly body > * { display: none !important; } html.sec-viewonly body::before { content: 'Printing is available to admins only.'; display: block; padding: 40px; font: 16px sans-serif; } }
 </style>
 </head>
 <body>
@@ -1608,6 +1628,7 @@ tr.cs-open td { background: var(--card-2); white-space: normal; cursor: default;
       <button class="tab-btn" data-tab="remakes">🔁 Remakes</button>
       <button class="tab-btn" data-tab="svgrid">🚗 Sales Visits</button>
       <button class="tab-btn" data-tab="svdetail">📅 Sales Visit Detail</button>
+      <button class="tab-btn" data-tab="repprog">🎯 Rep Progress</button>
       <button class="tab-btn" data-tab="status">📋 Retention</button>
       <button class="tab-btn" data-tab="churn">📉 Churn</button>
       <button class="tab-btn" data-tab="crosssell">🔀 Cross Selling</button>
@@ -1680,6 +1701,7 @@ tr.cs-open td { background: var(--card-2); white-space: normal; cursor: default;
     <div class="tab-panel" id="panel-status"></div>
     <div class="tab-panel" id="panel-svgrid"></div>
     <div class="tab-panel" id="panel-svdetail"></div>
+    <div class="tab-panel" id="panel-repprog"></div>
     <div class="tab-panel" id="panel-prodgrid"></div>
     <div class="tab-panel" id="panel-proddetail"></div>
     <div class="tab-panel" id="panel-bridge"></div>
@@ -1791,12 +1813,12 @@ function monthKeyToDate(key) {
   return new Date(parseInt(m[1],10), parseInt(m[2],10) - 1, parseInt(m[3] || '1', 10));
 }
 const fmtMonthKey = key => fmtMonth(monthKeyToDate(key));
-const esc = s => {
-  if (s == null) return '';
-  const d = document.createElement('div');
-  d.textContent = String(s);
-  return d.innerHTML;
-};
+/* DL92 (security): escapes quotes too. The old version (textContent → innerHTML)
+   left " and ' alone, so a doctor, practice, product or office name containing a
+   quote could break out of an HTML attribute (title="…", data-id="…") and add its
+   own attributes — e.g. an event handler. Safe in text AND in attributes now. */
+const ESC_MAP = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;', '`': '&#96;' };
+const esc = s => s == null ? '' : String(s).replace(/[&<>"'`]/g, c => ESC_MAP[c]);
 
 // Parse MM/DD/YYYY → Date | null. Accepts also YYYY-MM-DD and other Date-parseable formats.
 /* "2026-10-22" is a CALENDAR DAY. JavaScript's own reader treats a bare
@@ -2106,7 +2128,7 @@ const APP = {
 
 /* Bump when normalization logic changes, so it's possible to tell at a glance
    (bottom of the Avg Turnaround card) which build a browser is running. */
-const BUILD_ID = 'DL90 · 2026-11-17';
+const BUILD_ID = 'DL96 · 2026-11-20';
 
 const DB_NAME = 'LabOpsCache';
 const DB_STORE = 'datasets';
@@ -2123,10 +2145,14 @@ function dbOpen() {
 
 async function dbPut(value) {
   try {
+    /* DL92: only ever stored ENCRYPTED, with a key held by the database for a signed-in admin.
+       No key (not signed in, not an admin, offline) → nothing is stored, and an older copy is removed. */
+    const box = await secEncrypt(value);
+    if (!box) { await dbDelete(); return false; }
     const db = await dbOpen();
     return new Promise((resolve, reject) => {
       const tx = db.transaction(DB_STORE, 'readwrite');
-      tx.objectStore(DB_STORE).put(value, DB_KEY);
+      tx.objectStore(DB_STORE).put(box, DB_KEY);
       tx.oncomplete = () => resolve(true);
       tx.onerror = () => reject(tx.error);
     });
@@ -2141,6 +2167,10 @@ async function dbGet() {
       const req = tx.objectStore(DB_STORE).get(DB_KEY);
       req.onsuccess = () => resolve(req.result || null);
       req.onerror = () => resolve(null);
+    }).then(async raw => {
+      if (!raw) return null;
+      if (raw.enc !== 1) { await dbDelete(); return null; }   // DL92: an old unencrypted copy is deleted, never shown
+      return await secDecrypt(raw);                         // null unless signed in as the admin who saved it
     });
   } catch (e) { return null; }
 }
@@ -3744,8 +3774,19 @@ function toast(msg, ms) {
   10. CSV EXPORT
    ────────────────────────────────────────── */
 
+/* DL96: no case numbers anywhere — any case-number column is dropped from every export */
+const CASE_COL_RE = /^\s*(case[\s_]*(#|no\.?|num(ber)?)?|caseno|casenum(ber)?)\s*$/i;
+function stripCaseCols(rows) {
+  if (!Array.isArray(rows) || !rows.length) return rows;
+  const drop = new Set(); rows.slice(0, 50).forEach(r => r && Object.keys(r).forEach(k => { if (CASE_COL_RE.test(k)) drop.add(k); }));
+  if (!drop.size) return rows;
+  return rows.map(r => { if (!r) return r; const o = {}; for (const k in r) if (!drop.has(k)) o[k] = r[k]; return o; });
+}
 function downloadCSV(filename, rows) {
+  if (!secExportGate(filename)) return;   // DL93: admins only
+  rows = stripCaseCols(rows);             // DL96
   if (!rows || !rows.length) { toast('Nothing to export'); return; }
+  secLog('export', { file: String(filename || '').slice(0, 120), rows: rows.length });   // DL92
   const csv = Papa.unparse(rows);
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
   const link = document.createElement('a');
@@ -4044,6 +4085,13 @@ async function offerDbSignIn() {
   const banner = document.getElementById('db-signin-banner');
   if (!banner) return false;
   banner.style.display = 'flex';
+  try {   // DL92: say why the screen is empty after a sign-out / the 2-hour limit
+    const why = sessionStorage.getItem('dash_timeout') ? 'Signed out after ' + pgDashHoursText() + ' — sign in again to continue.'
+              : sessionStorage.getItem('dash_mfa_needed') ? 'Two-step login is now required. Sign in again — the setup takes about 2 minutes and walks you through it.'
+              : sessionStorage.getItem('dash_signed_out') ? 'Signed out. Data saved in this browser was deleted.' : '';
+    sessionStorage.removeItem('dash_timeout'); sessionStorage.removeItem('dash_signed_out'); sessionStorage.removeItem('dash_mfa_needed');
+    if (why) { const m = document.getElementById('dbSignMeta'); if (m) m.textContent = why; }
+  } catch (e) {}
   const err = document.getElementById('dbSignErr');
   const go = document.getElementById('dbSignGo');
   const submit = async () => {
@@ -4055,13 +4103,7 @@ async function offerDbSignIn() {
     try {
       await pgSignIn(email, pass);
       banner.style.display = 'none';
-      const ok = await labPullAll({});
-      if (!ok) {
-        banner.style.display = 'flex';
-        err.textContent = 'Signed in, but no invoices came back. This account may not be an admin, ' +
-                          'or the database may be empty. You can still upload a CSV below.';
-        err.style.display = 'block';
-      }
+      await checkCache();   // DL92: same path as opening the page signed in (production logins, saved copy, fresh data)
     } catch (e) {
       err.textContent = (e && e.message) || 'Sign-in failed.';
       err.style.display = 'block';
@@ -4078,7 +4120,20 @@ async function offerDbSignIn() {
 }
 
 async function checkCache() {
-  const cached = await dbGet();
+  /* DL92: who is signed in comes FIRST. The saved copy is encrypted and opens only for a
+     signed-in admin. DL93: a production login gets the whole dashboard, view-only — the
+     database hides case details from it, and exports are switched off (secExportGate). */
+  let cached = null;
+  try {
+    if (pgClient() && await pgSession()) {
+      if (!(await secStepUp(PG))) { await pgSignOut(); }
+      else {
+        if (!SEC.info) await secRefresh(PG);
+        secApplyRole();
+        cached = await dbGet();
+      }
+    }
+  } catch (e) { console.warn('[dashboard] startup sign-in check', e); }
   /* No cached copy on THIS browser (new machine, cleared data, someone else's
      laptop) — try the database before falling back to "upload a CSV". This is
      what makes the dashboard travel with its link. A cached copy still wins:
@@ -4270,7 +4325,9 @@ function initDashboard() {
   // Export All: dump the merged raw dataset (preserves original columns/values)
   document.getElementById('btnExportAll').addEventListener('click', () => {
     if (!APP.rawRows || !APP.rawRows.length) { toast('No data to export'); return; }
-    const csv = Papa.unparse(APP.rawRows);
+    if (!secExportGate('lab_dashboard_full_dataset.csv')) return;   // DL93: admins only
+    secLog('export', { file: 'lab_dashboard_full_dataset.csv', rows: APP.rawRows.length });   // DL92
+    const csv = Papa.unparse(stripCaseCols(APP.rawRows));   // DL96: no case numbers
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const a = document.createElement('a');
     const url = URL.createObjectURL(blob);
@@ -4510,7 +4567,7 @@ function switchTab(tab) {
 /* Detail tabs depend on the current selection, so they must re-render on every
    visit — never serve them from the rendered-cache. */
 const ALWAYS_RENDER = { docdetail: 1, proddetail: 1, bridge: 1, reports: 1, prospects: 1, queue: 1,
-                        empgrid: 1, empdetail: 1, svgrid: 1, svdetail: 1, coach: 1, crosssell: 1, funnel: 1 };
+                        empgrid: 1, empdetail: 1, svgrid: 1, svdetail: 1, repprog: 1, coach: 1, crosssell: 1, funnel: 1 };
 
 function renderTab(tab, force) {
   if (!force && !ALWAYS_RENDER[tab] && APP.rendered[tab]) return;
@@ -4532,6 +4589,7 @@ function renderTab(tab, force) {
     case 'empdetail': renderEmployeeDetail(); break;
     case 'svgrid':    renderSalesVisits(); break;
     case 'svdetail':  renderSalesVisitDetail(); break;
+    case 'repprog':   renderRepProgress(); break;
     case 'prodgrid':  renderProductGrid(); break;
     case 'proddetail':renderProductDetail(); break;
     case 'bridge':    renderBridge(); break;
@@ -4809,12 +4867,12 @@ function ddCreditsHTML(rows) {
   const lines = t.lines.slice().sort((a, b) => (b.invoiced || 0) - (a.invoiced || 0) || String(b.caseNo).localeCompare(String(a.caseNo)));
   const money = v => v == null ? '<span style="color:var(--mut)">—</span>' : fmtUSDFull(v);
   const row = r => `<tr style="border-top:1px solid var(--line,#eef1f5)">
-      <td style="padding:4px 6px;white-space:nowrap">${fmtDateShort(r.invoiced)}</td><td style="padding:4px 6px">${esc(r.caseNo)}</td>
+      <td style="padding:4px 6px;white-space:nowrap">${fmtDateShort(r.invoiced)}</td>
       <td style="padding:4px 6px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.product)}">${esc(r.product)}${r.remake ? ' <span title="remake">🔁</span>' : ''}</td>
       <td style="padding:4px 6px;white-space:nowrap">${CREDIT_KINDS[r.creditType].icon} ${CREDIT_KINDS[r.creditType].label}</td>
       <td style="padding:4px 6px;text-align:right">${money(r.grossCost)}</td><td style="padding:4px 6px;text-align:right;font-weight:700">${fmtUSDFull(r.creditValue)}</td>
       <td style="padding:4px 6px;text-align:right">${fmtUSDFull(r.netCost)}</td></tr>`;
-  const head = `<thead><tr style="text-align:left;font-size:11px;color:var(--mut)"><th style="padding:4px 6px">Date</th><th style="padding:4px 6px">Case #</th><th style="padding:4px 6px">Product</th><th style="padding:4px 6px">Kind</th><th style="padding:4px 6px;text-align:right">Gross</th><th style="padding:4px 6px;text-align:right">Credit</th><th style="padding:4px 6px;text-align:right">Net</th></tr></thead>`;
+  const head = `<thead><tr style="text-align:left;font-size:11px;color:var(--mut)"><th style="padding:4px 6px">Date</th><th style="padding:4px 6px">Product</th><th style="padding:4px 6px">Kind</th><th style="padding:4px 6px;text-align:right">Gross</th><th style="padding:4px 6px;text-align:right">Credit</th><th style="padding:4px 6px;text-align:right">Net</th></tr></thead>`;
   return `<div class="card mb20" id="ddCredits">
     <div class="chart-title">💳 Credits <span style="font-weight:400;font-size:12px;color:var(--mut)">· ${fmtUSDFull(t.total)} on ${new Set(t.lines.map(r => r.caseNo)).size} case${new Set(t.lines.map(r => r.caseNo)).size === 1 ? '' : 's'} · revenue is already net of these</span></div>
     <div class="kpi-row" style="margin-bottom:12px">${creditKpisHTML(t)}</div>
@@ -6902,8 +6960,8 @@ function ddRemakesHTML(drId) {
   const list = [...items.values()].sort((a, b) => b.date - a.date), nFresh = list.filter(x => x.date >= fresh).length;
   const reasons = {}; list.forEach(x => { const k = x.reason || 'No reason given'; reasons[k] = (reasons[k] || 0) + x.qty; });
   const top = Object.entries(reasons).sort((a, b) => b[1] - a[1]).slice(0, 5);
-  const row = x => `<tr${x.date >= fresh ? ' class="rm-fresh"' : ''}><td>${esc(fmtDateShort(x.date))}</td><td>${esc(x.caseNo)}</td><td><b>${esc(x.product)}</b></td><td>${x.reason ? esc(x.reason) : '<span class="text-mut">No reason given</span>'}</td><td class="num">${fmtN(x.qty)}</td></tr>`;
-  const tbl = rows => `<div class="rm-wrap"><table class="rm-tbl"><thead><tr><th>Date</th><th>Case</th><th>Product remade</th><th>Reason</th><th class="num">Units</th></tr></thead><tbody>${rows.map(row).join('')}</tbody></table></div>`;
+  const row = x => `<tr${x.date >= fresh ? ' class="rm-fresh"' : ''}><td>${esc(fmtDateShort(x.date))}</td><td><b>${esc(x.product)}</b></td><td>${x.reason ? esc(x.reason) : '<span class="text-mut">No reason given</span>'}</td><td class="num">${fmtN(x.qty)}</td></tr>`;
+  const tbl = rows => `<div class="rm-wrap"><table class="rm-tbl"><thead><tr><th>Date</th><th>Product remade</th><th>Reason</th><th class="num">Units</th></tr></thead><tbody>${rows.map(row).join('')}</tbody></table></div>`;
   return `<div class="card mb20 rm-card">
     <div class="c30-h"><div class="chart-title" style="margin:0">🔁 Recent remakes — last 90 days</div>
       <small>${list.length ? `${fmtN(rUnits)} remade unit${rUnits === 1 ? '' : 's'} of ${fmtN(units)} (${units ? (rUnits / units * 100).toFixed(1) : '0.0'}%)` : ''}${nFresh ? ` <span class="rm-new">${nFresh} in the last 2 weeks</span>` : ''}</small></div>
@@ -7396,7 +7454,7 @@ function drawDGrid() {
 /* ══ DL85: Doctor Detail → All Cases — newest first; click any heading to sort, again to reverse ══
    Dates, amounts and day counts sort highest first on the first click; text sorts A–Z. The order is
    remembered from doctor to doctor. The 250 rows shown are the top 250 in the chosen order. */
-const DD_CASE_COLS = [['caseNo', 'Case #'], ['date', 'Date'], ['product', 'Product'], ['tooth', 'Tooth'], ['shade', 'Shade'],
+const DD_CASE_COLS = [['date', 'Date'], ['product', 'Product'], ['tooth', 'Tooth'], ['shade', 'Shade'],   /* DL96: no case-number column */
   ['qty', 'Qty', 1], ['net', 'Net $', 1], ['remake', 'Remake'], ['hold', 'Hold', 1], ['tat', 'TAT', 1]];
 const DD_CASE_DESC_FIRST = new Set(['date', 'qty', 'net', 'remake', 'hold', 'tat']);
 const ddCaseSort = () => APP.ddCaseSort || (APP.ddCaseSort = { k: 'date', dir: -1 });   // newest first until changed
@@ -7432,7 +7490,6 @@ function ddCasesTableHTML(cases) {
     <thead><tr>${DD_CASE_COLS.map(([k, l, num]) => `<th data-k="${k}"${num ? ' class="num"' : ''} style="cursor:pointer;user-select:none;white-space:nowrap" title="Sort by ${l}">${l}<span style="display:inline-block;width:12px;color:${sk === k ? 'var(--accent,#0f8b99)' : 'transparent'}">${sk === k ? (dir > 0 ? '▲' : '▼') : '▲'}</span></th>`).join('')}</tr></thead>
     <tbody>${rows.map(r => `
       <tr>
-        <td class="text-mut" style="font-size:11px">${esc(r.caseNo)}</td>
         <td style="white-space:nowrap">${fmtDate(r.anchorDate)}</td>
         <td>${esc(r.product)}</td>
         <td>${esc(r.tooth)}</td>
@@ -11010,7 +11067,7 @@ function coachCasesBehind(a, row) {
   COACH.history.unshift({ id: ++COACH.seq, q: 'The cases behind ' + (d.dim === 'none' ? 'that answer' : '“' + (row.dim || row._k) + '”') + ' — ' + a.q, showAll: false,
     headline: `<b>${list.length.toLocaleString()}</b> case${list.length === 1 ? '' : 's'} behind ${esc(what)} — ${Math.round(list.reduce((t, c) => t + c.units, 0)).toLocaleString()} units, <b>${coachUSD(list.reduce((t, c) => t + c.rev, 0))}</b>.`,
     how: ['The same dates and filters as the answer above it.', 'Each case once, however many lines it has. Newest first.'],
-    cols: [['caseNo', 'Case'], ['date', 'Date'], ['doctor', 'Doctor'], ['practice', 'Practice'], ['products', 'Products'], ['units', 'Units'], ['rev', 'Revenue'],
+    cols: [['date', 'Date'], ['doctor', 'Doctor'], ['practice', 'Practice'], ['products', 'Products'], ['units', 'Units'], ['rev', 'Revenue'],
            ['remake', 'Remake'], ['held', 'On hold'], ['tat', 'Turnaround (days)'], ['ontime', 'vs product norm']],
     rows: list.map(c => ({ caseNo: c.caseNo, date: c.date, doctor: c.doctor, practice: c.practice, products: [...c.products].join('; '), units: Math.round(c.units), rev: c.rev,
                            remake: c.remake ? 'Yes' : '', held: c.held ? 'Yes' : '', tat: c.tat, ontime: c.ontime === 'ontime' ? 'on time' : c.ontime })),
@@ -12030,7 +12087,7 @@ function csActPractice(x) {
    doctor and practice its numbers refer to. Follows the State filter. ── */
 async function csLoadXlsx() {
   if (window.XLSX && window.XLSX.utils && window.XLSX.writeFile) return;
-  await new Promise((ok, bad) => { const sc = document.createElement('script'); sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+  await new Promise((ok, bad) => { const sc = document.createElement('script'); sc.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js'; sc.integrity = 'sha384-vtjasyidUo0kW94K5MXDXntzOJpQgBKXmE7e2Ga4LG0skTTLeBi97eFAXsqewJjw'; sc.crossOrigin = 'anonymous';
     sc.onload = ok; sc.onerror = () => bad(new Error('Could not load the Excel writer')); document.head.appendChild(sc); });
 }
 /* ══ CROSS SELLING (DL62) ═════════════════════════════════════════════════════
@@ -12327,6 +12384,7 @@ async function csExport(filter, name) {
     return downloadCSV((name || 'cross-sell') + '-' + isoDate(new Date()) + '.csv', opps.map(o => ({ Priority: o.prio, Doctor: csDr(o.d.name), Practice: o.d.main, City: o.d.city, State: o.d.state,
       Product: o.cat, Kind: CS_TYPE[o.type].label, 'Est. yearly value': Math.round(o.value), Evidence: o.why, 'Talking point': o.say, Phone: o.d.phone, Email: o.d.email })));
   }
+  if (!secExportGate('cross-sell-action-plan.xlsx')) return;   // DL93: admins only
   const sheets = csPlanSheets();
   try { await csLoadXlsx(); }
   catch (e) { toast('Couldn’t load the Excel writer — downloading the doctor suggestions as a CSV instead'); return downloadCSV('cross-sell-doctor-suggestions-' + isoDate(new Date()) + '.csv', sheets.find(s => s[0] === 'Doctor suggestions')[1]); }
@@ -12625,18 +12683,19 @@ function drawEGrid() {
    grouped underneath (Excel's ＋/－ opens and closes a day, as the dashboard
    does), plus the weekly view, a products × days grid, workstations and the raw
    rows in proper columns. ExcelJS is fetched only when someone exports. */
-const EXCELJS_URL = 'https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js';
+const EXCELJS_URL = 'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js', EXCELJS_SRI = 'sha384-Pqp51FUN2/qzfxZxBCtF0stpc9ONI6MYZpVqmo8m20SoaQCzf+arZvACkLkirlPz';   // DL92: pinned + integrity-checked
 let _excelJs = null;
 function loadExcelJS() {
   if (window.ExcelJS) return Promise.resolve(window.ExcelJS);
   return _excelJs || (_excelJs = new Promise((ok, no) => {
-    const sc = document.createElement('script'); sc.src = EXCELJS_URL;
+    const sc = document.createElement('script'); sc.src = EXCELJS_URL; if (typeof EXCELJS_SRI !== 'undefined') { sc.integrity = EXCELJS_SRI; sc.crossOrigin = 'anonymous'; }
     sc.onload = () => window.ExcelJS ? ok(window.ExcelJS) : no(new Error('the Excel library did not load'));
     sc.onerror = () => { _excelJs = null; no(new Error('could not load the Excel library — check the internet connection')); };
     document.head.appendChild(sc);
   }));
 }
 function saveBlob(name, blob) {
+  if (!secExportGate(name)) return;   // DL93: admins only
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
   document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
 }
@@ -12818,7 +12877,9 @@ async function xlTeamWorkbook(list) {
   return wb;
 }
 async function xlDownload(wbPromise, fileName, btn) {
+  if (!secExportGate(fileName)) return;   // DL93: admins only
   const was = btn ? btn.textContent : '';
+  secLog('export', { file: String(fileName || '').slice(0, 120) });   // DL92
   try {
     if (btn) { btn.disabled = true; btn.textContent = '⏳ Building…'; }
     const wb = await wbPromise(), buf = await wb.xlsx.writeBuffer();
@@ -12968,7 +13029,7 @@ function edScanBind(D) {
       if (car) car.textContent = PROD.edScanOpen ? '▾' : '▸'; const hint = h.querySelector('.text-mut');
       if (hint) hint.textContent = hint.textContent.replace(/click to (show|hide)/, PROD.edScanOpen ? 'click to hide' : 'click to show'); }); }
   const tbl = document.getElementById('edScanTbl'); if (!tbl) return;
-  const COLS = [['day', 'Date'], ...(PROD.edDept ? [['who', 'Employee']] : []), ['case_number', 'Case #'], ['product', 'Product'], ['task', 'Task'], ['in', 'Scanned in'], ['out', 'Scanned out'], ['ms', 'Time in → out']];
+  const COLS = [['day', 'Date'], ...(PROD.edDept ? [['who', 'Employee']] : []), ['product', 'Product'], ['task', 'Task'], ['in', 'Scanned in'], ['out', 'Scanned out'], ['ms', 'Time in → out']];
   const st = PROD.edScanSort || (PROD.edScanSort = { k: 'in', dir: -1, n: 50 });
   const val = (t, k) => k === 'in' || k === 'out' ? (t[k] ? +t[k] : -Infinity) : k === 'ms' ? (t.ms == null ? -Infinity : t.ms) : k === 'day' ? (+prodDate(t.day) || 0) : String(t[k] || '').toLowerCase();
   const paint = () => {
@@ -12976,7 +13037,7 @@ function edScanBind(D) {
     const shown = rows.slice(0, st.n);
     tbl.innerHTML = `<thead><tr style="text-align:left">${COLS.map(([k, l]) => `<th data-k="${k}" style="padding:5px 4px;cursor:pointer;white-space:nowrap">${l}${st.k === k ? (st.dir > 0 ? ' ▲' : ' ▼') : ''}</th>`).join('')}</tr></thead>
       <tbody>${shown.map(t => `<tr style="border-top:1px solid var(--line,#eef1f5)">
-        <td style="padding:4px;white-space:nowrap">${esc(t.day)}</td>${PROD.edDept ? `<td style="padding:4px;white-space:nowrap">${esc(t.who)}</td>` : ''}<td style="padding:4px">${esc(t.case_number)}</td>
+        <td style="padding:4px;white-space:nowrap">${esc(t.day)}</td>${PROD.edDept ? `<td style="padding:4px;white-space:nowrap">${esc(t.who)}</td>` : ''}
         <td style="padding:4px;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(t.product)}">${esc(t.product)}</td>
         <td style="padding:4px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(t.task)}">${esc(t.task)}</td>
         <td style="padding:4px;white-space:nowrap">${t.in ? edFmtDay(t.in) + ' · ' + edFmtTime(t.in) : '—'}</td>
@@ -12999,12 +13060,12 @@ function xlEmployeeScans(wb, e, D) {
     return new Date(Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour % 24, +p.minute, +p.second)); };
   { const ws = wb.addWorksheet('Scans');
     const W = !!e.team;                       // DL89: a department says who scanned it
-    ws.columns = [{ width: 12 }, ...(W ? [{ width: 24 }] : []), { width: 14 }, { width: 44 }, { width: 30 }, { width: 18 }, { width: 18 }, { width: 12 }, { width: 10 }];
+    ws.columns = [{ width: 12 }, ...(W ? [{ width: 24 }] : []), { width: 44 }, { width: 30 }, { width: 18 }, { width: 18 }, { width: 12 }, { width: 10 }];
     let r = xlTitle(ws, e.employee + ' — every scan', 'Scan-in and scan-out times (Chicago) · minutes are elapsed time, overnight included', null);
-    xlHeader(ws, r, ['Date', ...(W ? ['Employee'] : []), 'Case #', 'Product', 'Task', 'Scanned in', 'Scanned out', 'Minutes', 'Same day']);
+    xlHeader(ws, r, ['Date', ...(W ? ['Employee'] : []), 'Product', 'Task', 'Scanned in', 'Scanned out', 'Minutes', 'Same day']);
     D.tasks.slice().sort((a, b) => (+b.in || 0) - (+a.in || 0)).forEach(t => { r++; const row = ws.getRow(r);
-      row.values = [t.day, ...(W ? [t.who] : []), t.case_number, t.product, t.task, tz(t.in), tz(t.out), t.ms == null ? null : Math.round(t.ms / 6e4), t.ms == null ? null : (edYmd(t.in) === edYmd(t.out) ? 'Yes' : 'No')];
-      const o = W ? 1 : 0; row.getCell(5 + o).numFmt = 'm/d/yyyy h:mm AM/PM'; row.getCell(6 + o).numFmt = 'm/d/yyyy h:mm AM/PM'; row.getCell(7 + o).numFmt = '#,##0'; });
+      row.values = [t.day, ...(W ? [t.who] : []), t.product, t.task, tz(t.in), tz(t.out), t.ms == null ? null : Math.round(t.ms / 6e4), t.ms == null ? null : (edYmd(t.in) === edYmd(t.out) ? 'Yes' : 'No')];
+      const o = W ? 1 : 0; row.getCell(4 + o).numFmt = 'm/d/yyyy h:mm AM/PM'; row.getCell(5 + o).numFmt = 'm/d/yyyy h:mm AM/PM'; row.getCell(6 + o).numFmt = '#,##0'; });
     ws.views = [{ state: 'frozen', ySplit: 4 }]; }
   { const ws = wb.addWorksheet('Time by product');
     ws.columns = [{ width: 48 }, { width: 10 }, { width: 14 }, { width: 14 }, { width: 11 }, { width: 10 }];
@@ -13105,9 +13166,9 @@ function edBacklogHTML(B) {
   const prods = [...byP.entries()].sort((a, b) => b[1].n - a[1].n || b[1].oldest.age - a[1].oldest.age);
   const ageTxt = a => a <= 0 ? 'today' : a + ' day' + (a === 1 ? '' : 's');
   const taskRows = p => `<tr><td colspan="8" style="padding:0 0 10px 18px;background:var(--bg2,#f8fafc)"><table style="width:100%;font-size:12px;border-collapse:collapse">
-      <thead><tr style="text-align:left;color:var(--mut)">${PROD.edDept ? '<th style="padding:4px">Employee</th>' : ''}<th style="padding:4px">Case #</th><th style="padding:4px">Task</th><th style="padding:4px">Scanned in</th><th style="padding:4px;text-align:right">Open for</th><th style="padding:4px">Status checked</th></tr></thead>
+      <thead><tr style="text-align:left;color:var(--mut)">${PROD.edDept ? '<th style="padding:4px">Employee</th>' : ''}<th style="padding:4px">Task</th><th style="padding:4px">Scanned in</th><th style="padding:4px;text-align:right">Open for</th><th style="padding:4px">Status checked</th></tr></thead>
       <tbody>${p.tasks.slice().sort((a, b) => b.age - a.age).slice(0, PROD.blAllTasks ? 1e9 : 50).map(t => `<tr style="border-top:1px solid var(--line,#eef1f5)">
-        ${PROD.edDept ? `<td style="padding:3px 4px;white-space:nowrap">${esc(String(t.r.employee || '').trim())}</td>` : ''}<td style="padding:3px 4px">${esc(t.r.case_number || '')}</td><td style="padding:3px 4px">${esc(t.r.task_name || t.r.step || '')}</td>
+        ${PROD.edDept ? `<td style="padding:3px 4px;white-space:nowrap">${esc(String(t.r.employee || '').trim())}</td>` : ''}<td style="padding:3px 4px">${esc(t.r.task_name || t.r.step || '')}</td>
         <td style="padding:3px 4px;white-space:nowrap">${t.tin ? edFmtDay(t.tin) + ' · ' + edFmtTime(t.tin) : esc(t.r.scan_in_date)}</td>
         <td style="padding:3px 4px;text-align:right;font-weight:600;${t.age > 7 ? 'color:#b91c1c' : t.age > 3 ? 'color:#b45309' : ''}">${ageTxt(t.age)}</td>
         <td style="padding:3px 4px;white-space:nowrap;${edStale(t.r) ? 'color:#b45309' : 'color:var(--mut)'}">${t.checked ? edWhen(t.checked) : '—'}${edStale(t.r) ? ' ⚠' : ''}</td></tr>`).join('')}</tbody></table>
@@ -13158,12 +13219,12 @@ function xlEmployeeBacklog(wb, e, mine) {
   { const W = !!e.team, B = edBacklogData(W ? e.team.want : e.employee), all = B.live.concat(B.stale);
     if (!all.length) return;
     const ws = wb.addWorksheet('Open tasks');
-    ws.columns = [...(W ? [{ width: 24 }] : []), { width: 14 }, { width: 52 }, { width: 30 }, { width: 12 }, { width: 10 }, { width: 22 }, { width: 14 }];
+    ws.columns = [...(W ? [{ width: 24 }] : []), { width: 52 }, { width: 30 }, { width: 12 }, { width: 10 }, { width: 22 }, { width: 14 }];
     let r = xlTitle(ws, e.employee + ' — open tasks (scanned in, not scanned out)', all.length + ' open · scanned in within the last ' + ED_BL_WINDOW + ' days' + (B.L ? ' · status as of ' + edWhen(B.L) : ''), null);
-    xlHeader(ws, r, [...(W ? ['Employee'] : []), 'Case #', 'Product', 'Task', 'Scanned in', 'Days open', 'Status last checked', 'Re-checked recently']);
+    xlHeader(ws, r, [...(W ? ['Employee'] : []), 'Product', 'Task', 'Scanned in', 'Days open', 'Status last checked', 'Re-checked recently']);
     all.sort((a, b) => b.age - a.age).forEach(t => { r++;
-      ws.getRow(r).values = [...(W ? [String(t.r.employee || '').trim()] : []), t.r.case_number || '', t.product, t.r.task_name || '', t.dt, t.age, t.checked ? edWhen(t.checked) : '', edStale(t.r) ? 'No — may be done' : 'Yes'];
-      ws.getRow(r).getCell(W ? 5 : 4).numFmt = 'm/d/yyyy'; });
+      ws.getRow(r).values = [...(W ? [String(t.r.employee || '').trim()] : []), t.product, t.r.task_name || '', t.dt, t.age, t.checked ? edWhen(t.checked) : '', edStale(t.r) ? 'No — may be done' : 'Yes'];
+      ws.getRow(r).getCell(W ? 4 : 3).numFmt = 'm/d/yyyy'; });
     ws.views = [{ state: 'frozen', ySplit: 4 }]; }
 }
 
@@ -13794,10 +13855,10 @@ function rmkPaintCal() {
   const cases = [...d.cases.values()].sort((a, b) => b.items.reduce((t, x) => t + x.qty, 0) - a.items.reduce((t, x) => t + x.qty, 0));
   const dt = new Date(RMK.day + 'T12:00:00');
   box.innerHTML = `<div class="rmk-day-head">${dt.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })} — ${cases.length} remade case${cases.length === 1 ? '' : 's'}, ${fmtN(d.units)} units</div>
-    <div class="rmk-wrap"><table class="rmk-tbl rmk-daytbl"><thead><tr><th>Doctor</th><th>Practice</th><th>Product remade</th><th>Reason</th><th class="num">Units</th><th>Case</th></tr></thead><tbody>
+    <div class="rmk-wrap"><table class="rmk-tbl rmk-daytbl"><thead><tr><th>Doctor</th><th>Practice</th><th>Product remade</th><th>Reason</th><th class="num">Units</th></tr></thead><tbody>
     ${cases.map(c => c.items.map((it, i) => `<tr>${i === 0 ? `<td rowspan="${c.items.length}"><a href="#" class="rmk-dr" data-dr="${esc(c.drId || '')}">${goldMark(c.drId)}${esc(c.name || '—')}</a> ${quietMark(quietInfo().get(c.drId))}</td>
       <td rowspan="${c.items.length}" class="rmk-sub">${esc(c.practice || '—')}</td>` : ''}<td><b>${esc(it.product)}</b></td><td>${it.reason ? esc(it.reason) : '<span class="text-mut">—</span>'}</td>
-      <td class="num">${fmtN(it.qty)}</td>${i === 0 ? `<td rowspan="${c.items.length}" class="rmk-sub">${esc(c.caseNo || '')}</td>` : ''}</tr>`).join('')).join('')}
+      <td class="num">${fmtN(it.qty)}</td></tr>`).join('')).join('')}
     </tbody></table></div>`;
   box.querySelectorAll('.rmk-dr').forEach(a => a.addEventListener('click', e => { e.preventDefault(); if (!a.dataset.dr) return; APP.selectedDoctorId = a.dataset.dr; switchTab('docdetail'); }));
 }
@@ -13873,8 +13934,8 @@ async function rmkWorkbook(R, S, lo, hi, k) {
     S.reasons.sort((a, b) => b.rem - a.rem).map(x => [x.name, x.rem, x.share, x.cases, x.docs, x.prods]));
   sheet('By doctor', 'Remakes by doctor', [['Doctor', 28], ['Practice', 36], ['Golden / Silver', 14], ['Units', 11, '#,##0'], ['Remade units', 13, '#,##0'], ['Remake rate', 12, '0.0%'], ['Remake cases', 13, '#,##0'], ['Rate by case', 12, '0.0%'], ['Top reason', 36]],
     S.docs.sort((a, b) => b.rem - a.rem).map(x => [x.name, x.practice, isGolden(x._dr) ? 'Golden' : isSilver(x._dr) ? 'Silver' : '', x.units, x.rem, x.rate, x.cases, x.caseRate, rmkTop(x.reasons)]));
-  sheet('Remade units', 'Every remake (one row per case and product) · Reason blank = no specific reason recorded', [['Date', 12, 'm/d/yyyy'], ['Doctor', 28], ['Practice', 36], ['Product remade', 52], ['Reason', 36], ['Units', 9, '#,##0'], ['Case', 14]],
-    S.lines.sort((a, b) => (b.date || 0) - (a.date || 0)).map(x => [x.date ? new Date(Date.UTC(x.date.getFullYear(), x.date.getMonth(), x.date.getDate())) : null, x.name || '', x.practice || '', x.product, x.reason || '', x.qty, x.caseNo]));
+  sheet('Remade units', 'Every remake (one row per case and product) · Reason blank = no specific reason recorded', [['Date', 12, 'm/d/yyyy'], ['Doctor', 28], ['Practice', 36], ['Product remade', 52], ['Reason', 36], ['Units', 9, '#,##0']],
+    S.lines.sort((a, b) => (b.date || 0) - (a.date || 0)).map(x => [x.date ? new Date(Date.UTC(x.date.getFullYear(), x.date.getMonth(), x.date.getDate())) : null, x.name || '', x.practice || '', x.product, x.reason || '', x.qty]));
   return wb;
 }
 
@@ -15540,6 +15601,12 @@ async function pgSignIn(email, password) {
   const { data, error } = await db.auth.signInWithPassword({ email: email.trim(), password });
   if (error) throw new Error(error.message);
   pgUser = data.user;
+  // DL92: the 6-digit code (or the setup, when required) before anything loads
+  if (!(await secStepUp(db))) {
+    window.__pgSigningOut = true; try { await db.auth.signOut({ scope: 'local' }); } catch (e) {} window.__pgSigningOut = false;
+    pgUser = null; throw new Error('Two-step login wasn’t completed — sign in again.');
+  }
+  secLog('sign_in');
   pgSessionRestored();   // DL76: clear the "expired" banner and reload the production data
   return pgUser;
 }
@@ -15605,6 +15672,351 @@ function pgSessionRestored() {
   if (typeof FUN !== 'undefined' && FUN.meta) { FUN.meta.tried = false; FUN.meta.err = ''; }   // DL82: notes & tags may load now
   if (PROD.error === PG_SESSION_MSG) { PROD.error = null; PROD.loaded = false; }
 }
+
+/* ══ DL92: SECURITY & HIPAA ═════════════════════════════════════════════════════
+   • Two-step login (MFA): an authenticator-app code after the password. Set up from
+     the 🔗 Salesly Bridge tab (or the account bar). When an admin turns on
+     "Require two-step login", the DATABASE refuses dashboard data to a sign-in
+     without it (lab.mfa_ok) — this page just asks for the code / walks through setup.
+   • Production role (DL93): those logins see the whole dashboard, view-only. The
+     DATABASE replaces case numbers with scrambled codes and blanks tooth, shade, hold
+     and remake reasons before the data reaches them; exports are admin-only here.
+     DL94: the codes are only used for counting — none is ever shown (secScrubCodes).
+   • The browser copy of the invoices is ENCRYPTED (AES-256-GCM) with a key that lives
+     in the database and is only handed to a signed-in admin. Signed out, the copy is
+     unreadable; "Sign out" deletes it; an admin can reset keys to wipe every copy.
+   • Access log: sign-ins, sign-outs and every export are written to the database
+     (lab.access_log); data pulls are logged by the database itself. */
+const SEC_ISSUER = 'Vitality Lab Dashboard';   // the name the authenticator app shows
+const SEC = { info: null, role: null, aal: null, mfaRequired: false, mfaOk: true, key: null, keyFor: null };
+function secLog(action, detail) {   // best effort; returns a promise that settles within 1.5 s
+  try {
+    const db = PG; if (!db || !pgUser) return Promise.resolve();
+    const p = Promise.resolve(db.rpc('log_access', { p_action: action, p_detail: detail || null })).then(() => {}, () => {});
+    return Promise.race([p, new Promise(r => setTimeout(r, 1500))]);
+  } catch (e) { return Promise.resolve(); }
+}
+async function secRefresh(db) {
+  db = db || PG; if (!db) return null;
+  try {
+    const { data, error } = await db.rpc('dashboard_session');
+    if (!error && data) { SEC.info = data; SEC.role = data.role || null; SEC.aal = data.aal || null; SEC.mfaRequired = !!data.mfa_required; SEC.mfaOk = data.mfa_ok !== false; }
+  } catch (e) {}
+  return SEC.info;
+}
+async function secAal(db) { try { const { data } = await db.auth.mfa.getAuthenticatorAssuranceLevel(); return data || {}; } catch (e) { return {}; } }
+async function secFactors(db) {
+  const { data, error } = await db.auth.mfa.listFactors();
+  if (error) throw new Error(error.message);
+  const all = (data && (data.all || data.totp)) || [];
+  return { verified: all.filter(f => f.status === 'verified' && (f.factor_type || 'totp') === 'totp'), unverified: all.filter(f => f.status !== 'verified') };
+}
+/* one small modal used by the code prompt and the setup */
+function secModal(html, width) {
+  const old = document.getElementById('secModal'); if (old) old.remove();
+  const m = document.createElement('div'); m.id = 'secModal';
+  m.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;padding:16px';
+  m.innerHTML = `<div role="dialog" aria-modal="true" style="background:var(--card,#fff);color:var(--ink,#0f172a);border-radius:14px;max-width:${width || 420}px;width:100%;max-height:92vh;overflow:auto;padding:20px 22px;box-shadow:0 20px 60px rgba(0,0,0,.25)">${html}</div>`;
+  document.body.appendChild(m);
+  return m;
+}
+const secCodeOk = c => /^\d{6}$/.test(String(c || '').replace(/\s+/g, ''));
+/* ask for the 6-digit code (account already has two-step login) */
+function secMfaPrompt(db) {
+  return new Promise(resolve => {
+    const m = secModal(`<div style="font-size:17px;font-weight:800;margin-bottom:4px">🔐 Two-step login</div>
+      <div style="font-size:13px;color:var(--text-muted,#64748b);margin-bottom:12px">Open your authenticator app (Microsoft or Google Authenticator), find <b>${SEC_ISSUER}</b>, and type the 6-digit code it shows.</div>
+      <input id="secCode" inputmode="numeric" autocomplete="one-time-code" maxlength="7" placeholder="123456" style="width:100%;font-size:22px;letter-spacing:6px;text-align:center;padding:10px;border:1px solid var(--line,#cbd5e1);border-radius:10px">
+      <div id="secErr" style="color:#dc2626;font-size:12.5px;min-height:16px;margin:6px 0"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn-text" id="secCancel">Cancel</button><button class="sb-btn-primary" id="secGo">Verify</button></div>
+      <div style="font-size:11.5px;color:var(--text-muted,#64748b);margin-top:10px">Lost or replaced your phone? Ask an admin to reset your two-step login, then sign in again to set it up.</div>`);
+    const inp = m.querySelector('#secCode'), err = m.querySelector('#secErr'), go = m.querySelector('#secGo');
+    setTimeout(() => inp.focus(), 30);
+    const submit = async () => {
+      const code = inp.value.replace(/\s+/g, '');
+      if (!secCodeOk(code)) { err.textContent = 'Enter the 6 digits.'; return; }
+      go.disabled = true; go.textContent = 'Checking…'; err.textContent = '';
+      try {
+        const f = (await secFactors(db)).verified[0]; if (!f) throw new Error('No two-step login is set up on this account.');
+        const { error } = await db.auth.mfa.challengeAndVerify({ factorId: f.id, code });
+        if (error) throw new Error(/invalid|expired/i.test(error.message) ? 'That code didn’t work — wait for a new one and try again.' : error.message);
+        m.remove(); resolve(true);
+      } catch (e) { err.textContent = e.message || String(e); go.disabled = false; go.textContent = 'Verify'; inp.select(); }
+    };
+    go.onclick = submit; inp.onkeydown = e => { if (e.key === 'Enter') submit(); };
+    m.querySelector('#secCancel').onclick = () => { m.remove(); resolve(false); };
+  });
+}
+/* set up two-step login: QR code → first code */
+function secMfaEnroll(db, required) {
+  return new Promise(async resolve => {
+    let factorId = null;
+    const step = (n, title, body) => `<div style="display:flex;gap:12px;margin:12px 0"><div style="flex:none;width:26px;height:26px;border-radius:50%;background:var(--accent,#0f8b99);color:#fff;font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center">${n}</div><div style="flex:1;min-width:0"><div style="font-weight:700;font-size:14px;margin-bottom:2px">${title}</div><div style="font-size:12.5px;color:var(--text-muted,#64748b);line-height:1.5">${body}</div></div></div>`;
+    const m = secModal(`<div style="font-size:18px;font-weight:800;margin-bottom:4px">🔐 ${required ? 'One-time setup: two-step login' : 'Set up two-step login'}</div>
+      <div style="font-size:13px;color:var(--text-muted,#64748b);line-height:1.5">${required ? 'The dashboard now asks for a code from your phone after your password. ' : 'After your password, the dashboard will also ask for a code from your phone. '}This takes about 2 minutes.</div>
+      ${step(1, 'Get the app on your phone', 'Install <b>Microsoft Authenticator</b> or <b>Google Authenticator</b> — free in the App Store or Google Play. Already have one? Skip to step 2.')}
+      ${step(2, 'Scan this QR code with the app', 'In the app tap <b>+</b> → <b>Scan a QR code</b> (Microsoft Authenticator: <b>+</b> → <b>Other account</b>), then point your phone at this code.')}
+      <div id="secQr" style="display:flex;justify-content:center;min-height:180px;align-items:center;color:var(--text-muted,#64748b);font-size:13px">Preparing…</div>
+      <div id="secSecret" style="font-family:ui-monospace,monospace;font-size:11.5px;text-align:center;word-break:break-all;white-space:pre-line;color:var(--text-muted,#64748b);margin:6px 0 4px"></div>
+      ${step(3, 'Type the 6-digit code', `The app now shows <b>${SEC_ISSUER}</b> with a 6-digit number (it changes every 30 seconds). Type the one showing and click <b>Turn on</b>.`)}
+      <input id="secCode" inputmode="numeric" autocomplete="one-time-code" maxlength="7" placeholder="123456" style="width:100%;font-size:22px;letter-spacing:6px;text-align:center;padding:10px;border:1px solid var(--line,#cbd5e1);border-radius:10px">
+      <div id="secErr" style="color:#dc2626;font-size:12.5px;min-height:16px;margin:6px 0"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn-text" id="secCancel">${required ? 'Sign out' : 'Cancel'}</button><button class="sb-btn-primary" id="secGo" disabled>Turn on</button></div>
+      <div style="font-size:11.5px;color:var(--text-muted,#64748b);margin-top:10px;line-height:1.5">From now on: password, then the code from the app. Tip: turn on backup in the app so a new phone doesn’t lock you out.</div>`, 470);
+    const err = m.querySelector('#secErr'), go = m.querySelector('#secGo'), inp = m.querySelector('#secCode');
+    const cancel = async () => { m.remove(); if (factorId) { try { await db.auth.mfa.unenroll({ factorId }); } catch (e) {} } resolve(false); };
+    m.querySelector('#secCancel').onclick = cancel;
+    try {
+      const fs = await secFactors(db);
+      for (const f of fs.unverified) { try { await db.auth.mfa.unenroll({ factorId: f.id }); } catch (e) {} }   // leftovers from an abandoned setup
+      const { data, error } = await db.auth.mfa.enroll({ factorType: 'totp', issuer: SEC_ISSUER, friendlyName: 'Authenticator ' + new Date().toISOString().slice(0, 16) });
+      if (error) throw new Error(error.message);
+      factorId = data.id;
+      const qr = data.totp && data.totp.qr_code;
+      m.querySelector('#secQr').innerHTML = qr ? `<img alt="QR code for your authenticator app" style="width:180px;height:180px;background:#fff;padding:6px;border-radius:8px" src="${esc(qr)}">` : 'Use the key below.';
+      m.querySelector('#secSecret').textContent = data.totp && data.totp.secret ? 'Can’t scan? In the app choose “Enter a setup key” and type:\n' + data.totp.secret : '';
+      go.disabled = false; inp.focus();
+    } catch (e) { err.textContent = 'Could not start the setup: ' + (e.message || e) + (/disabled|not enabled/i.test(String(e.message)) ? ' — turn on "TOTP (App Authenticator)" in Supabase → Authentication → Multi-Factor.' : ''); }
+    const submit = async () => {
+      const code = inp.value.replace(/\s+/g, '');
+      if (!secCodeOk(code)) { err.textContent = 'Enter the 6 digits from the app.'; return; }
+      go.disabled = true; go.textContent = 'Checking…'; err.textContent = '';
+      try {
+        const { error } = await db.auth.mfa.challengeAndVerify({ factorId, code });
+        if (error) throw new Error(/invalid|expired/i.test(error.message) ? 'That code didn’t work — wait for a new one and try again.' : error.message);
+        factorId = null; m.remove(); secLog('mfa_enrolled'); toast('Two-step login is on', 'ok'); resolve(true);
+      } catch (e) { err.textContent = e.message || String(e); go.disabled = false; go.textContent = 'Turn on'; inp.select(); }
+    };
+    go.onclick = submit; inp.onkeydown = e => { if (e.key === 'Enter') submit(); };
+  });
+}
+/* after the password: the code if this account has two-step login; the setup if it's required */
+async function secStepUp(db) {
+  db = db || PG; if (!db || !db.auth || !db.auth.mfa) return true;
+  const lv = await secAal(db);
+  if (lv.currentLevel === 'aal2') { await secRefresh(db); return true; }
+  if (lv.nextLevel === 'aal2') { const ok = await secMfaPrompt(db); if (ok) await secRefresh(db); return ok; }
+  const s = await secRefresh(db);
+  if (s && s.mfa_required) { const ok = await secMfaEnroll(db, true); if (ok) await secRefresh(db); return ok; }
+  return true;
+}
+/* "Sign out": logged, the encrypted browser copy deleted, page reloaded so nothing stays on screen */
+async function secSignOut() {
+  await secLog('sign_out');
+  try { await dbDelete(); } catch (e) {}
+  SEC.key = null; SEC.keyFor = null;
+  const db = PG;
+  window.__pgSigningOut = true;
+  if (db) { try { await db.auth.signOut({ scope: 'local' }); } catch (e) {} }
+  try { sessionStorage.setItem('dash_signed_out', '1'); } catch (e) {}
+  location.reload();
+}
+/* ── DL93: roles in the page — admins export; production logins are view-only ─────
+   The database is what actually protects case details (they never reach a production
+   login's browser). Switching exports off here is the second layer: no download
+   buttons, and any download that still gets started is stopped and logged. What is on
+   screen can still be read or photographed — the access log records every data pull. */
+function secViewOnly() { return !!(pgUser && SEC.role && SEC.role !== 'admin'); }
+function secExportGate(what) {
+  if (!secViewOnly()) return true;
+  toast('Exports are available to admins only', 'err');
+  secLog('export_blocked', { what: String(what || '').slice(0, 120) });
+  return false;
+}
+const SEC_EXPORT_KEEP = new Set(['sbLabPull']);   // ⬇ buttons that load data rather than download it
+const SEC_ADMIN_BTNS = new Set(['btnSaveData', 'btnAddData', 'btnNewUpload', 'sbLabPush']);   // save / mix in / replace the data: admins
+function secIsExportBtn(b) {
+  if (!b || SEC_EXPORT_KEEP.has(b.id)) return false;
+  if (SEC_ADMIN_BTNS.has(b.id)) return true;
+  if (b.classList.contains('dm-export') || b.classList.contains('coach-csv') || b.classList.contains('pm-dl')) return true;
+  return /^\s*⬇/.test(b.textContent || '');
+}
+/* DL94 (DL96: for EVERYONE): case numbers are HIDDEN. The database still sends each case a
+   scrambled code (•3f9a1c0d2e) — without one the page couldn't tell cases apart to count them —
+   but no code is ever shown: "Case #" columns (and the tooth / shade columns, which are empty for
+   them) are taken off every table, and a code anywhere else on screen is removed. */
+const SEC_CODE_RE = /•[0-9a-f]{10}/;
+const SEC_CASE_COL_RE = /^\s*(case|invoice)\s*(#|no\.?|number)?\s*[▲▼↑↓]?\s*$/i;   // "Case", "Case #", "Invoice #"… — not "Cases" (everyone, DL96)
+const SEC_VO_COL_RE = /^\s*(tooth|shade)\b/i;                                          // empty for production logins
+function secHideCols(root) {
+  const tables = root.tagName === 'TABLE' ? [root] : root.querySelectorAll ? root.querySelectorAll('table') : [];
+  tables.forEach(t => {
+    const head = (t.tHead && t.tHead.rows[0]) || t.rows[0]; if (!head) return;
+    const vo = secViewOnly();
+    const idx = []; [...head.cells].forEach((c, i) => { const t = c.textContent || ''; if (SEC_CASE_COL_RE.test(t) || (vo && SEC_VO_COL_RE.test(t))) idx.push(i); });
+    if (!idx.length) return;
+    [...t.rows].forEach(r => { if (r.cells.length !== head.cells.length) return; idx.forEach(i => { const c = r.cells[i]; if (c && c.style.display !== 'none') c.style.display = 'none'; }); });
+  });
+}
+function secScrubCodes(root) {
+  if (!root) return;
+  if (root.nodeType === 3) { if (SEC_CODE_RE.test(root.nodeValue)) secScrubNode(root); return; }
+  if (root.nodeType !== 1) return;
+  const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, { acceptNode: n => n.nodeValue.indexOf('•') >= 0 ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT });
+  const hits = []; let n; while ((n = w.nextNode())) if (SEC_CODE_RE.test(n.nodeValue)) hits.push(n);
+  hits.forEach(secScrubNode);
+  root.querySelectorAll('[title*="•"], [data-tip*="•"], [aria-label*="•"]').forEach(e => ['title', 'data-tip', 'aria-label'].forEach(a => {
+    const v = e.getAttribute(a); if (v && SEC_CODE_RE.test(v)) e.setAttribute(a, v.replace(/\s*(case\s*)?#?\s*•[0-9a-f]{10}/gi, '').trim());
+  }));
+}
+function secScrubNode(t) {
+  const v = t.nodeValue;
+  t.nodeValue = /^\s*•[0-9a-f]{10}\s*$/.test(v) ? '—' : v.replace(/\s*(case\s*)?#?\s*•[0-9a-f]{10}/gi, '');
+}
+let secHideObs = null, secHideQueued = false, secPending = [];
+function secHideExports() {
+  secHideQueued = false;
+  const pend = secPending; secPending = [];
+  if (secViewOnly()) document.querySelectorAll('button').forEach(b => { if (!b.hasAttribute('data-sec-hidden') && secIsExportBtn(b)) { b.setAttribute('data-sec-hidden', ''); b.style.display = 'none'; } });
+  if (pend.length > 400 || pend.includes(document.body)) { secHideCols(document.body); secScrubCodes(document.body); return; }
+  pend.forEach(nd => { if (!nd.isConnected) return; secScrubCodes(nd); if (nd.nodeType === 1) { const t = nd.closest('table'); secHideCols(t || nd); } else if (nd.parentElement) { const t = nd.parentElement.closest('table'); if (t) secHideCols(t); } });
+}
+function secApplyRole() {
+  const ro = secViewOnly();
+  document.documentElement.classList.toggle('sec-viewonly', ro);
+  let pill = document.getElementById('secRolePill');
+  if (ro) {
+    if (!pill) {
+      pill = document.createElement('span'); pill.id = 'secRolePill';
+      pill.title = 'Production login: view-only. Case numbers, tooth, shade, hold and remake details are hidden. Exports are for admins.';
+      pill.style.cssText = 'display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:999px;background:#eef2ff;color:#3730a3;margin-left:8px;white-space:nowrap';
+      pill.textContent = '👁 View-only';
+      const host = document.querySelector('.topbar .brand-row') || document.querySelector('.topbar h1') || document.querySelector('.topbar');
+      if (host) host.appendChild(pill);
+    }
+  } else {
+    if (pill) pill.remove();
+    document.querySelectorAll('button[data-sec-hidden]').forEach(b => { b.removeAttribute('data-sec-hidden'); b.style.display = ''; });
+  }
+  secPending.push(document.body); secHideExports(); secWatch();
+}
+/* DL96: the case-number safety net runs for everyone, from page load */
+function secWatch() {
+  if (secHideObs || !window.MutationObserver || !document.body) return;
+  secHideObs = new MutationObserver(ms => {
+    for (const m of ms) { if (m.type === 'characterData') secPending.push(m.target); else m.addedNodes.forEach(nd => secPending.push(nd)); }
+    if (!secHideQueued) { secHideQueued = true; requestAnimationFrame(secHideExports); }
+  });
+  secHideObs.observe(document.body, { childList: true, subtree: true, characterData: true });
+}
+if (document.body) secWatch(); else document.addEventListener('DOMContentLoaded', secWatch);
+/* backstop: every file download from this page goes through an <a download> click */
+(function () {
+  try {
+    const orig = HTMLAnchorElement.prototype.click;
+    HTMLAnchorElement.prototype.click = function () {
+      if ((this.hasAttribute('download') || /^(blob|data):/i.test(this.getAttribute('href') || '')) && !secExportGate(this.getAttribute('download') || 'file')) return;
+      return orig.apply(this, arguments);
+    };
+    document.addEventListener('click', e => {
+      const a = e.target && e.target.closest && e.target.closest('a[download], a[href^="blob:"], a[href^="data:"]');
+      if (a && secViewOnly()) { e.preventDefault(); e.stopImmediatePropagation(); secExportGate(a.getAttribute('download') || 'file'); }
+    }, true);
+  } catch (e) {}
+})();
+/* two-step login for the signed-in person: a step-by-step guide until it's on (DL94) */
+function secStepsHTML() {
+  return `<ol class="sec-steps">
+    <li><b>Get an authenticator app on your phone.</b> Microsoft Authenticator or Google Authenticator — free in the App Store or Google Play. (1Password works too.)</li>
+    <li><b>Click “Set up two-step login” below.</b> A QR code appears on this screen.</li>
+    <li><b>Scan the QR code with the app.</b> In the app tap <b>+</b> (Add account) → <b>Scan a QR code</b>, and point your phone at the screen. Can’t scan? Choose <b>Enter a setup key</b> and type the key shown under the QR code.</li>
+    <li><b>Type the 6-digit code</b> the app now shows for “${SEC_ISSUER}”, then click <b>Turn on</b>. The code changes every 30 seconds — use the one showing.</li>
+    <li><b>Done.</b> From now on: sign in with your password, then open the app and type the code it shows.</li>
+  </ol>
+  <div class="sec-tip">💡 Turn on backup in the app (Microsoft Authenticator: Settings → Cloud backup; Google Authenticator: sign in with your Google account) so a new phone doesn’t lock you out. Lost your phone? Ask an admin to reset your two-step login, then set it up again.</div>`;
+}
+async function secPaintMfa(el) {
+  if (!el) return; const db = PG; if (!db || !db.auth || !db.auth.mfa) { el.innerHTML = ''; return; }
+  let fs; try { fs = await secFactors(db); } catch (e) { el.innerHTML = ''; return; }
+  if (fs.verified.length) {
+    el.innerHTML = `<div class="sec-mfa on"><div class="sec-mfa-head"><span>🔐 <b>Two-step login is on.</b> Each sign-in: your password, then the 6-digit code from your authenticator app.</span>
+      <button class="btn-text" id="secMfaHow" style="font-size:12px">How it works</button><button class="btn-text" id="secMfaOff" style="font-size:12px">Remove</button></div>
+      <div id="secMfaHowBox" style="display:none">${secStepsHTML()}</div></div>`;
+    el.querySelector('#secMfaHow').onclick = () => { const b = el.querySelector('#secMfaHowBox'); b.style.display = b.style.display === 'none' ? '' : 'none'; };
+    el.querySelector('#secMfaOff').onclick = async () => {
+      if (SEC.mfaRequired) { toast('Two-step login is required — it can’t be removed while that’s on', 'err'); return; }
+      if (!confirm('Remove two-step login from your account?')) return;
+      try { for (const f of fs.verified) await db.auth.mfa.unenroll({ factorId: f.id }); secLog('mfa_removed'); toast('Two-step login removed'); } catch (e) { toast('Could not remove it: ' + (e.message || e), 'err'); }
+      secPaintMfa(el);
+    };
+  } else {
+    const req = SEC.mfaRequired || (SEC.info && SEC.info.mfa_required);
+    el.innerHTML = `<div class="sec-mfa off"><div class="sec-mfa-head"><span>🔓 <b>Set up two-step login</b> <span class="sec-badge">${req ? 'Required' : 'Not set up'}</span></span></div>
+      <div class="sec-mfa-sub">After your password, the dashboard will also ask for a 6-digit code from your phone, so a stolen password alone can’t open it. About 2 minutes:</div>
+      ${secStepsHTML()}
+      <button class="sb-btn-primary" id="secMfaOn">🔐 Set up two-step login</button></div>`;
+    el.querySelector('#secMfaOn').onclick = async () => { if (await secMfaEnroll(db, false)) { secPaintMfa(el); const a = document.getElementById('secAdminBox'); if (a && SEC.role === 'admin') secPaintAdmin(a); } };
+  }
+}
+/* admins: who has two-step login, the "require it" switch, and the access log */
+async function secPaintAdmin(el) {
+  if (!el) return; const db = PG; if (!db) return;
+  const { data: rows, error } = await db.rpc('mfa_status');
+  if (error) { el.innerHTML = /mfa_status|schema cache|function/i.test(error.message) ? '<div class="sb-hint">Security controls appear once the security database update is installed.</div>' : ''; return; }
+  const req = SEC.mfaRequired || (SEC.info && SEC.info.mfa_required);
+  const needs = (rows || []).filter(r => r.active && !r.exempt && !r.has_mfa && (r.role === 'admin' || r.role === 'production'));
+  el.innerHTML = `<div style="margin-top:10px;padding:12px;border:1px solid var(--line,#e6e9ee);border-radius:10px">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px"><b>🔐 Two-step login for the dashboard</b>
+      <span style="font-size:12px;color:${req ? 'var(--ok,#16a34a)' : '#b45309'}">${req ? 'Required' : 'Not required yet'}</span>
+      <button class="btn-text" id="secReq" style="margin-left:auto">${req ? 'Stop requiring it' : 'Require it for everyone'}</button></div>
+    <div style="font-size:12px;color:var(--text-muted,#64748b);margin-bottom:6px">${needs.length ? needs.length + ' dashboard login' + (needs.length === 1 ? '' : 's') + ' still need to set it up: ' + needs.map(r => esc(r.name || r.email)).join(', ') + '. If you require it now, each of them gets the setup screen at their next sign-in.' : 'Everyone with dashboard access has set it up.'}</div>
+    <table style="width:100%;font-size:12px;border-collapse:collapse"><thead><tr style="text-align:left;color:var(--text-muted,#64748b)"><th>Name</th><th>Role</th><th>Two-step</th><th>Last sign-in</th></tr></thead><tbody>
+    ${(rows || []).map(r => `<tr style="border-top:1px solid var(--line,#eef1f5)"><td>${esc(r.name || '')} <span style="color:var(--text-muted,#64748b)">${esc(r.email || '')}</span></td><td>${esc(r.role || '')}${r.active ? '' : ' (off)'}</td>
+      <td>${r.exempt ? 'exempt (automation)' : r.has_mfa ? '✓ on' + (r.user_id && (!pgUser || r.user_id !== pgUser.id) ? ` <button class="btn-text sec-reset" data-uid="${esc(r.user_id)}" data-who="${esc(r.name || r.email || '')}" style="font-size:11px;padding:1px 6px" title="Lost phone? Clears their two-step login so they can set it up again at their next sign-in">Reset</button>` : '') : '<span style="color:#b45309">not set up</span>'}</td><td>${r.last_sign_in ? esc(new Date(r.last_sign_in).toLocaleDateString()) : '—'}</td></tr>`).join('')}</tbody></table>
+    <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn-text" id="secLogBtn">📜 Access log</button><button class="btn-text" id="secWipe" title="Every browser's saved copy of the invoices becomes unreadable">🧹 Wipe all saved browser copies</button></div>
+    <div id="secLogBox"></div></div>`;
+  el.querySelector('#secReq').onclick = async () => {
+    if (!req && needs.length && !confirm(needs.length + ' dashboard login(s) haven’t set up two-step login yet. They’ll get the setup screen (QR code + phone app) at their next sign-in and can’t see data until they finish it. Require it now?')) return;
+    const { error: e2 } = await db.from('app_settings').upsert({ key: 'dashboard_require_mfa', value: req ? 'false' : 'true' }, { onConflict: 'key' });
+    if (e2) { toast('Could not change it: ' + e2.message, 'err'); return; }
+    await secRefresh(db); toast(req ? 'Two-step login no longer required' : 'Two-step login is now required', 'ok'); secPaintAdmin(el);
+  };
+  el.querySelectorAll('.sec-reset').forEach(b => b.onclick = async () => {
+    if (!confirm('Reset two-step login for ' + b.dataset.who + '? Use this when they lost or replaced their phone. They set it up again at their next sign-in.')) return;
+    const { error: e5 } = await db.rpc('mfa_reset', { p_user: b.dataset.uid });
+    if (e5) { toast('Could not reset: ' + e5.message, 'err'); return; }
+    toast('Two-step login reset for ' + b.dataset.who, 'ok'); secPaintAdmin(el);
+  });
+  el.querySelector('#secWipe').onclick = async () => {
+    if (!confirm('Make every saved browser copy of the invoices unreadable (all computers)? Each person’s next sign-in downloads fresh data.')) return;
+    const { error: e3 } = await db.rpc('dashboard_cache_key_reset', { p_all: true });
+    if (e3) { toast('Could not wipe: ' + e3.message, 'err'); return; }
+    SEC.key = null; SEC.keyFor = null; secLog('cache_cleared', { all: true }); toast('Saved copies wiped', 'ok');
+  };
+  el.querySelector('#secLogBtn').onclick = async () => {
+    const box = el.querySelector('#secLogBox'); box.innerHTML = '<div class="sb-hint">Loading…</div>';
+    const { data: L, error: e4 } = await db.rpc('access_log_recent', { p_limit: 200 });
+    if (e4) { box.innerHTML = `<div class="sb-hint">${esc(e4.message)}</div>`; return; }
+    box.innerHTML = `<div style="max-height:320px;overflow:auto;margin-top:8px"><table style="width:100%;font-size:11.5px;border-collapse:collapse"><thead><tr style="text-align:left;color:var(--text-muted,#64748b)"><th>When</th><th>Who</th><th>What</th><th>Detail</th></tr></thead><tbody>
+      ${(L || []).map(x => `<tr style="border-top:1px solid var(--line,#eef1f5)"><td style="white-space:nowrap">${esc(new Date(x.at).toLocaleString())}</td><td>${esc(x.email || x.role || '')}</td><td>${esc(String(x.action || '').replace(/_/g, ' '))}</td><td>${esc(x.detail ? JSON.stringify(x.detail) : '')}</td></tr>`).join('')}</tbody></table></div>`;
+  };
+}
+/* ── encrypted browser copy ─────────────────────────────────────────────────── */
+async function secCacheKey() {
+  const db = PG; if (!db || !pgUser || !(window.crypto && crypto.subtle)) return null;
+  if (SEC.key && SEC.keyFor === pgUser.id) return SEC.key;
+  try {
+    const { data, error } = await db.rpc('dashboard_cache_key');
+    if (error || !data) return null;
+    const raw = Uint8Array.from(atob(String(data)), c => c.charCodeAt(0));
+    SEC.key = await crypto.subtle.importKey('raw', raw, 'AES-GCM', false, ['encrypt', 'decrypt']); SEC.keyFor = pgUser.id;
+    return SEC.key;
+  } catch (e) { return null; }
+}
+async function secEncrypt(value) {
+  const key = await secCacheKey(); if (!key) return null;
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(JSON.stringify(value)));
+  return { enc: 1, iv, ct, who: pgUser.id };
+}
+async function secDecrypt(box) {
+  if (!box || box.enc !== 1) return null;
+  const key = await secCacheKey(); if (!key || box.who !== (pgUser && pgUser.id)) return null;
+  try { return JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: box.iv }, key, box.ct))); }
+  catch (e) { return null; }   // a reset key, another person's copy, or a damaged copy: treat as no copy
+}
+/* framing guard: this page refuses to run inside someone else's page (clickjacking) */
+try { if (window.top !== window.self) { document.documentElement.style.display = 'none'; window.top.location = window.self.location.href; } } catch (e) { document.documentElement.style.display = 'none'; }
 
 /* ══ DL88: the DASHBOARD signs out 2 hours after sign-in — Salesly doesn't ══════
    Supabase's sign-in limit (Authentication → Sessions) covers the whole project,
@@ -15674,8 +16086,12 @@ function pgDashEndsText() {
 }
 async function pgDashTimeout() {
   const db = PG;
+  await secLog('timeout');
   window.__pgSigningOut = true;            // our own sign-out: say "signed out after 2 hours", not "expired"
   if (db) { try { await db.auth.signOut({ scope: 'local' }); } catch (e) {} }
+  /* DL92: nothing stays on screen — the page reloads to the sign-in box. The encrypted saved
+     copy stays, unreadable, until the next sign-in (so that's still instant). */
+  if (!window.__secNoReload) { try { sessionStorage.setItem('dash_timeout', '1'); } catch (e) {} location.reload(); return; }
   window.__pgSigningOut = false;
   pgUser = null; pgReset(); PG_DASH.sid = null; PG_DASH.expMs = null;
   try { if (typeof PROD !== 'undefined' && PROD) PROD.error = PG_SESSION_MSG; } catch (e) {}
@@ -15704,12 +16120,31 @@ async function pgDashCheck() {
     const s = (await db.auth.getSession()).data.session;
     if (!s) return;
     const exp = await pgDashExpiry(db, s);
-    if (exp == null) return;
-    const left = exp - Date.now();
-    if (left <= 0) { await pgDashTimeout(); return; }
-    if (left <= 5 * 60e3 && !PG_DASH.warned) { PG_DASH.warned = true; pgDashWarn(exp); }
+    if (exp != null) {
+      const left = exp - Date.now();
+      if (left <= 0) { await pgDashTimeout(); return; }
+      if (left <= 5 * 60e3 && !PG_DASH.warned) { PG_DASH.warned = true; pgDashWarn(exp); }
+    }
+    if (Date.now() - (PG_DASH.mfaAt || 0) > 120e3) { PG_DASH.mfaAt = Date.now(); secMfaGate(db); }   // DL95
   } catch (e) {}
   finally { PG_DASH.busy = false; }
+}
+/* DL95: two-step login switched on while someone has the dashboard open → walk them through it
+   right there (code, or the one-time setup). Declining signs them out with a note saying why. */
+async function secMfaGate(db) {
+  if (SEC.gating || document.getElementById('secModal')) return;
+  const info = await secRefresh(db);
+  if (!info || !info.mfa_required || info.mfa_ok !== false) return;
+  SEC.gating = true;
+  try {
+    if (await secStepUp(db)) { secLog('sign_in', { step_up: true }); const box = document.getElementById('pgAuthBox'); if (box) pgPaintAuth(); return; }
+    await secLog('sign_out', { reason: 'mfa_declined' });
+    try { await dbDelete(); } catch (e) {}
+    window.__pgSigningOut = true;
+    try { await db.auth.signOut({ scope: 'local' }); } catch (e) {}
+    try { sessionStorage.setItem('dash_mfa_needed', '1'); } catch (e) {}
+    if (!window.__secNoReload) location.reload();
+  } finally { SEC.gating = false; }
 }
 /* Every 30 s, and the moment the tab or window comes back (timers sleep with the PC). */
 setInterval(pgDashCheck, 30000);
@@ -16181,33 +16616,22 @@ function renderBridge() {
       </div>
     </div>
 
-    <div class="info-bar ip"><b>Live feed — no upload needed.</b> These are the exact same doctors and segment rules as the
-      <b>Retention</b> tab as of <b>${esc(fmtDate(maxDate))}</b>${scopeNote ? ' (' + scopeNote + ')' : ''} —
-      the five totals below always match that tab. Active = case in the last 20 days, New = first case within 15 days,
-      Falloff = 21–29 days silent, Inactive = 30+ days, Winback = returned from a 45+ day gap within
-      <b>${(STATUS && STATUS.winbackWindow) || 30} days</b> (adjust on the Status tab). A winback doctor can also be Active/New —
-      just like on that tab — and is pushed once, labeled <b>Winback</b>.</div>
-
     <div class="card">
       <div class="sb-card-title"><span class="sb-stepnum">1</span> Connect to Salesly</div>
       <div id="pgAuthBox" style="margin-bottom:12px"></div>
-      <div class="sb-hint">Paste your <b>Supabase project URL</b> and <b>anon key</b> (Project Settings ▸ API)
-        (same values the standalone bridge used — they're already filled in if you'd saved them before).
-        The optional OpenRouteService key makes geocoding ~3× faster; without it, OpenStreetMap is used at ~1 address/sec.</div>
-      <div class="sb-row">
+      <details class="sb-conn sb-admin-only"${cfg.url && cfg.token ? '' : ' open'}><summary>⚙ Connection settings</summary>
+      <div class="sb-row" style="margin-top:10px">
         <div><label class="sb-label">Supabase Project URL</label><input class="sync-input" id="sbUrl" placeholder="https://xxxxxxxx.supabase.co" value="${esc(cfg.url || '')}"></div>
         <div><label class="sb-label">Anon (public) key</label><input class="sync-input" id="sbToken" placeholder="eyJhbGciOi…" value="${esc(cfg.token || '')}"></div>
         <div><label class="sb-label">OpenRouteService key (optional)</label><input class="sync-input" id="sbOrs" placeholder="for faster geocoding" value="${esc(cfg.ors || '')}"></div>
         <div><label class="sb-label">Geocodio key (optional)</label><input class="sync-input" id="sbGc" placeholder="rooftop-accurate geocoding" value="${esc(cfg.gc || '')}"></div>
-        <div style="grid-column:1/-1;margin-top:4px">
-          <label class="sync-chk" style="display:flex;align-items:center;gap:8px;font-size:13px">
-            <input type="checkbox" id="sbAutoAll" ${autoSyncOn() ? 'checked' : ''}>
-            <span><b>Auto-sync on every data upload</b> — pushes offices &amp; statuses to Salesly${EMAIL_ON_HOLD ? '' : ' and queues New + Winback emails'}
-            automatically, with a confirmation when it finishes. Turn off for manual control.</span>
-          </label>
-        </div>
       </div>
       <div style="margin-top:12px"><button class="btn-text" id="sbTest">Test connection</button><span class="sb-conn-status" id="sbConnStatus"></span></div>
+      </details>
+      <label class="sync-chk sb-admin-only" style="display:flex;align-items:center;gap:8px;font-size:13px;margin-top:12px">
+        <input type="checkbox" id="sbAutoAll" ${autoSyncOn() ? 'checked' : ''}>
+        <span><b>Auto-sync on every data upload</b> — pushes offices &amp; statuses to Salesly${EMAIL_ON_HOLD ? '' : ' and queues New + Winback emails'} automatically.</span>
+      </label>
     </div>
 
     <div class="card">
@@ -16215,8 +16639,8 @@ function renderBridge() {
       <div class="sb-stats">${statMeta.map(m =>
         '<div class="sb-stat ' + m.cls + '"><b>' + fmtN(counts[m.s]) + '</b><span>' + esc(m.lbl) + '</span></div>').join('')}</div>
       <div class="sb-hint" style="margin:0 0 10px">These five totals mirror the Status tab exactly (Winback overlaps the others there too, so the boxes can sum to more than the doctor count).</div>
-      <label class="sb-label">Segments to push</label>
-      <div class="sb-checkrow" id="sbChecks">${SB_STATUSES.map(s =>
+      <label class="sb-label sb-admin-only">Segments to push</label>
+      <div class="sb-checkrow sb-admin-only" id="sbChecks">${SB_STATUSES.map(s =>
         '<label><input type="checkbox" data-st="' + esc(s) + '"' + (BRIDGE.wanted[s] ? ' checked' : '') + '> ' + esc(s) + '</label>').join('')}</div>
       <div class="card flush" style="border-radius:10px">
         <div class="table-scroll" style="max-height:420px">
@@ -16232,7 +16656,7 @@ function renderBridge() {
 
 
 
-    <div class="card">
+    <div class="card sb-admin-only">
       <div class="sb-card-title"><span class="sb-stepnum">3</span> Import Geocodio locations</div>
       <div class="sb-hint">Upload a <b>Geocodio-processed CSV</b> (like <code>NEWUPLOADS-IL1_geocodio…csv</code>).
         Geocodio is the <b>authoritative source for locations</b>: matched offices get their address, city, ZIP and
@@ -16245,7 +16669,7 @@ function renderBridge() {
       <div class="sb-hint" id="sbGeoInfo" style="margin:8px 0 0"></div>
     </div>
 
-    <div class="card">
+    <div class="card sb-admin-only">
       <div class="sb-card-title"><span class="sb-stepnum">4</span> Dedupe the Salesly sheet</div>
       <div class="sb-hint">Finds offices that appear more than once — the same practice under slightly different
         names or cities (e.g. <b>"Smile Dental, PC"</b> vs <b>"Smile Dental"</b>, a geocoder county name like
@@ -16259,7 +16683,7 @@ function renderBridge() {
       <div id="sbDupeList" style="margin-top:10px"></div>
     </div>
 
-    <div class="card">
+    <div class="card sb-admin-only">
       <div class="sb-card-title"><span class="sb-stepnum">5</span> Sync to Salesly</div>
       <div class="sb-hint">Groups the selected doctors into their practice offices, reads the Sheet, geocodes offices Salesly
         hasn't seen (cached — already-pinned offices are never re-geocoded), then merges: existing offices get fresh
@@ -16556,6 +16980,7 @@ function renderBridge() {
   if (lpull) lpull.onclick = () => labPullAll({ confirm: true });
 
   document.getElementById('sbDl').onclick = () => {
+    if (!secExportGate('lab-salesly-master.csv')) return;   // DL93: admins only
     const geo = sbLoadGeo();
     const q = v => { v = String(v == null ? '' : v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
     const head = ['Status', 'Doctor', 'Practice', 'Address', 'City', 'State', 'ZIP', 'Latitude', 'Longitude', 'Phone', 'Email', 'Scanner', 'First case', 'Last case', 'Cases', 'Rev 90d', 'Rev lifetime'];
@@ -18407,11 +18832,21 @@ function kaMapRow(raw) {
 async function kaReadFile(file) {
   const name = (file.name || '').toLowerCase();
   if (/\.(xlsx|xls)$/.test(name)) {
-    if (!window.XLSX) await new Promise((ok, bad) => { const sc = document.createElement('script');
-      sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'; sc.onload = ok;
-      sc.onerror = () => bad(new Error('Could not load the Excel reader — save the list as CSV instead')); document.head.appendChild(sc); });
-    const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' });
-    return XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' });
+    /* DL92: read with ExcelJS (already used for every export). The SheetJS 0.18.5 reader that
+       was here has published flaws when opening crafted files (prototype pollution, ReDoS). */
+    if (/\.xls$/.test(name)) throw new Error('Old .xls files can’t be read — save the list as .xlsx or CSV');
+    const XL = await loadExcelJS(), wb = new XL.Workbook();
+    await wb.xlsx.load(await file.arrayBuffer());
+    const ws = wb.worksheets[0]; if (!ws) return [];
+    const cell = c => { const v = c && c.value; if (v == null) return ''; if (typeof v === 'object') { if (v.text != null) return String(v.text); if (v.result != null) return String(v.result); if (v.richText) return v.richText.map(t => t.text).join(''); if (v instanceof Date) return v.toISOString().slice(0, 10); return ''; } return String(v); };
+    let heads = null; const out = [];
+    ws.eachRow({ includeEmpty: false }, row => {
+      const vals = []; for (let i = 1; i <= ws.columnCount; i++) vals.push(cell(row.getCell(i)));
+      if (!heads) { heads = vals.map(h => h.trim()); return; }
+      const o = {}; heads.forEach((h, i) => { if (h && h !== '__proto__' && h !== 'constructor' && h !== 'prototype') o[h] = vals[i] == null ? '' : vals[i]; });
+      out.push(o);
+    });
+    return out;
   }
   return new Promise((ok, bad) => Papa.parse(file, { header: true, skipEmptyLines: true, complete: r => ok(r.data), error: bad }));
 }
@@ -18640,10 +19075,10 @@ function rpBuildRemakesReport() {
     const c = cases.get(k) || cases.set(k, { caseNo: L.caseNo, drId: L.drId, name: L.name, practice: L.practice, items: [] }).get(k); c.items.push(L); });
   const list = [...cases.values()].sort((a, b) => b.items.reduce((t, x) => t + x.qty, 0) - a.items.reduce((t, x) => t + x.qty, 0));
   h += sec('Remakes on ' + dayLbl + ' — ' + list.length + ' case' + (list.length === 1 ? '' : 's') + ', ' + fmtN(D.remade) + ' units');
-  h += list.length ? table(['Doctor', 'Practice', 'Product remade', 'Reason', 'Units', 'Case'], list.flatMap(c => c.items.map((it, i) => '<tr>' +
+  h += list.length ? table(['Doctor', 'Practice', 'Product remade', 'Reason', 'Units'], list.flatMap(c => c.items.map((it, i) => '<tr>' +
       td(i ? '' : '<b style="color:#0f172a">' + goldMarkEmail(c.drId) + esc(c.name || '—') + '</b>' + quietMarkEmail(Q.get(c.drId))) +
       td(i ? '' : '<span style="color:#64748b">' + esc(c.practice || '—') + '</span>') + td('<b style="color:#0f172a">' + esc(it.product) + '</b>') +
-      td(it.reason ? esc(it.reason) : '<span style="color:#94a3b8">—</span>') + td(fmtN(it.qty), true) + td(i ? '' : '<span style="color:#64748b">' + esc(c.caseNo || '') + '</span>') + '</tr>')))
+      td(it.reason ? esc(it.reason) : '<span style="color:#94a3b8">—</span>') + td(fmtN(it.qty), true) + '</tr>')))
     : nil('No remakes on ' + dayLbl + '.');
 
   // 3. the last 30 business days in brief
@@ -18823,6 +19258,7 @@ async function rpPreview(which) {
 }
 
 async function rpDownloadAll() {
+  if (!secExportGate('lab-reports.html')) return;   // DL93: admins only
   const built = await rpBuildAll();
   const html = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Lab Reports ' + built.asOf + '</title></head><body style="background:#f8f9fb;padding:20px">' +
     built.reports.map(r => r.html).join('<div style="height:34px"></div>') + '</body></html>';
@@ -18997,12 +19433,18 @@ async function pgPaintAuth() {
   if (user) {
     const ends = pgDashEndsText();   // DL88
     box.innerHTML = `<div class="sb-hint" style="color:var(--ok,#16a34a)">● Signed in as <b>${esc(user.email || '')}</b>${ends ? ` <span style="color:var(--text-muted,#64748b)">· dashboard signs out at ${esc(ends)} (${esc(pgDashHoursText())} after sign-in)</span>` : ''}
-      <button class="btn-text" id="pgOut" style="margin-left:10px">Sign out</button></div>`;
-    box.querySelector('#pgOut').onclick = () => pgSignOut();
+      <button class="btn-text" id="pgOut" style="margin-left:10px">Sign out</button></div>
+      <div id="secMfaLine"></div><div id="secAdminBox"></div>`;
+    box.querySelector('#pgOut').onclick = () => secSignOut();   // DL92: logged, saved copy deleted, page cleared
+    secPaintMfa(box.querySelector('#secMfaLine'));   // DL94: the step-by-step guide until it's on
+    if (!SEC.info) await secRefresh(PG);
+    if (SEC.role === 'admin') secPaintAdmin(box.querySelector('#secAdminBox'));
+    else if (secViewOnly()) box.querySelector('#secAdminBox').innerHTML = '<div class="sb-hint" style="margin-top:8px">👁 Production login — view-only. Case numbers, tooth, shade, hold and remake details are hidden. Exports are for admins.</div>';
+    secApplyRole();
     return;
   }
   box.innerHTML = `
-    <div class="sb-hint" style="margin-bottom:6px">○ <b>Not signed in</b> — the dashboard will show nothing until you do. Use your admin account.</div>
+    <div class="sb-hint" style="margin-bottom:6px">○ <b>Not signed in</b> — the dashboard will show nothing until you do. Use your dashboard login.</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
       <input class="sync-input" id="pgEmail" type="email" placeholder="you@vitalitydentalarts.com" style="flex:1;min-width:200px">
       <input class="sync-input" id="pgPw" type="password" placeholder="password" style="flex:1;min-width:160px">
@@ -19154,8 +19596,8 @@ function qPaint() {
       ${QUEUE_TYPES.map(([t, lbl]) => qFilterChip(t, lbl, QUEUE.rows.filter(r => r.type === t).length)).join('')}
       <span style="flex:1"></span>
       ${QUEUE.typeFilter
-        ? `<button class="btn-text" onclick="qApproveType('${QUEUE.typeFilter}')">✓ Approve all ${esc2(qTypeLabel(QUEUE.typeFilter))}</button>
-           <button class="btn-text" style="color:var(--mut)" onclick="qClearType('${QUEUE.typeFilter}')">✕ Clear all ${esc2(qTypeLabel(QUEUE.typeFilter))}</button>`
+        ? `<button class="btn-text" onclick="qApproveType('${String(QUEUE.typeFilter || '').replace(/[^a-z0-9_]/gi, '')}')">✓ Approve all ${esc2(qTypeLabel(QUEUE.typeFilter))}</button>
+           <button class="btn-text" style="color:var(--mut)" onclick="qClearType('${String(QUEUE.typeFilter || '').replace(/[^a-z0-9_]/gi, '')}')">✕ Clear all ${esc2(qTypeLabel(QUEUE.typeFilter))}</button>`
         : ''}
     </div>
     <table class="grid" style="width:100%">
@@ -19188,7 +19630,7 @@ function qTypePill(t) {
 function qFilterChip(t, label, n) {
   const on = (QUEUE.typeFilter || '') === t;
   const c = t ? (QUEUE_TYPE_COLOR[t] || '#64748b') : '#334155';
-  return `<button class="btn-text" onclick="qSetTypeFilter('${t}')"
+  return `<button class="btn-text" onclick="qSetTypeFilter('${String(t || '').replace(/[^a-z0-9_]/gi, '')}')"
     style="border:1px solid ${on ? c : 'var(--border)'};background:${on ? c + '14' : 'transparent'};
            color:${on ? c : 'var(--ink)'};border-radius:20px;padding:4px 12px;font-size:12px;font-weight:${on ? 700 : 500}">
     ${esc(label)} <span style="opacity:.65">${n}</span></button>`;
@@ -19620,9 +20062,11 @@ const SLF = (() => {
 })();
 
 const PMAP_LIBS = {
-  css: ['https://unpkg.com/leaflet@1.9.4/dist/leaflet.css', 'https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css',
-        'https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css'],
-  js: ['https://unpkg.com/leaflet@1.9.4/dist/leaflet.js', 'https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js']
+  // DL92: pinned files on one CDN, each integrity-checked
+  css: ['https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css', 'https://cdn.jsdelivr.net/npm/leaflet.markercluster@1.5.3/dist/MarkerCluster.css', 'https://cdn.jsdelivr.net/npm/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css'],
+  js: ['https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js', 'https://cdn.jsdelivr.net/npm/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js'],
+  sri: { 'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css': 'sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H', 'https://cdn.jsdelivr.net/npm/leaflet.markercluster@1.5.3/dist/MarkerCluster.css': 'sha384-pmjIAcz2bAn0xukfxADbZIb3t8oRT9Sv0rvO+BR5Csr6Dhqq+nZs59P0pPKQJkEV', 'https://cdn.jsdelivr.net/npm/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css': 'sha384-wgw+aLYNQ7dlhK47ZPK7FRACiq7ROZwgFNg0m04avm4CaXS+Z9Y7nMu8yNjBKYC+',
+         'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js': 'sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH', 'https://cdn.jsdelivr.net/npm/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js': 'sha384-eXVCORTRlv4FUUgS/xmOyr66XBVraen8ATNLMESp92FKXLAMiKkerixTiBvXriZr' }
 };
 const PMAP_TILES_KEY = 'a41e459f0554424fb9a54301378d5dae';   // the same Geoapify key Salesly uses (map tiles + geocoding)
 const PM_LAB = [['active', 'Active', '#5fbe7d'], ['new', 'New', '#12a5a0'], ['winback', 'Winback', '#8e5bd1'], ['falloff', 'Falloff', '#e08a2e'], ['inactive', 'Inactive', '#cf3f3f']];
@@ -19646,6 +20090,7 @@ function pmLoadLibs() {
   if (window.L && window.L.markerClusterGroup) return Promise.resolve();
   if (_pmLibs) return _pmLibs;
   const add = (tag, attrs) => new Promise((ok, bad) => { const e = document.createElement(tag); Object.assign(e, attrs);
+    const u = attrs.src || attrs.href; if (PMAP_LIBS.sri && PMAP_LIBS.sri[u]) { e.integrity = PMAP_LIBS.sri[u]; e.crossOrigin = 'anonymous'; }
     e.onload = ok; e.onerror = () => bad(new Error('Could not load the map (' + (attrs.src || attrs.href).split('/').slice(-1)[0] + ')')); document.head.appendChild(e); });
   _pmLibs = Promise.all(PMAP_LIBS.css.map(h => add('link', { rel: 'stylesheet', href: h })))
     .then(() => add('script', { src: PMAP_LIBS.js[0] })).then(() => add('script', { src: PMAP_LIBS.js[1] }))
@@ -19887,6 +20332,246 @@ function pmPopupHTML(o, compact) {
       o.phone ? `<a href="tel:${esc(String(o.phone).replace(/[^0-9+]/g, ''))}">${esc(o.phone)}</a>` : '', o.scanner && o.scanner !== 'None' ? esc(o.scanner) : '',
       addr ? `<a href="https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(addr)}" target="_blank" rel="noopener">Directions ↗</a>` : ''].filter(Boolean).join(' · ')}</div>
     <div class="pm-pop-crm"><button type="button" class="btn-text" data-crm="${esc(o.id)}">📝 Log call / email / visit</button></div></div>`;
+}
+
+/* ══ DL91: REP PROGRESS — each rep against his own usual pace ══════════════════
+   One rep at a time, measured against HIMSELF (no targets):
+     • This week so far vs his usual BY THE SAME POINT of the week (Mon–Thu vs his
+       average Mon–Thu), so a week in progress is judged fairly — plus his usual for
+       a full week and his best week.
+     • In person = visits logged in Salesly (or 🚗 Visit from the dashboard).
+       Remote = 📞 calls · ✉️ emails · 💬 texts logged from the dashboard. Remote's
+       usual only counts weeks since he started logging remote.
+     • Usual = his average over his last 8 ACTIVE weeks (6 months in Monthly) — weeks
+       with no contact logged (time off) are left out, so they don't drag it down.
+   Numbers come from public.rep_progress() — the same function Salesly's "My week"
+   card reads — so the two always agree. Visits are de-duplicated with Salesly's own
+   rule and credited by login id, then name, exactly like the Sales Visits tab. */
+const RPG = { rep: null, unit: 'week', data: {}, sel: null, chart: null };
+const RPG_N = { week: 26, month: 12 }, RPG_BASE = { week: 8, month: 6 };
+const RPG_METRICS = [
+  { k: 'in_person',   l: 'In person',       ic: '🚗', hint: 'Visits logged in Salesly (or 🚗 Visit from the dashboard)' },
+  { k: 'remote',      l: 'Remote',          ic: '📞', hint: 'Calls, emails and texts logged from the dashboard (📞 ✉️ 💬)' },
+  { k: 'offices',     l: 'Offices reached', ic: '🏢', hint: 'Different offices contacted, any way' },
+  { k: 'new_offices', l: 'New offices',     ic: '✨', hint: 'Offices he contacted for the first time ever' },
+  { k: 'field_days',  l: 'Field days',      ic: '📍', hint: 'Days with at least one in-person visit' },
+  { k: 'closes',      l: 'Closes',          ic: '⭐', hint: 'Offices he claimed that sent their first case (dated by that first case)' }
+];
+const RPG_DOW = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const rpgOrd = n => n + (n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] || 'th');
+function rpgAddUnit(ds, unit, k) {
+  const [y, m, d] = ds.split('-').map(Number), dt = unit === 'month' ? new Date(y, m - 1 + k, 1) : new Date(y, m - 1, d + 7 * k);
+  return dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') + '-' + String(dt.getDate()).padStart(2, '0');
+}
+function rpgLabel(ds, unit, short) {
+  if (unit === 'month') return svDay(ds, short ? { month: 'short' } : { month: 'long', year: 'numeric' });
+  return (short ? '' : 'Week of ') + svDay(ds, { month: 'short', day: 'numeric' });
+}
+function rpgSoFar(D) {   // "Mon–Thu" / "1st–19th"
+  if (D.unit === 'month') return '1st–' + rpgOrd(D.into_days + 1);
+  return D.into_days === 0 ? 'Monday' : 'Mon–' + RPG_DOW[Math.min(D.into_days, 6)];
+}
+// his usual: the average of his last N active periods before this one
+function rpgBase(D, k) {
+  const P = D.periods.slice(0, -1);
+  let start = 0;
+  if (k === 'remote') { start = P.findIndex(p => p.remote > 0); if (start < 0) return { n: 0, none: true }; }
+  const act = P.slice(start).filter(p => p.in_person + p.remote > 0).slice(-RPG_BASE[D.unit]);   // active = he logged a contact
+  const all = P.filter(p => p[k] > 0);
+  const best = all.reduce((b, p) => (!b || p[k] > b[k]) ? p : b, null);
+  if (!act.length) return { n: 0, best };
+  const avg = f => act.reduce((t, p) => t + (p[f] || 0), 0) / act.length;
+  return { n: act.length, full: avg(k), td: avg('td_' + k), best };
+}
+function rpgReps() {
+  const n = new Map(), n30 = new Map(), cut = rpgAddUnit(new Date().toISOString().slice(0, 10), 'week', -4);
+  (SV.visits || []).forEach(v => { if (!/^id:/.test(v.key)) return; n.set(v.key, (n.get(v.key) || 0) + 1); if (v.date >= cut) n30.set(v.key, (n30.get(v.key) || 0) + 1); });
+  return (SV.reps || []).filter(r => n.get('id:' + r.id)).map(r => ({ id: String(r.id), name: r.name || 'Unnamed rep', n: n.get('id:' + r.id) || 0, n30: n30.get('id:' + r.id) || 0 }))
+    .sort((a, b) => b.n30 - a.n30 || b.n - a.n);
+}
+async function rpgFetch(rep, unit, force) {
+  const key = rep + '|' + unit;
+  if (!force && RPG.data[key]) return RPG.data[key];
+  const { data, error } = await pgClient().rpc('rep_progress', { p_rep: rep, p_unit: unit, p_count: RPG_N[unit], p_entries: true });
+  if (error) throw new Error(error.message);
+  ['periods', 'closes', 'entries'].forEach(f => { if (!Array.isArray(data[f])) data[f] = []; });
+  data.periods.forEach(p => RPG_METRICS.forEach(m => { p[m.k] = +p[m.k] || 0; p['td_' + m.k] = +p['td_' + m.k] || 0; }));
+  return (RPG.data[key] = data);
+}
+function rpgCardHTML(D, m) {
+  const cur = D.periods[D.periods.length - 1] || {}, v = cur[m.k] || 0, B = rpgBase(D, m.k), U = D.unit === 'month' ? 'month' : 'week';
+  let chip, line;
+  if (m.k === 'remote' && B.none) {
+    chip = v ? '<span class="rpg-chip new">new</span>' : '<span class="rpg-chip mut">not logged yet</span>';
+    line = v ? `first ${U} logging remote — his usual builds from here` : 'log 📞 calls / ✉️ emails on an office in the dashboard';
+  } else if (B.n < 2) {
+    chip = '<span class="rpg-chip mut">building history</span>';
+    line = `needs 2+ active ${U}s before this one`;
+  } else {
+    const u = B.td, diff = v - u, tol = Math.max(1, u * 0.1);
+    chip = Math.abs(diff) <= tol ? '<span class="rpg-chip on">on pace</span>'
+      : diff > 0 ? `<span class="rpg-chip up">▲ ${Math.round(diff)} ahead</span>` : `<span class="rpg-chip dn">▼ ${Math.round(-diff)} behind</span>`;
+    line = `usual by now <b>${(Math.round(u * 10) / 10).toLocaleString()}</b> · full ${U} <b>${(Math.round(B.full * 10) / 10).toLocaleString()}</b>`;
+  }
+  const best = B.best ? `best <b>${B.best[m.k]}</b> · ${esc(rpgLabel(B.best.start, D.unit, true))}` : '';
+  const last = D.periods.slice(-12), mx = Math.max(1, ...last.map(p => p[m.k] || 0));
+  const spark = last.map((p, i) => `<span title="${esc(rpgLabel(p.start, D.unit))}: ${p[m.k] || 0}" style="height:${Math.max(2, Math.round((p[m.k] || 0) / mx * 26))}px;background:${i === last.length - 1 ? 'var(--accent,#24bfcd)' : '#cbd5e1'}"></span>`).join('');
+  return `<div class="rpg-card" title="${esc(m.hint)}">
+    <div class="rpg-cl">${m.ic} ${esc(m.l)}</div>
+    <div class="rpg-cv">${v.toLocaleString()} ${chip}</div>
+    ${m.k === 'remote' && v ? `<div class="rpg-cs">📞 ${cur.calls} · ✉️ ${cur.emails}${cur.texts ? ' · 💬 ' + cur.texts : ''}</div>` : ''}
+    <div class="rpg-cs">${line}</div>
+    ${best ? `<div class="rpg-cs">${best}</div>` : ''}
+    <div class="rpg-spark">${spark}</div>
+  </div>`;
+}
+function rpgHistoryHTML(D) {
+  const cols = [['in_person', 'In person'], ['remote', 'Remote'], ['offices', 'Offices'], ['new_offices', 'New offices'], ['field_days', 'Field days'], ['closes', 'Closes']];
+  const done = D.periods.slice(0, -1), best = {};
+  cols.forEach(([k]) => { best[k] = done.filter(p => p[k] > 0).length > 1 ? Math.max(0, ...done.map(p => p[k])) : -1; });   // a ★ needs something to beat
+  const act = done.filter(p => p.in_person + p.remote > 0).slice(-RPG_BASE[D.unit]);
+  const usual = act.length ? act.reduce((t, p) => t + p.in_person + p.remote, 0) / act.length : null;
+  const rows = D.periods.slice().reverse().filter((p, i) => i === 0 || p.in_person + p.remote + p.closes > 0 || p.start >= (D.first_day || ''));
+  return `<table class="rpg-tbl"><thead><tr><th>${D.unit === 'month' ? 'Month' : 'Week of'}</th>${cols.map(([, l]) => `<th class="n">${l}</th>`).join('')}<th class="n" title="In person + remote, against his usual full ${D.unit}">Contacts vs usual</th></tr></thead><tbody>
+    ${rows.map(p => { const isCur = p.start === D.current_start, tot = p.in_person + p.remote;
+      const vs = usual == null || isCur ? '' : !tot ? '<span class="text-mut" title="No contacts logged — left out of his usual">off</span>'
+        : (tot - usual >= 0 ? `<span style="color:#059669">+${Math.round(tot - usual)}</span>` : `<span style="color:#b45309">${Math.round(tot - usual)}</span>`);
+      return `<tr class="rpg-row${RPG.sel === p.start ? ' sel' : ''}${isCur ? ' cur' : ''}" data-ps="${p.start}">
+        <td>${esc(rpgLabel(p.start, D.unit, true))}${isCur ? ' <span class="rpg-chip mut">so far</span>' : ''}</td>
+        ${cols.map(([k]) => `<td class="n">${p[k] ? (p[k] === best[k] && !isCur ? '<b>' + p[k] + ' ★</b>' : p[k]) : '<span class="text-mut">·</span>'}${k === 'remote' && p.remote ? `<div class="rpg-sub">📞${p.calls} ✉️${p.emails}${p.texts ? ' 💬' + p.texts : ''}</div>` : ''}</td>`).join('')}
+        <td class="n">${vs || (isCur ? `<span class="text-mut">${tot} so far</span>` : '')}</td></tr>`; }).join('')}
+  </tbody></table>
+  <div class="text-mut" style="font-size:11.5px;margin-top:6px">★ his best ${D.unit} in this view · click a row to see that ${D.unit}'s contacts</div>`;
+}
+function rpgContactsHTML(D) {
+  const s = RPG.sel || D.current_start, e = rpgAddUnit(s, D.unit, 1);
+  const list = D.entries.filter(x => x.day >= s && x.day < e);
+  const byDay = new Map(); list.forEach(x => { (byDay.get(x.day) || byDay.set(x.day, []).get(x.day)).push(x); });
+  const kinds = { visit: 0, call: 0, email: 0, text: 0 }; list.forEach(x => { kinds[x.kind] = (kinds[x.kind] || 0) + 1; });
+  const head = `<div style="font-weight:700;margin-bottom:2px">${esc(s === D.current_start ? (D.unit === 'month' ? 'This month' : 'This week') : rpgLabel(s, D.unit))} · ${list.length} contact${list.length === 1 ? '' : 's'}</div>
+    <div class="text-mut" style="font-size:12px;margin-bottom:8px">🚗 ${kinds.visit} in person · 📞 ${kinds.call} · ✉️ ${kinds.email}${kinds.text ? ' · 💬 ' + kinds.text : ''} · ✨ ${list.filter(x => x.new).length} new office${list.filter(x => x.new).length === 1 ? '' : 's'}</div>`;
+  if (!list.length) return head + '<div class="text-mut" style="font-size:12.5px">Nothing logged.</div>';
+  return head + [...byDay.entries()].map(([d, xs]) => `<div class="rpg-day">${esc(svDay(d, { weekday: 'short', month: 'short', day: 'numeric' }))} <span class="text-mut">· ${xs.length}</span></div>
+    ${xs.map(x => { const oc = SV_OUTCOME[x.color]; return `<div class="rpg-ct"><span class="rpg-ic">${crmIcon(x.kind)}</span>
+      <div style="min-width:0;flex:1"><div><b>${esc(x.office || '(unnamed office)')}</b> <span class="text-mut">${esc(x.city || '')}</span>${x.new ? ' <span class="rpg-chip new">new</span>' : ''}${oc ? ` <span style="color:${oc.c};font-size:11.5px">● ${oc.label}</span>` : ''}</div>
+      ${x.note ? `<div class="rpg-note">${esc(x.note)}</div>` : ''}</div></div>`; }).join('')}`).join('');
+}
+function rpgClosesHTML(D) {
+  const byId = new Map((SV.offices || []).map(o => [String(o.id), o]));
+  const cl = D.closes || [];
+  if (!cl.length) return `<div class="text-mut" style="font-size:12.5px">No closes in these ${RPG_N[D.unit]} ${D.unit}s.</div>`;
+  return `<table class="rpg-tbl"><thead><tr><th>First case</th><th>Office</th><th>City</th><th class="n">Last 90 days</th><th class="n">Lifetime</th></tr></thead><tbody>
+    ${cl.map(c => { const o = byId.get(String(c.office_id)); return `<tr><td>${esc(svDay(c.day, { month: 'short', day: 'numeric', year: 'numeric' }))}</td><td><b>${esc(c.office || '')}</b></td><td>${esc(c.city || '')}</td>
+      <td class="n">${o && o._rev90 ? fmtUSDFull(o._rev90) : '<span class="text-mut">—</span>'}</td><td class="n">${o && o._life ? fmtUSDFull(o._life) : '<span class="text-mut">—</span>'}</td></tr>`; }).join('')}
+  </tbody></table><div class="text-mut" style="font-size:11.5px;margin-top:6px">Revenue from the lab figures Salesly keeps on each office.</div>`;
+}
+function rpgCss() {
+  if (document.getElementById('rpgCss')) return;
+  const st = document.createElement('style'); st.id = 'rpgCss';
+  st.textContent = `.rpg-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px;margin-bottom:16px}
+  .rpg-card{border:1px solid var(--line,#e6e9ee);border-radius:12px;padding:12px 14px;background:var(--card,#fff)}
+  .rpg-cl{font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--text-muted,#64748b)}
+  .rpg-cv{font-size:26px;font-weight:800;margin:2px 0 4px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .rpg-cs{font-size:11.5px;color:var(--text-muted,#64748b);line-height:1.45}
+  .rpg-spark{display:flex;align-items:flex-end;gap:2px;height:28px;margin-top:8px}.rpg-spark span{flex:1;border-radius:2px 2px 0 0;min-width:3px}
+  .rpg-chip{font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;white-space:nowrap;vertical-align:middle}
+  .rpg-chip.up{background:#dcfce7;color:#047857}.rpg-chip.dn{background:#fef3c7;color:#b45309}.rpg-chip.on{background:#e0f2fe;color:#0369a1}
+  .rpg-chip.mut{background:#f1f5f9;color:#64748b;font-weight:600}.rpg-chip.new{background:#ede9fe;color:#6d28d9}
+  .rpg-tbl{width:100%;border-collapse:collapse;font-size:12.5px}.rpg-tbl th{text-align:left;font-size:11px;color:var(--text-muted,#64748b);padding:5px 6px;font-weight:600}
+  .rpg-tbl td{padding:6px;border-top:1px solid var(--line,#eef1f5);vertical-align:top}.rpg-tbl .n{text-align:right}
+  .rpg-row{cursor:pointer}.rpg-row:hover td{background:rgba(36,191,205,.06)}.rpg-row.sel td{background:rgba(36,191,205,.12)}.rpg-row.cur td:first-child{font-weight:700}
+  .rpg-sub{font-size:10.5px;color:var(--text-muted,#64748b);white-space:nowrap}
+  .rpg-two{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:16px;margin-bottom:16px}@media(max-width:1100px){.rpg-two{grid-template-columns:1fr}}
+  .rpg-box{border:1px solid var(--line,#e6e9ee);border-radius:12px;padding:14px;background:var(--card,#fff)}
+  .rpg-day{font-weight:700;font-size:12.5px;margin:10px 0 4px;padding-top:6px;border-top:1px solid var(--line,#eef1f5)}
+  .rpg-ct{display:flex;gap:8px;font-size:12.5px;padding:4px 0}.rpg-ic{width:20px;text-align:center;flex:0 0 auto}
+  .rpg-note{font-size:12px;color:var(--text-muted,#64748b);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #rpgContacts{max-height:620px;overflow-y:auto}`;
+  document.head.appendChild(st);
+}
+async function renderRepProgress() {
+  const el = document.getElementById('panel-repprog'); if (!el) return;
+  rpgCss();
+  el.innerHTML = '<div class="empty-state"><div class="empty-icon">⏳</div>Loading rep activity from Salesly…</div>';
+  await svLoad();
+  if (SV.error) return svNotConnected(el, 'Rep Progress');
+  const reps = rpgReps();
+  if (!reps.length) { el.innerHTML = '<div class="section-header"><div><div class="section-title">🎯 Rep Progress</div></div></div><div class="empty-state"><div class="empty-icon">🚗</div>No rep has logged a visit yet.</div>'; return; }
+  if (!RPG.rep || !reps.some(r => r.id === RPG.rep)) {
+    const me = await pgSession(); RPG.rep = (me && reps.find(r => r.id === String(me.id))) ? String(me.id) : reps[0].id;
+  }
+  let D;
+  try { D = await rpgFetch(RPG.rep, RPG.unit); }
+  catch (e) {
+    const m = String(e.message || e);
+    el.innerHTML = `<div class="section-header"><div><div class="section-title">🎯 Rep Progress</div></div></div><div class="empty-state"><div class="empty-icon">⚠️</div>${
+      /rep_progress|schema cache|function/i.test(m) ? 'The progress function isn’t in the database yet.' : /Sign in/i.test(m) ? 'Sign in on the 🔗 Salesly Bridge tab to see rep progress.' : 'Could not load progress: ' + esc(m)}</div>`;
+    return;
+  }
+  if (RPG.sel && !D.periods.some(p => p.start === RPG.sel)) RPG.sel = null;
+  const rep = D.rep || {}, U = D.unit, cur = D.periods[D.periods.length - 1] || {};
+  const Bn = rpgBase(D, 'in_person').n;
+  const span = U === 'month' ? svDay(D.current_start, { month: 'long' }) + ' ' + rpgSoFar(D) : rpgSoFar(D) + ', ' + svDay(D.current_start, { month: 'short', day: 'numeric' }) + ' – ' + svDay(D.today, { month: 'short', day: 'numeric' });
+  el.innerHTML = `
+    <div class="section-header">
+      <div><div class="section-title">🎯 Rep Progress</div>
+        <div class="section-sub"><b>${esc(rep.name || '')}</b> against his own usual pace${rep.territory ? ' · ' + esc(rep.territory) : ''}${D.first_day ? ' · logging since ' + esc(svDay(D.first_day)) : ''}</div></div>
+      <div class="section-actions">
+        <div class="pill-group" id="rpgUnit">${[['week', 'Weekly'], ['month', 'Monthly']].map(([k, l]) => `<button class="pill${U === k ? ' active' : ''}" data-u="${k}">${l}</button>`).join('')}</div>
+        <button class="btn-text" id="rpgReload">↻ Reload</button>
+        <button class="btn-text" id="rpgExport">⬇ Export</button>
+      </div>
+    </div>
+    ${reps.length > 1 ? `<div class="xs-fg" id="rpgReps" style="margin-bottom:12px"><span class="xs-fl" style="width:auto;margin-right:4px">Rep</span>${reps.map(r => `<button type="button" class="xs-pill${r.id === RPG.rep ? ' on' : ''}" data-rep="${esc(r.id)}">${esc(r.name)} <span style="opacity:.6;font-size:11px">${r.n30} in 4 wks</span></button>`).join('')}</div>` : ''}
+    <div style="margin:0 0 10px;font-size:13px"><b>${U === 'month' ? 'This month' : 'This week'} so far</b> <span class="text-mut">· ${esc(span)} — compared with his usual by the same point${Bn ? ` (average of his last ${Bn} active ${U}${Bn === 1 ? '' : 's'}; ${U}s with nothing logged are left out)` : ''}</span></div>
+    <div class="rpg-cards">${RPG_METRICS.map(m => rpgCardHTML(D, m)).join('')}</div>
+    <div class="rpg-box" style="margin-bottom:16px">
+      <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:8px"><div style="font-weight:700">Contacts per ${U}</div>
+        <div class="text-mut" style="font-size:12px">in person + remote · dashed line = his usual ${U} · click a bar for its contacts</div></div>
+      <div style="height:240px"><canvas id="rpgChart"></canvas></div>
+    </div>
+    <div class="rpg-two">
+      <div class="rpg-box"><div style="font-weight:700;margin-bottom:6px">${U === 'month' ? 'Month' : 'Week'} by ${U}</div>${rpgHistoryHTML(D)}</div>
+      <div class="rpg-box" id="rpgContacts">${rpgContactsHTML(D)}</div>
+    </div>
+    <div class="rpg-box"><div style="font-weight:700;margin-bottom:6px">⭐ Accounts closed · ${D.closes.length} in the last ${RPG_N[U]} ${U}s</div>${rpgClosesHTML(D)}</div>`;
+
+  // chart
+  if (RPG.chart) { try { RPG.chart.destroy(); } catch (e) {} RPG.chart = null; }
+  const P = D.periods.filter(p => p.start >= rpgAddUnit((D.first_day || D.current_start).slice(0, 10), U, -1) || p.in_person + p.remote > 0);
+  const act = D.periods.slice(0, -1).filter(p => p.in_person + p.remote > 0).slice(-RPG_BASE[U]);
+  const usual = act.length ? act.reduce((t, p) => t + p.in_person + p.remote, 0) / act.length : null;
+  if (typeof Chart !== 'undefined' && document.getElementById('rpgChart')) {
+    RPG.chart = new Chart(document.getElementById('rpgChart'), {
+      type: 'bar',
+      data: { labels: P.map(p => rpgLabel(p.start, U, true) + (p.start === D.current_start ? ' (so far)' : '')),
+        datasets: [
+          { label: 'In person', data: P.map(p => p.in_person), backgroundColor: '#24bfcd', stack: 'c', borderRadius: 3 },
+          { label: 'Remote', data: P.map(p => p.remote), backgroundColor: '#8b5cf6', stack: 'c', borderRadius: 3 },
+          ...(usual != null ? [{ type: 'line', label: 'His usual', data: P.map(() => Math.round(usual * 10) / 10), borderColor: '#64748b', borderDash: [6, 4], borderWidth: 1.5, pointRadius: 0, fill: false }] : [])
+        ] },
+      options: { responsive: true, maintainAspectRatio: false, animation: false,
+        plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } },
+        scales: { x: { stacked: true, grid: { display: false }, ticks: { font: { size: 10.5 }, maxRotation: 0, autoSkip: true } }, y: { stacked: true, beginAtZero: true, ticks: { precision: 0 } } },
+        onClick: (ev, els) => { if (els && els.length) { RPG.sel = P[els[0].index].start; rpgRepaintLists(D); } },
+        onHover: (ev, els) => { if (ev.native && ev.native.target) ev.native.target.style.cursor = els && els.length ? 'pointer' : 'default'; } }
+    });
+  }
+  // events
+  document.querySelectorAll('#rpgReps [data-rep]').forEach(b => b.onclick = () => { RPG.rep = b.dataset.rep; RPG.sel = null; renderRepProgress(); });
+  document.querySelectorAll('#rpgUnit [data-u]').forEach(b => b.onclick = () => { RPG.unit = b.dataset.u; RPG.sel = null; renderRepProgress(); });
+  document.getElementById('rpgReload').onclick = async () => { RPG.data = {}; await svLoad(true); renderRepProgress(); };
+  document.getElementById('rpgExport').onclick = () => downloadCSV(('rep-progress-' + (rep.name || 'rep') + '-' + U + 'ly').replace(/[^a-z0-9]+/gi, '-').toLowerCase() + '.csv',
+    D.periods.slice().reverse().map(p => ({ [U === 'month' ? 'month' : 'week_of']: p.start, in_person: p.in_person, remote: p.remote, calls: p.calls, emails: p.emails, texts: p.texts,
+      offices_reached: p.offices, new_offices: p.new_offices, field_days: p.field_days, closes: p.closes, in_progress: p.start === D.current_start ? 'yes' : '' })));
+  rpgBindLists(D);
+}
+function rpgBindLists(D) {
+  document.querySelectorAll('.rpg-row[data-ps]').forEach(tr => tr.onclick = () => { RPG.sel = tr.dataset.ps; rpgRepaintLists(D); });
+}
+function rpgRepaintLists(D) {
+  document.querySelectorAll('.rpg-row[data-ps]').forEach(tr => tr.classList.toggle('sel', tr.dataset.ps === RPG.sel));
+  const c = document.getElementById('rpgContacts'); if (c) { c.innerHTML = rpgContactsHTML(D); c.scrollTop = 0; }
 }
 
 /* ══ CRM: log a call, email or visit against a Salesly office ════════════════
