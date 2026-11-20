@@ -1,27 +1,26 @@
 {
-  "ran_at": "2026-11-20T05:20:12.255Z",
+  "ran_at": "2026-11-20T14:08:41.509Z",
   "ok": true,
   "dry_run": false,
   "days": [
-    "2026-11-17",
     "2026-11-18",
-    "2026-11-19"
+    "2026-11-19",
+    "2026-11-20"
   ],
   "invoices": {
-    "fetched": 319,
+    "fetched": 0,
     "loaded": 0,
-    "updated": 319,
+    "updated": 0,
     "removed": 0,
     "replaced": 0,
-    "layout": "new (with credits)",
-    "replace_skipped": false
+    "layout": "new (with credits)"
   },
   "production": {
-    "fetched": 3076,
-    "loaded": 3076
+    "fetched": 273,
+    "loaded": 273
   },
   "production_days": [
-    "2026-11-06",
-    "2026-11-19"
+    "2026-11-07",
+    "2026-11-20"
   ]
 }
