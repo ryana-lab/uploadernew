@@ -8,7 +8,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; font-src 'self' data:; img-src 'self' data: blob: https://cdn.jsdelivr.net https://maps.geoapify.com; connect-src 'self' https://hfzizrzqrneuciykpuez.supabase.co wss://hfzizrzqrneuciykpuez.supabase.co https://api.geocod.io https://api.geoapify.com https://api.openrouteservice.org https://nominatim.openstreetmap.org; frame-src https://www.google.com https://maps.google.com; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'self'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
-<title>Lab Sales Dashboard v2026.11.20-DL96</title>
+<title>Lab Sales Dashboard v2026.11.20-DL98</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js" integrity="sha384-D/t0ZMqQW31H3az8ktEiNb39wyKnS82iFY52QPACM+IjKW3jDUhyIgh2PApRqJZs" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js" integrity="sha384-dug+JxfBvklEQdJ4AYuBBAIScUz0bVN73xpy273gcAwHjb3qI0fXmuYNaNfdyYJG" crossorigin="anonymous"></script>
@@ -1525,6 +1525,8 @@ tr.cs-open td { background: var(--card-2); white-space: normal; cursor: default;
   .sub-tab { min-width: 130px; padding: 10px 14px; }
   .sub-tab .sub-tab-count { font-size: 18px; }
 }
+  .ed-cnum { background: none; border: 0; padding: 0 2px; font: inherit; font-weight: 600; color: var(--accent, #0f8b99); cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
+  .ed-cnum:hover { text-decoration: underline; }
   /* DL94: two-step login guide + Bridge tidy-up */
   .sec-mfa { margin-top: 10px; padding: 14px 16px; border: 1px solid var(--border, #e6e9ee); border-radius: 12px; background: var(--card, #fff); }
   .sec-mfa.off { border-color: #fcd9a8; background: #fffbf3; }
@@ -2128,7 +2130,7 @@ const APP = {
 
 /* Bump when normalization logic changes, so it's possible to tell at a glance
    (bottom of the Avg Turnaround card) which build a browser is running. */
-const BUILD_ID = 'DL96 · 2026-11-20';
+const BUILD_ID = 'DL98 · 2026-11-20';
 
 const DB_NAME = 'LabOpsCache';
 const DB_STORE = 'datasets';
@@ -12894,10 +12896,15 @@ async function xlDownload(wbPromise, fileName, btn) {
    time — a task scanned in Friday afternoon and out Monday morning includes the
    weekend — so the MEDIAN is the headline, with a same-day / next-day breakdown. */
 const ED_TZ = 'America/Chicago';
-const edFmtTime = d => d.toLocaleTimeString('en-US', { timeZone: ED_TZ, hour: 'numeric', minute: '2-digit' });
-const edFmtDay = d => d.toLocaleDateString('en-US', { timeZone: ED_TZ, weekday: 'short', month: 'short', day: 'numeric' });
-const edYmd = d => new Intl.DateTimeFormat('en-CA', { timeZone: ED_TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
-const edHourOf = d => Number(new Intl.DateTimeFormat('en-US', { timeZone: ED_TZ, hour: 'numeric', hourCycle: 'h23' }).format(d)) % 24;
+/* DL98: the formatters are built once — building one per call (thousands per page) was slow */
+const ED_FMT_TIME = new Intl.DateTimeFormat('en-US', { timeZone: ED_TZ, hour: 'numeric', minute: '2-digit' });
+const ED_FMT_DAY = new Intl.DateTimeFormat('en-US', { timeZone: ED_TZ, weekday: 'short', month: 'short', day: 'numeric' });
+const ED_FMT_YMD = new Intl.DateTimeFormat('en-CA', { timeZone: ED_TZ, year: 'numeric', month: '2-digit', day: '2-digit' });
+const ED_FMT_HOUR = new Intl.DateTimeFormat('en-US', { timeZone: ED_TZ, hour: 'numeric', hourCycle: 'h23' });
+const edFmtTime = d => ED_FMT_TIME.format(d);
+const edFmtDay = d => ED_FMT_DAY.format(d);
+const edYmd = d => ED_FMT_YMD.format(d);
+const edHourOf = d => Number(ED_FMT_HOUR.format(d)) % 24;
 const edTs = v => { if (!v) return null; const d = new Date(v); return isNaN(d) ? null : d; };
 function edDur(ms) {
   if (ms == null || !isFinite(ms)) return '—';
@@ -12938,6 +12945,61 @@ function edScanData(mine) {
              mean: p.durs.length ? p.durs.reduce((a, b) => a + b, 0) / p.durs.length : null, samePct: p.durs.length ? p.same / p.durs.length : null }))
              .sort((a, b) => b.units - a.units) };
 }
+/* ══ DL98: per day — scanned in but not out that day, scanned out but not in that day, and
+   tasks finished on a later day. Calendar days in Chicago time, from the scan timestamps (the
+   same rule as "Finished same day"). Built from ALL of the person's (or department's) scans, so a
+   task scanned in before the period but out during it still counts on its scan-out day. ══ */
+const ED_CARRY_COLS = [
+  ['in', 'Scanned in', 'Tasks scanned in that day'],
+  ['same', 'Done same day', 'Scanned in AND out that day'],
+  ['notOut', 'In, not out that day', 'Scanned in that day but not scanned out that day'],
+  ['later', '↳ finished later', 'Of those: scanned out on a later day (completed, not within the same day)'],
+  ['open', '↳ still open', 'Of those: not scanned out yet'],
+  ['outNotIn', 'Out, not in that day', 'Scanned out that day but scanned in on an earlier day'],
+  ['out', 'Scanned out', 'Tasks scanned out that day']];
+function edCarryData(tasks, lo, hi) {
+  const days = new Map(), mk = d => ({ day: d, ids: Object.fromEntries(ED_CARRY_COLS.map(([k]) => [k, []])) });
+  const get = d => days.get(d) || days.set(d, mk(d)).get(d), tot = mk('all');
+  const put = (x, k, t) => { x.ids[k].push(t); tot.ids[k].push(t); };
+  const dIn = t => t._di !== undefined ? t._di : (t._di = t.in ? edYmd(t.in) : null), dOut = t => t._do !== undefined ? t._do : (t._do = t.out ? edYmd(t.out) : null);
+  tasks.forEach(t => {
+    const di = dIn(t), dout = dOut(t);
+    if (di && di >= lo && di <= hi) { const x = get(di); put(x, 'in', t);
+      if (dout === di) put(x, 'same', t);
+      else { put(x, 'notOut', t); put(x, t.out || t.done ? 'later' : 'open', t); } }
+    if (dout && dout >= lo && dout <= hi) { const x = get(dout); put(x, 'out', t); if (di !== dout) put(x, 'outNotIn', t); }
+  });
+  const done = tasks.filter(t => t.in && t.out && dOut(t) >= lo && dOut(t) <= hi);
+  const across = done.filter(t => dIn(t) !== dOut(t)).length;
+  return { lo, hi, days: [...days.values()].sort((a, b) => a.day < b.day ? 1 : -1), tot, completed: done.length, across };
+}
+function edCarryFor(T, mine, perDays) {
+  const ymd = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  let lo = null, hi = null;
+  (perDays ? [...perDays] : mine.map(r => r.scan_in_date)).forEach(v => { const d = prodDate(v); if (!d) return; const k = ymd(d); if (!lo || k < lo) lo = k; if (!hi || k > hi) hi = k; });
+  if (!lo) return null;
+  const all = T ? PROD.rows.filter(T.want) : PROD.rows.filter(r => String(r.employee || '').trim() === PROD.employee);
+  const C = edCarryData(edScanData(all).tasks, lo, hi);
+  C.key = (T ? 'dept:' + T.dept : 'emp:' + PROD.employee) + '|' + lo + '|' + hi;
+  return C;
+}
+const edCarryDay = ymd => { const [y, m, d] = ymd.split('-').map(Number); return edFmtDay(new Date(Date.UTC(y, m - 1, d, 18))); };
+function edCarryHTML(C) {
+  if (!C || !C.days.length) return '';
+  const n = (x, k) => { const v = x.ids[k].length; return v ? `<button class="ed-cnum" data-cday="${esc(x.day)}" data-ck="${k}" title="Show these tasks in Every scan below">${v.toLocaleString()}</button>` : '<span class="text-mut">0</span>'; };
+  const cell = (x, k) => `<td style="padding:4px 6px;text-align:right${k === 'later' || k === 'open' ? ';background:rgba(245,158,11,.06)' : ''}">${n(x, k)}</td>`;
+  const pct = C.completed ? Math.round(C.across / C.completed * 100) : 0;
+  return `<div class="card" style="padding:14px;border:1px solid var(--line,#e6e9ee);border-radius:12px;margin-bottom:16px">
+      <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:4px">
+        <div style="font-weight:700">Day by day — same day vs. carried over</div>
+        <div class="text-mut" style="font-size:12px">${C.completed ? `${C.completed.toLocaleString()} tasks completed · <b>${(C.completed - C.across).toLocaleString()}</b> within the same day · <b style="color:#b45309">${C.across.toLocaleString()} (${pct}%)</b> not within the same day` : 'no tasks completed in this period'} · click a number to see the tasks</div></div>
+      <div style="max-height:340px;overflow:auto"><table class="tbl" id="edCarryTbl" style="width:100%;font-size:12.5px;border-collapse:collapse">
+        <thead><tr style="text-align:right;color:var(--mut)"><th style="padding:4px 6px;text-align:left">Day</th>${ED_CARRY_COLS.map(([k, l, tip]) => `<th style="padding:4px 6px;white-space:nowrap" title="${esc(tip)}">${l}</th>`).join('')}</tr></thead>
+        <tbody><tr style="font-weight:700;border-bottom:2px solid var(--line,#e6e9ee)"><td style="padding:4px 6px">All days</td>${ED_CARRY_COLS.map(([k]) => cell(C.tot, k)).join('')}</tr>
+        ${C.days.map(x => `<tr style="border-top:1px solid var(--line,#eef1f5)"><td style="padding:4px 6px;white-space:nowrap">${edCarryDay(x.day)}</td>${ED_CARRY_COLS.map(([k]) => cell(x, k)).join('')}</tr>`).join('')}</tbody></table></div>
+      <div class="text-mut" style="font-size:11.5px;margin-top:6px">“Out, not in that day” includes tasks scanned in before this period. A task completed without a scan-out time counts as finished later.</div>
+    </div>`;
+}
 function edScanHTML(D) {
   const card = 'class="card" style="padding:14px;border:1px solid var(--line,#e6e9ee);border-radius:12px"';
   const kpi = (l, v, sub) => `<div class="kpi-card" style="flex:1 1 140px;padding:10px 12px;border:1px solid var(--line,#e6e9ee);border-radius:10px">
@@ -12958,7 +13020,8 @@ function edScanHTML(D) {
         ${kpi('Scanned in', D.scannedIn.toLocaleString(), 'tasks')}
         ${kpi('Scanned out', D.scannedOut.toLocaleString(), 'tasks')}
         ${kpi('Still open', D.open.toLocaleString(), 'scanned in, not out')}
-      </div>`}
+      </div>
+      ${edCarryHTML(D.carry)}`}
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px">
         <div ${card.replace('class="card"', 'class="card ed-span2"')}>
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><div style="font-weight:700;flex:1">Product breakdown</div>
@@ -13032,8 +13095,10 @@ function edScanBind(D) {
   const COLS = [['day', 'Date'], ...(PROD.edDept ? [['who', 'Employee']] : []), ['product', 'Product'], ['task', 'Task'], ['in', 'Scanned in'], ['out', 'Scanned out'], ['ms', 'Time in → out']];
   const st = PROD.edScanSort || (PROD.edScanSort = { k: 'in', dir: -1, n: 50 });
   const val = (t, k) => k === 'in' || k === 'out' ? (t[k] ? +t[k] : -Infinity) : k === 'ms' ? (t.ms == null ? -Infinity : t.ms) : k === 'day' ? (+prodDate(t.day) || 0) : String(t[k] || '').toLowerCase();
+  const F = () => PROD.edScanFilter && D.carry && PROD.edScanFilter.key === D.carry.key ? PROD.edScanFilter : null;   // DL98
   const paint = () => {
-    const rows = D.tasks.slice().sort((a, b) => { const x = val(a, st.k), y = val(b, st.k); return (x > y ? 1 : x < y ? -1 : 0) * st.dir; });
+    const f = F();
+    const rows = (f ? f.tasks : D.tasks).slice().sort((a, b) => { const x = val(a, st.k), y = val(b, st.k); return (x > y ? 1 : x < y ? -1 : 0) * st.dir; });
     const shown = rows.slice(0, st.n);
     tbl.innerHTML = `<thead><tr style="text-align:left">${COLS.map(([k, l]) => `<th data-k="${k}" style="padding:5px 4px;cursor:pointer;white-space:nowrap">${l}${st.k === k ? (st.dir > 0 ? ' ▲' : ' ▼') : ''}</th>`).join('')}</tr></thead>
       <tbody>${shown.map(t => `<tr style="border-top:1px solid var(--line,#eef1f5)">
@@ -13043,15 +13108,41 @@ function edScanBind(D) {
         <td style="padding:4px;white-space:nowrap">${t.in ? edFmtDay(t.in) + ' · ' + edFmtTime(t.in) : '—'}</td>
         <td style="padding:4px;white-space:nowrap">${t.out ? edFmtDay(t.out) + ' · ' + edFmtTime(t.out) : (t.done ? 'completed' : '<span class="text-mut">open</span>')}</td>
         <td style="padding:4px;white-space:nowrap;font-weight:600">${edDur(t.ms)}</td></tr>`).join('')}</tbody>`;
-    const c = document.getElementById('edScanCount'); if (c) c.textContent = `${shown.length.toLocaleString()} of ${rows.length.toLocaleString()} tasks · click a heading to sort`;
+    const c = document.getElementById('edScanCount');
+    if (c) c.innerHTML = (f ? `<span style="display:inline-block;background:#fff7e6;border:1px solid #f5c97a;border-radius:999px;padding:2px 10px;margin-right:8px;color:#92400e">Showing: <b>${esc(f.label)}</b> <button class="btn-text" id="edScanClear" style="font-size:11.5px;padding:0 4px">✕ show all</button></span>` : '')
+      + `${shown.length.toLocaleString()} of ${rows.length.toLocaleString()} tasks · click a heading to sort`;
+    const clr = document.getElementById('edScanClear'); if (clr) clr.onclick = () => { PROD.edScanFilter = null; paint(); };
     const more = document.getElementById('edScanMore'); if (more) more.style.display = rows.length > shown.length ? '' : 'none';
     tbl.querySelectorAll('th[data-k]').forEach(th => th.addEventListener('click', () => { st.dir = st.k === th.dataset.k ? -st.dir : (th.dataset.k === 'in' || th.dataset.k === 'out' || th.dataset.k === 'ms' || th.dataset.k === 'day' ? -1 : 1); st.k = th.dataset.k; paint(); }));
   };
   paint();
   const more = document.getElementById('edScanMore'); if (more) more.addEventListener('click', () => { st.n += 100; paint(); });
+  document.querySelectorAll('#edCarryTbl .ed-cnum').forEach(b => b.addEventListener('click', () => {   // DL98
+    const C = D.carry, x = b.dataset.cday === 'all' ? C.tot : C.days.find(d => d.day === b.dataset.cday); if (!x) return;
+    const col = ED_CARRY_COLS.find(c => c[0] === b.dataset.ck);
+    PROD.edScanFilter = { key: C.key, tasks: x.ids[b.dataset.ck], label: (x.day === 'all' ? 'all days' : edCarryDay(x.day)) + ' · ' + col[1].replace('↳ ', '') };
+    PROD.edScanOpen = true; const body = document.getElementById('edScanBody'), car = document.getElementById('edScanCaret');
+    if (body) body.style.display = 'block'; if (car) car.textContent = '▾';
+    st.n = Math.max(st.n, 50); paint();
+    const tb = document.getElementById('edScanTbl'); if (tb) tb.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }));
 }
 // Excel: the scans, and time by product
+function xlEmployeeCarry(wb, e) {   // DL98
+  const C = e && e.carry; if (!C || !C.days.length) return;
+  const ws = wb.addWorksheet('Same day vs carried over');
+  ws.columns = [{ width: 14 }, ...ED_CARRY_COLS.map(() => ({ width: 17 }))];
+  let r = xlTitle(ws, (e.employee || '') + ' — same day vs. carried over',
+    C.completed + ' tasks completed · ' + (C.completed - C.across) + ' within the same day · ' + C.across + ' not within the same day · Chicago calendar days', null);
+  xlHeader(ws, r, ['Day', ...ED_CARRY_COLS.map(c => c[1].replace('↳ ', '   '))]);
+  const line = (lbl, x, bold) => { r++; const row = ws.getRow(r); row.values = [lbl, ...ED_CARRY_COLS.map(([k]) => x.ids[k].length)];
+    if (bold) row.font = { bold: true }; for (let i = 2; i <= ED_CARRY_COLS.length + 1; i++) row.getCell(i).numFmt = '#,##0'; return row; };
+  line('All days', C.tot, true);
+  C.days.forEach(x => { const [y, m, d] = x.day.split('-').map(Number); const row = line(new Date(Date.UTC(y, m - 1, d)), x); row.getCell(1).numFmt = 'ddd m/d/yyyy'; });
+  ws.views = [{ state: 'frozen', ySplit: r - C.days.length - 1 }];
+}
 function xlEmployeeScans(wb, e, D) {
+  xlEmployeeCarry(wb, e);   // DL98
   if (!D.scannedIn) return;
   // Excel stores a date as UTC — so write the CHICAGO wall-clock time as the UTC fields
   const tz = d => { if (!d) return null;
@@ -13501,6 +13592,8 @@ async function renderEmployeeDetail() {
     byStation[k] = (byStation[k] || 0) + prodNum(r.total_units); });
   const stations = Object.entries(byStation).sort((a,b) => b[1]-a[1]);
   const ED_SCAN = edScanData(mineP);   // DL74: scan in → scan out · DL90: over the period
+  ED_SCAN.carry = edCarryFor(T, mine, perDays);   // DL98: same day vs. carried over, per day
+  e.carry = ED_SCAN.carry;
 
   el.innerHTML = `
     <div class="section-header">
@@ -15817,10 +15910,18 @@ async function secSignOut() {
    buttons, and any download that still gets started is stopped and logged. What is on
    screen can still be read or photographed — the access log records every data pull. */
 function secViewOnly() { return !!(pgUser && SEC.role && SEC.role !== 'admin'); }
+/* DL97: production logins may download from the Employee Grid and Employee Detail tabs only.
+   A download counts as theirs when it starts from a click inside one of those two pages; the file
+   it names is then allowed for 2 minutes (an Excel report takes a few seconds to build). */
+const SEC_DL_PANELS = '#panel-empgrid, #panel-empdetail';
+const SEC_DL_OK = new Map();
+document.addEventListener('click', e => { const t = e.target; SEC.dlClickAt = t && t.closest && t.closest(SEC_DL_PANELS) ? Date.now() : 0; }, true);
 function secExportGate(what) {
   if (!secViewOnly()) return true;
-  toast('Exports are available to admins only', 'err');
-  secLog('export_blocked', { what: String(what || '').slice(0, 120) });
+  const key = String(what || ''), now = Date.now();
+  if ((SEC.dlClickAt && now - SEC.dlClickAt < 3000) || (SEC_DL_OK.has(key) && now - SEC_DL_OK.get(key) < 120e3)) { SEC_DL_OK.set(key, now); return true; }
+  toast('Production logins can download from Employee Grid and Employee Detail only', 'err');
+  secLog('export_blocked', { what: key.slice(0, 120) });
   return false;
 }
 const SEC_EXPORT_KEEP = new Set(['sbLabPull']);   // ⬇ buttons that load data rather than download it
@@ -15828,6 +15929,7 @@ const SEC_ADMIN_BTNS = new Set(['btnSaveData', 'btnAddData', 'btnNewUpload', 'sb
 function secIsExportBtn(b) {
   if (!b || SEC_EXPORT_KEEP.has(b.id)) return false;
   if (SEC_ADMIN_BTNS.has(b.id)) return true;
+  if (b.closest && b.closest(SEC_DL_PANELS)) return false;   // DL97: their downloads stay
   if (b.classList.contains('dm-export') || b.classList.contains('coach-csv') || b.classList.contains('pm-dl')) return true;
   return /^\s*⬇/.test(b.textContent || '');
 }
@@ -15878,7 +15980,7 @@ function secApplyRole() {
   if (ro) {
     if (!pill) {
       pill = document.createElement('span'); pill.id = 'secRolePill';
-      pill.title = 'Production login: view-only. Case numbers, tooth, shade, hold and remake details are hidden. Exports are for admins.';
+      pill.title = 'Production login: view-only. Case numbers, tooth, shade, hold and remake details are hidden. Downloads: Employee Grid and Employee Detail only.';
       pill.style.cssText = 'display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:999px;background:#eef2ff;color:#3730a3;margin-left:8px;white-space:nowrap';
       pill.textContent = '👁 View-only';
       const host = document.querySelector('.topbar .brand-row') || document.querySelector('.topbar h1') || document.querySelector('.topbar');
@@ -15910,7 +16012,7 @@ if (document.body) secWatch(); else document.addEventListener('DOMContentLoaded'
     };
     document.addEventListener('click', e => {
       const a = e.target && e.target.closest && e.target.closest('a[download], a[href^="blob:"], a[href^="data:"]');
-      if (a && secViewOnly()) { e.preventDefault(); e.stopImmediatePropagation(); secExportGate(a.getAttribute('download') || 'file'); }
+      if (a && secViewOnly() && !secExportGate(a.getAttribute('download') || 'file')) { e.preventDefault(); e.stopImmediatePropagation(); }
     }, true);
   } catch (e) {}
 })();
@@ -19439,7 +19541,7 @@ async function pgPaintAuth() {
     secPaintMfa(box.querySelector('#secMfaLine'));   // DL94: the step-by-step guide until it's on
     if (!SEC.info) await secRefresh(PG);
     if (SEC.role === 'admin') secPaintAdmin(box.querySelector('#secAdminBox'));
-    else if (secViewOnly()) box.querySelector('#secAdminBox').innerHTML = '<div class="sb-hint" style="margin-top:8px">👁 Production login — view-only. Case numbers, tooth, shade, hold and remake details are hidden. Exports are for admins.</div>';
+    else if (secViewOnly()) box.querySelector('#secAdminBox').innerHTML = '<div class="sb-hint" style="margin-top:8px">👁 Production login — view-only. Case numbers, tooth, shade, hold and remake details are hidden. Downloads: Employee Grid and Employee Detail only.</div>';
     secApplyRole();
     return;
   }
