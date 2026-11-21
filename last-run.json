@@ -1,5 +1,5 @@
 {
-  "ran_at": "2026-11-21T13:34:05.717Z",
+  "ran_at": "2026-11-21T19:22:59.582Z",
   "ok": true,
   "dry_run": false,
   "days": [
@@ -16,8 +16,8 @@
     "layout": "new (with credits)"
   },
   "production": {
-    "fetched": 19,
-    "loaded": 19
+    "fetched": 27,
+    "loaded": 27
   },
   "production_days": [
     "2026-11-08",
