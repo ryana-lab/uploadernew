@@ -6,9 +6,31 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script>
+/* DL100: phone-friendly rendering, decided before anything is drawn.
+   ui-lite: phones/tablets (touch, no hover) and narrow screens → glass without live blur.
+   ui-safe: if this device started the page twice in a row without the dashboard surviving
+   8 seconds on screen (the browser restarting a crashed page), the next start drops blur,
+   motion and the background mark for a week. A deliberate reload is marked as fine first. */
+(function () {
+  var html = document.documentElement, now = Date.now(), K = 'ui_boot_v1';
+  var touch = false, narrow = false;
+  try { touch = matchMedia('(hover: none) and (pointer: coarse)').matches; narrow = matchMedia('(max-width: 900px)').matches; } catch (e) {}
+  if (touch || narrow) html.classList.add('ui-lite');
+  var st = null; try { st = JSON.parse(localStorage.getItem(K) || 'null'); } catch (e) {}
+  if (!st || typeof st !== 'object') st = { n: 0, t: 0, ok: true, safeUntil: 0 };
+  if (!st.ok && now - st.t < 180000) st.n = (st.n || 0) + 1; else st.n = 0;
+  if ((touch || narrow) && st.n >= 2) st.safeUntil = now + 7 * 864e5;
+  if (st.safeUntil > now) html.classList.add('ui-safe', 'ui-lite');
+  st.t = now; st.ok = false;
+  try { localStorage.setItem(K, JSON.stringify(st)); } catch (e) {}
+  window.uiBootOk = function () { try { var s2 = JSON.parse(localStorage.getItem(K) || '{}'); s2.ok = true; s2.n = 0; localStorage.setItem(K, JSON.stringify(s2)); } catch (e) {} };
+  window.uiBootSafe = function (on) { try { var s3 = JSON.parse(localStorage.getItem(K) || '{}'); s3.safeUntil = on ? Date.now() + 7 * 864e5 : 0; s3.ok = true; s3.n = 0; localStorage.setItem(K, JSON.stringify(s3)); } catch (e) {} };
+})();
+</script>
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; font-src 'self' data:; img-src 'self' data: blob: https://cdn.jsdelivr.net https://maps.geoapify.com; connect-src 'self' https://hfzizrzqrneuciykpuez.supabase.co wss://hfzizrzqrneuciykpuez.supabase.co https://api.geocod.io https://api.geoapify.com https://api.openrouteservice.org https://nominatim.openstreetmap.org; frame-src https://www.google.com https://maps.google.com; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'self'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
-<title>Lab Sales Dashboard v2026.11.21-DL99</title>
+<title>Lab Sales Dashboard v2026.11.22-DL100</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js" integrity="sha384-D/t0ZMqQW31H3az8ktEiNb39wyKnS82iFY52QPACM+IjKW3jDUhyIgh2PApRqJZs" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js" integrity="sha384-dug+JxfBvklEQdJ4AYuBBAIScUz0bVN73xpy273gcAwHjb3qI0fXmuYNaNfdyYJG" crossorigin="anonymous"></script>
@@ -1757,6 +1779,27 @@ html.m .detail-name { font-size: 22px; }
 html.m.m-forced body { max-width: 480px; margin: 0 auto; }
 html.m.m-forced .m-bar, html.m.m-forced .content { max-width: 480px; }
 html.m.m-forced .topbar { left: max(10px, calc(50vw - 230px)); right: max(10px, calc(50vw - 230px)); }
+
+/* ══ DL100: phones and tablets get the glass look WITHOUT live blur. Live blur on dozens of
+   large panels (plus blur in the entrance) ran phone browsers out of graphics memory, and
+   the browser kept restarting the page. Same colours, light and edges — just no blur.
+   "Safe mode" (html.ui-safe, switched on automatically if a device keeps restarting the
+   page) also drops the motion and the background mark. ══ */
+.grid-table thead th { -webkit-backdrop-filter: none; backdrop-filter: none; background: rgba(243,249,250,.97); }
+@keyframes uiRiseLite { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+html.ui-lite { --glass: rgba(255,255,255,.82); --glass-strong: rgba(255,255,255,.92); }
+html.ui-lite *, html.ui-lite *::before, html.ui-lite *::after { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
+html.ui-lite .rv-item { animation-name: uiRiseLite; animation-duration: .5s; }
+html.ui-lite .progress-overlay { background: rgba(226,240,243,.86); }
+html.ui-lite .dm-overlay, html.ui-lite .crm-ov, html.ui-lite .m-scrim { background: rgba(16,44,52,.4); }
+html.ui-lite .dm, html.ui-lite .crm-box { background: rgba(255,255,255,.97); }
+@media (hover: none) and (pointer: coarse) {
+  :root { --glass: rgba(255,255,255,.82); --glass-strong: rgba(255,255,255,.92); }
+  *, *::before, *::after { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
+  .rv-item { animation-name: uiRiseLite; animation-duration: .5s; }
+}
+html.ui-safe .bg-field { display: none; }
+html.ui-safe .rv-item, html.ui-safe #dashboard.ui-enter .sidebar, html.ui-safe #dashboard.ui-enter .topbar, html.ui-safe .tab-panel.ui-soft { animation: none !important; }
 </style>
 </head>
 <body>
@@ -2021,8 +2064,10 @@ const CHART_PALETTE = BRAND.cat;   // kept for older call sites — always index
    One entrance per page view: panels rise and come into focus in reading order, the
    headline numbers count up, and charts grow from their baseline a beat later.
    Re-drawing after a filter change only cross-fades. Reduced-motion turns it all off. */
-const UI = { revealAt: 0, reduced: false, pendingEnter: false, switching: false, watch: null };
+const UI = { revealAt: 0, reduced: false, pendingEnter: false, switching: false, watch: null, lite: false };
 try { UI.reduced = matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) {}
+UI.lite = document.documentElement.classList.contains('ui-lite');                       // DL100
+if (document.documentElement.classList.contains('ui-safe')) UI.reduced = true;          // DL100: safe mode = no motion
 const UI_RV_SEL = '.section-header, .kpi-row > *, .kpi, .kpi-ontime, .card, .grid-table-wrap, .info-bar';
 function uiChartAnimation() {
   if (UI.reduced) return false;
@@ -2069,6 +2114,7 @@ function uiReveal(panel) {
   const items = all.filter(el => { for (let p = el.parentElement; p && p !== panel; p = p.parentElement) if (set.has(p)) return false; return el.offsetParent !== null; })
     .map(el => [el, el.getBoundingClientRect()]).filter(([, r]) => r.top < vh + 60 && r.bottom > -40);
   items.sort((a, b) => (Math.round(a[1].top / 28) - Math.round(b[1].top / 28)) || (a[1].left - b[1].left));
+  if (UI.lite) items.splice(8);   // DL100: phones animate the first screenful only
   items.forEach(([el], i) => uiAnimate(el, i));
   uiCountUp(panel);
   // whatever arrives a moment later (data still loading) joins the sequence
@@ -2107,6 +2153,7 @@ function uiSoft(panel) {
   setTimeout(() => panel.classList.remove('ui-soft'), 400);
 }
 function uiEnter(panel) {
+  setTimeout(() => { if (window.uiBootOk) uiBootOk(); }, 8000);   // DL100: this start survived
   const d = document.getElementById('dashboard');
   if (d && !UI.reduced) { d.classList.add('ui-enter'); setTimeout(() => d.classList.remove('ui-enter'), 1300); }
   uiReveal(panel);
@@ -2507,7 +2554,7 @@ const APP = {
 
 /* Bump when normalization logic changes, so it's possible to tell at a glance
    (bottom of the Avg Turnaround card) which build a browser is running. */
-const BUILD_ID = 'DL99 · 2026-11-21';
+const BUILD_ID = 'DL100 · 2026-11-22';
 
 const DB_NAME = 'LabOpsCache';
 const DB_STORE = 'datasets';
@@ -4687,7 +4734,7 @@ function initDashboard() {
   // Bind topbar actions
   document.getElementById('btnNewUpload').addEventListener('click', () => {
     if (confirm('Load a different dataset? Current data will remain cached.')) {
-      location.reload();
+      if (window.uiBootOk) uiBootOk(); location.reload();
     }
   });
 
@@ -16286,7 +16333,7 @@ async function secSignOut() {
   window.__pgSigningOut = true;
   if (db) { try { await db.auth.signOut({ scope: 'local' }); } catch (e) {} }
   try { sessionStorage.setItem('dash_signed_out', '1'); } catch (e) {}
-  location.reload();
+  if (window.uiBootOk) uiBootOk(); location.reload();
 }
 /* ── DL93: roles in the page — admins export; production logins are view-only ─────
    The database is what actually protects case details (they never reach a production
@@ -16577,7 +16624,7 @@ async function pgDashTimeout() {
   if (db) { try { await db.auth.signOut({ scope: 'local' }); } catch (e) {} }
   /* DL92: nothing stays on screen — the page reloads to the sign-in box. The encrypted saved
      copy stays, unreadable, until the next sign-in (so that's still instant). */
-  if (!window.__secNoReload) { try { sessionStorage.setItem('dash_timeout', '1'); } catch (e) {} location.reload(); return; }
+  if (!window.__secNoReload) { try { sessionStorage.setItem('dash_timeout', '1'); } catch (e) {} if (window.uiBootOk) uiBootOk(); location.reload(); return; }
   window.__pgSigningOut = false;
   pgUser = null; pgReset(); PG_DASH.sid = null; PG_DASH.expMs = null;
   try { if (typeof PROD !== 'undefined' && PROD) PROD.error = PG_SESSION_MSG; } catch (e) {}
@@ -16629,7 +16676,7 @@ async function secMfaGate(db) {
     window.__pgSigningOut = true;
     try { await db.auth.signOut({ scope: 'local' }); } catch (e) {}
     try { sessionStorage.setItem('dash_mfa_needed', '1'); } catch (e) {}
-    if (!window.__secNoReload) location.reload();
+    if (!window.__secNoReload) { if (window.uiBootOk) uiBootOk(); location.reload(); }
   } finally { SEC.gating = false; }
 }
 /* Every 30 s, and the moment the tab or window comes back (timers sleep with the PC). */
@@ -21672,7 +21719,7 @@ function prPaint() {
       setTimeout(check, 30000); return;
     }
     try{ if(typeof toast === "function") toast("Updating to " + server + "…"); }catch(_){}
-    setTimeout(function(){ location.replace(location.pathname + "?b=" + encodeURIComponent(server)); }, 700);
+    setTimeout(function(){ try{ if(window.uiBootOk) uiBootOk(); }catch(_){} location.replace(location.pathname + "?b=" + encodeURIComponent(server)); }, 700);
   }
 
   function maybeCheck(){
