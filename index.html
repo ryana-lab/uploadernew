@@ -24,13 +24,23 @@
   if (st.safeUntil > now) html.classList.add('ui-safe', 'ui-lite');
   st.t = now; st.ok = false;
   try { localStorage.setItem(K, JSON.stringify(st)); } catch (e) {}
-  window.uiBootOk = function () { try { var s2 = JSON.parse(localStorage.getItem(K) || '{}'); s2.ok = true; s2.n = 0; localStorage.setItem(K, JSON.stringify(s2)); } catch (e) {} };
+  /* DL101: a phone that didn't finish loading twice in a row waits for a tap on the next start
+     instead of downloading everything again (the browser would just restart it again). Leaving
+     the page or switching apps counts as a clean exit — only a page that dies mid-load counts. */
+  window.uiBootPrev = st.n;
+  window.uiBootHold = (touch || narrow) && st.n >= 2;
+  var bootDone = false;
+  function setOk(v) { try { var s2 = JSON.parse(localStorage.getItem(K) || '{}'); s2.ok = v; if (v) s2.n = 0; else s2.t = Date.now(); localStorage.setItem(K, JSON.stringify(s2)); } catch (e) {} }
+  window.uiBootOk = function () { bootDone = true; setOk(true); };
+  window.uiBootPending = function () { if (!bootDone) setOk(false); };
+  addEventListener('pagehide', function () { setOk(true); });
+  document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'hidden') setOk(true); else if (!bootDone) setOk(false); });
   window.uiBootSafe = function (on) { try { var s3 = JSON.parse(localStorage.getItem(K) || '{}'); s3.safeUntil = on ? Date.now() + 7 * 864e5 : 0; s3.ok = true; s3.n = 0; localStorage.setItem(K, JSON.stringify(s3)); } catch (e) {} };
 })();
 </script>
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; font-src 'self' data:; img-src 'self' data: blob: https://cdn.jsdelivr.net https://maps.geoapify.com; connect-src 'self' https://hfzizrzqrneuciykpuez.supabase.co wss://hfzizrzqrneuciykpuez.supabase.co https://api.geocod.io https://api.geoapify.com https://api.openrouteservice.org https://nominatim.openstreetmap.org; frame-src https://www.google.com https://maps.google.com; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'self'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
-<title>Lab Sales Dashboard v2026.11.22-DL100</title>
+<title>Lab Sales Dashboard v2026.11.22-DL101</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js" integrity="sha384-D/t0ZMqQW31H3az8ktEiNb39wyKnS82iFY52QPACM+IjKW3jDUhyIgh2PApRqJZs" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js" integrity="sha384-dug+JxfBvklEQdJ4AYuBBAIScUz0bVN73xpy273gcAwHjb3qI0fXmuYNaNfdyYJG" crossorigin="anonymous"></script>
@@ -2153,7 +2163,11 @@ function uiSoft(panel) {
   setTimeout(() => panel.classList.remove('ui-soft'), 400);
 }
 function uiEnter(panel) {
-  setTimeout(() => { if (window.uiBootOk) uiBootOk(); }, 8000);   // DL100: this start survived
+  const at = Math.round(performance.now() / 1000);
+  setTimeout(() => {   // DL100: this start survived · DL101: and a phone says so in the access log
+    if (window.uiBootOk) uiBootOk();
+    if (uiTouchDevice()) secLog('phone_loaded', uiDeviceInfo({ secs: at, rows: (APP.raw || []).length, after_restarts: window.uiBootPrev || 0 }));
+  }, 8000);
   const d = document.getElementById('dashboard');
   if (d && !UI.reduced) { d.classList.add('ui-enter'); setTimeout(() => d.classList.remove('ui-enter'), 1300); }
   uiReveal(panel);
@@ -2277,6 +2291,56 @@ function parseDate(s) {
   if (iso) return iso;
   const d = new Date(s);
   return isNaN(d) ? null : d;
+}
+
+/* ══ DL101: one copy of each repeated value ═══════════════════════════════════
+   208k invoice lines repeat the same few thousand doctors, practices, products,
+   cities and dates, but every line arrived as its own set of text values — about
+   7 million of them, kept twice (the raw line and the cleaned-up record). That was
+   300+ MB, enough for a phone to kill the page right after it loaded, and Safari
+   then reloaded it: the "keeps reloading" loop. Now each distinct value is kept
+   once and every line points at it. Case numbers are nearly unique, so they're
+   left as they are. Dates are shared the same way (nothing changes a row's date in
+   place — every date calculation works on a copy). */
+const STR_POOL = new Map();
+function strIntern(s) {
+  if (typeof s !== 'string' || s.length > 160) return s;
+  const v = STR_POOL.get(s); if (v !== undefined) return v;
+  STR_POOL.set(s, s); return s;
+}
+function internRows(rows) {
+  if (!rows || rows.__interned) return rows;
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i]; if (!r || typeof r !== 'object') continue;
+    for (const k in r) { const v = r[k]; if (typeof v === 'string' && k !== 'Case_Number') r[k] = strIntern(v); }
+  }
+  try { Object.defineProperty(rows, '__interned', { value: true, configurable: true }); } catch (e) {}
+  return rows;
+}
+function uiTouchDevice() { try { return matchMedia('(hover: none) and (pointer: coarse)').matches; } catch (e) { return false; } }
+function uiDeviceInfo(extra) {
+  const o = { ua: String(navigator.userAgent || '').slice(0, 160) };
+  try { if (navigator.deviceMemory) o.mem_gb = navigator.deviceMemory; o.screen = screen.width + 'x' + screen.height; } catch (e) {}
+  return Object.assign(o, extra || {});
+}
+function uiBootHoldPrompt() {
+  return new Promise(resolve => {
+    try { hideProgress(); } catch (e) {}
+    const m = secModal(`<div style="font-size:17px;font-weight:700;margin-bottom:6px">Loading paused</div>
+      <div style="font-size:13.5px;line-height:1.5;color:var(--text-muted,#5c7179);margin-bottom:14px">This phone stopped before the dashboard finished loading the last two times. The browser restarts the page when a phone runs low on memory. The dashboard now needs much less, so it should load this time.</div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap"><button class="btn-text" id="uiHoldNo">Not now</button><button class="sb-btn-primary" id="uiHoldGo">Load the dashboard</button></div>
+      <div style="font-size:11.5px;color:var(--text-muted,#5c7179);margin-top:12px">If it stops again, use a computer for now.</div>`, 400);
+    m.querySelector('#uiHoldGo').onclick = () => { m.remove(); window.uiBootHold = false; if (window.uiBootPending) uiBootPending(); resolve(true); };
+    m.querySelector('#uiHoldNo').onclick = () => { m.remove(); if (window.uiBootOk) uiBootOk(); resolve(false); };
+  });
+}
+const RAW_PHONE_MSG = 'On a phone the dashboard keeps only what it shows, so it has room to run. Use a computer to export, save or add data.';
+const DATE_POOL = new Map();
+function parseDateShared(s) {
+  if (!s || s instanceof Date) return parseDate(s);
+  const k = String(s); let d = DATE_POOL.get(k);
+  if (d === undefined) { d = parseDate(k); DATE_POOL.set(k, d); }
+  return d;
 }
 
 function isoDate(d) {
@@ -2554,7 +2618,7 @@ const APP = {
 
 /* Bump when normalization logic changes, so it's possible to tell at a glance
    (bottom of the Avg Turnaround card) which build a browser is running. */
-const BUILD_ID = 'DL100 · 2026-11-22';
+const BUILD_ID = 'DL101 · 2026-11-22';
 
 const DB_NAME = 'LabOpsCache';
 const DB_STORE = 'datasets';
@@ -2713,11 +2777,18 @@ function finishIngest(rawRows, fileName, freshUpload) {
     }
   } catch (e) { /* fall through and treat it as an invoice file */ }
   try {
+    internRows(rawRows);                   // DL101: CSV uploads and saved copies too (database pages already are)
     const records = normalizeRecords(rawRows);
     APP.raw = records;
     // Keep the original raw rows (pre-normalization) so we can re-export the full
     // merged CSV and so "Add Data" can merge new rows by Case_Number.
     APP.rawRows = rawRows;
+    /* DL101: a phone showing the database's data keeps only the cleaned-up records. The raw
+       lines exist for Export All, Save to browser, Add Data and pushing a fresh upload — all
+       computer jobs — and the encrypted saved copy needs several full copies in memory while
+       it's being made, which is exactly what a phone runs out of. */
+    const phoneLean = !freshUpload && uiTouchDevice();
+    APP.rawDropped = false;
     APP.meta = {
       fileName: fileName,
       // a saved copy keeps the time it was really loaded — reports use it to
@@ -2728,7 +2799,7 @@ function finishIngest(rawRows, fileName, freshUpload) {
     APP._restoredAt = null;
     // Cache to IndexedDB (store CSV text for max compatibility — we re-normalize on load)
     // For very large files we cache only if reasonable
-    if (records.length <= 200000) {
+    if (records.length <= 200000 && !phoneLean) {
       // Reconstruct compact CSV from the original via Papa.unparse would be slow; cache the parsed rows instead
       // Store the database fingerprint alongside the rows, so the next visit can
       // spot a newer sync. Empty when the data came from a plain CSV upload.
@@ -2744,6 +2815,7 @@ function finishIngest(rawRows, fileName, freshUpload) {
         }, 1200);
       }
     }
+    if (phoneLean) { APP.rawRows = null; APP.rawDropped = true; rawRows = null; }
     showProgress('Building views', 96, records.length.toLocaleString() + ' rows', '96%');
     setTimeout(() => {
       initDashboard();
@@ -3384,9 +3456,9 @@ function normalizeRecords(rows) {
       if (isFinanceCharge(productRaw, amt, cval)) { FIN_DROPPED.lines++; FIN_DROPPED.amount += amt; continue; }
       if (isOpeningBalance(productRaw, amt, cval)) { OB_DROPPED.lines++; OB_DROPPED.amount += amt; continue; } }
 
-    const invDate = parseDate(fv(r, F.invoiceDate));
-    const recDate = parseDate(fv(r, F.receivedDate));
-    const shipDate = parseDate(fv(r, F.shippedDate));
+    const invDate = parseDateShared(fv(r, F.invoiceDate));   // DL101: one Date per distinct day
+    const recDate = parseDateShared(fv(r, F.receivedDate));
+    const shipDate = parseDateShared(fv(r, F.shippedDate));
     // Due date — from the `dd` column. Classify each case's invoice timing against
     // its promised due date by calendar day:
     //   early   = invoiced strictly before the due date (green)
@@ -3394,7 +3466,7 @@ function normalizeRecords(rows) {
     //   late    = invoiced strictly after the due date (red)
     // Comparison is by date only, not time, so timestamps within the same day
     // are still considered on-time.
-    const dueDate = parseDate(fv(r, F.dueDate));
+    const dueDate = parseDateShared(fv(r, F.dueDate));
     /* onTimeStatus is NO LONGER derived from the due date. The `dd` column is
        unreliable in the current export, which made early/on-time/late
        meaningless. It is now set in a second pass below, comparing each case's
@@ -3522,39 +3594,39 @@ function normalizeRecords(rows) {
       shipped: shipDate,
       // Use the latest meaningful date for filtering — invoice if present, else received
       anchorDate: invDate || recDate,
-      anchorIso: isoDate(invDate || recDate),
-      anchorMonth: monthKey(invDate || recDate),
+      anchorIso: strIntern(isoDate(invDate || recDate)),   // DL101: shared values (see strIntern)
+      anchorMonth: strIntern(monthKey(invDate || recDate)),
       daysOnHold,
       onHoldReason: onHoldReasonRaw || '',
       onHold,
       tooth: fv(r, F.tooth) || '',
       shade: fv(r, F.shade) || '',
-      drFirst: firstName,
-      drLast: lastName,
-      drName,
-      drId: doctorId,
+      drFirst: strIntern(firstName),
+      drLast: strIntern(lastName),
+      drName: strIntern(drName),
+      drId: strIntern(doctorId),
       // Practice name (from `pracname` column) — the dental practice the
       // doctor works at. Read with fallbacks in case the column name varies
       // across CSV exports.
       // canonLabel folds spelling variants of the same location together
       // ("Hl Carus Dental -  Brodie Lane" vs "... - Brodie Lane")
-      practice: canonLabel(titleCase(stripPracticeStateCode(practiceRaw))),
+      practice: strIntern(canonLabel(titleCase(stripPracticeStateCode(practiceRaw)))),
       group: dentalGroupOf(practiceRaw),
-      email,
-      phone,
+      email: strIntern(email),
+      phone: strIntern(phone),
       address: fv(r, F.address) || '',
-      city: titleCase(fv(r, F.city) || ''),
-      state: stateName,
-      stateAbbr: stateA,
-      product,
-      productOrig,                       // the name the software gave it, when relabelled as a bridge
+      city: strIntern(titleCase(fv(r, F.city) || '')),
+      state: strIntern(stateName),
+      stateAbbr: strIntern(stateA),
+      product: strIntern(product),
+      productOrig: strIntern(productOrig),                       // the name the software gave it, when relabelled as a bridge
       productCat: productCategory(product),
       productId: fv(r, F.productId) || '',
       qty,
       unitPrice,
       netCost,
       grossCost, creditAmount, creditType, creditValue,   // DL77: credits, case by case
-      scanner: normalizeScanner(fv(r, F.scanner)),
+      scanner: strIntern(normalizeScanner(fv(r, F.scanner))),
       // Legacy header is Transaction_type, Query Studio uses Transaction_Type
       transactionType: fv(r, F.transactionType) || '',
       // remakes count on MAIN products only (not shipping, fees, processing…)
@@ -3563,9 +3635,9 @@ function normalizeRecords(rows) {
       mainProduct: isMainProduct(product),
       rmQty: isMainProduct(product) ? qty : 0,   // the units a remake rate is divided by
       productRemake,
-      remakeReason: canonRemakeReason(fv(r, F.remakeReason)),
+      remakeReason: strIntern(canonRemakeReason(fv(r, F.remakeReason))),
       // Full original wording, kept for case-level tables and exports
-      remakeReasonText: String(fv(r, F.remakeReason) || '').trim(),
+      remakeReasonText: strIntern(String(fv(r, F.remakeReason) || '').trim()),
       /* Remake_Quantity (legacy) was only populated on actual remake rows.
          Its Query Studio counterpart, Remake_Qty, is populated on EVERY row
          and simply mirrors Quantity — it is 1:1 with Quantity across the whole
@@ -4191,10 +4263,14 @@ function makeChart(canvasId, config) {
 
 function toast(msg, ms) {
   const t = document.getElementById('toast');
+  /* DL101: many callers pass a kind ('err', 'ok') here. It used to be read as the duration,
+     so those messages disappeared the instant they appeared. Long messages stay longer. */
+  let dur = typeof ms === 'number' ? ms : 0;
+  if (!(dur > 0)) dur = Math.max(2600, Math.min(7000, String(msg == null ? '' : msg).length * 55));
   t.textContent = msg;
   t.classList.add('show');
   clearTimeout(t._h);
-  t._h = setTimeout(() => t.classList.remove('show'), ms || 2600);
+  t._h = setTimeout(() => t.classList.remove('show'), dur);
 }
 
 /* ──────────────────────────────────────────
@@ -4557,6 +4633,7 @@ async function checkCache() {
       else {
         if (!SEC.info) await secRefresh(PG);
         secApplyRole();
+        if (window.uiBootPrev > 0) secLog('page_restarted', uiDeviceInfo({ times: window.uiBootPrev }));   // DL101
         cached = await dbGet();
       }
     }
@@ -4581,6 +4658,7 @@ async function checkCache() {
       } else {
         await pgSession();
         if (pgUser) {
+          if (window.uiBootHold && !(await uiBootHoldPrompt())) return;   // DL101
           const r = await labPullAll({ diagnose: true });
           if (r === true) return;
           dbBootNote(r || 'Signed in, but no invoices were returned.');
@@ -4740,6 +4818,7 @@ function initDashboard() {
 
   // Save: explicitly persist the current rawRows to IndexedDB
   document.getElementById('btnSaveData').addEventListener('click', async () => {
+    if (APP.rawDropped) { toast(RAW_PHONE_MSG, 'err'); return; }   // DL101
     if (!APP.rawRows || !APP.rawRows.length) { toast('No data to save'); return; }
     toast('Saving ' + APP.rawRows.length.toLocaleString() + ' rows…');
     try {
@@ -4752,6 +4831,7 @@ function initDashboard() {
 
   // Export All: dump the merged raw dataset (preserves original columns/values)
   document.getElementById('btnExportAll').addEventListener('click', () => {
+    if (APP.rawDropped) { toast(RAW_PHONE_MSG, 'err'); return; }   // DL101
     if (!APP.rawRows || !APP.rawRows.length) { toast('No data to export'); return; }
     if (!secExportGate('lab_dashboard_full_dataset.csv')) return;   // DL93: admins only
     secLog('export', { file: 'lab_dashboard_full_dataset.csv', rows: APP.rawRows.length });   // DL92
@@ -4769,7 +4849,7 @@ function initDashboard() {
   // Add Data: read a CSV, merge it into the existing rawRows by Case_Number,
   // re-normalize and re-render.
   const addFi = document.getElementById('addFileInput');
-  document.getElementById('btnAddData').addEventListener('click', () => addFi.click());
+  document.getElementById('btnAddData').addEventListener('click', () => { if (APP.rawDropped) { toast(RAW_PHONE_MSG, 'err'); return; } addFi.click(); });   // DL101
   addFi.addEventListener('change', (e) => {
     const file = e.target.files && e.target.files[0];
     if (!file) return;
@@ -4797,6 +4877,7 @@ function initDashboard() {
             addFi.value = '';
             return;
           }
+          if (APP.rawDropped) { hideProgress(); toast(RAW_PHONE_MSG, 'err'); addFi.value = ''; return; }   // DL101: never merge into an empty set
           const { merged, added, replaced } = mergeRows(APP.rawRows || [], res.data);
           APP.rawRows = merged;
           showProgress('Merging', 60, added.toLocaleString() + ' new rows', '60%');
@@ -16066,7 +16147,9 @@ async function labPullAll(opts) {
       if (error) throw new Error(error.message);
       const got = (data && data.rows) || [];
       if (!got.length) break;
-      for (let i = 0; i < got.length; i++) rows.push(got[i]);
+      for (let i = 0; i < got.length; i++) { const g = got[i];   // DL101: shared values, page by page, so the download never holds 7M copies
+        if (g && typeof g === 'object') for (const k in g) { const v = g[k]; if (typeof v === 'string' && k !== 'Case_Number') g[k] = strIntern(v); }
+        rows.push(g); }
       after = Number(data.last_id) || after;
       const pct = Math.min(90, Math.round(rows.length / total * 90));
       if (btn) btn.textContent = '⬇ ' + Math.round(rows.length / total * 100) + '%';
@@ -16081,6 +16164,7 @@ async function labPullAll(opts) {
     // Remember the database's fingerprint at the moment of this pull, so a
     // later visit can tell in one cheap query whether it has gone stale.
     try { LAB_LAST_STAMP = labStamp(sum); } catch (e) {}
+    try { Object.defineProperty(rows, '__interned', { value: true, configurable: true }); } catch (e) {}
     finishIngest(rows, 'database (' + rows.length.toLocaleString() + ' rows)', false);
     return true;
   } catch (e) {
@@ -17327,6 +17411,7 @@ function renderBridge() {
     if (!db) { if (!opts.auto) sbLog('Connect to Supabase first (Test connection).', 'warn'); return; }
     // An explicit row set (from Add Data) wins; otherwise send the whole dataset.
     const all = (opts.rows && opts.rows.length) ? opts.rows : ((APP && APP.rawRows) || []);
+    if (!all.length && APP && APP.rawDropped) { if (!opts.auto) sbLog(RAW_PHONE_MSG, 'warn'); return; }   // DL101
     if (!all.length) { if (!opts.auto) sbLog('No CSV loaded — upload your export first.', 'warn'); return; }
 
     /* DL77 — a file in the NEW JG layout (Gross_Cost on its lines). Its amounts can differ from
