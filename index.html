@@ -40,7 +40,7 @@
 </script>
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; font-src 'self' data:; img-src 'self' data: blob: https://cdn.jsdelivr.net https://maps.geoapify.com; connect-src 'self' https://hfzizrzqrneuciykpuez.supabase.co wss://hfzizrzqrneuciykpuez.supabase.co https://api.geocod.io https://api.geoapify.com https://api.openrouteservice.org https://nominatim.openstreetmap.org; frame-src https://www.google.com https://maps.google.com; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'self'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
-<title>Lab Sales Dashboard v2026.11.22-DL101</title>
+<title>Lab Sales Dashboard v2026.11.22-DL102</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js" integrity="sha384-D/t0ZMqQW31H3az8ktEiNb39wyKnS82iFY52QPACM+IjKW3jDUhyIgh2PApRqJZs" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js" integrity="sha384-dug+JxfBvklEQdJ4AYuBBAIScUz0bVN73xpy273gcAwHjb3qI0fXmuYNaNfdyYJG" crossorigin="anonymous"></script>
@@ -2618,7 +2618,7 @@ const APP = {
 
 /* Bump when normalization logic changes, so it's possible to tell at a glance
    (bottom of the Avg Turnaround card) which build a browser is running. */
-const BUILD_ID = 'DL101 · 2026-11-22';
+const BUILD_ID = 'DL102 · 2026-11-22';
 
 const DB_NAME = 'LabOpsCache';
 const DB_STORE = 'datasets';
@@ -20687,8 +20687,9 @@ const PMAP_LIBS = {
          'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js': 'sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH', 'https://cdn.jsdelivr.net/npm/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js': 'sha384-eXVCORTRlv4FUUgS/xmOyr66XBVraen8ATNLMESp92FKXLAMiKkerixTiBvXriZr' }
 };
 const PMAP_TILES_KEY = 'a41e459f0554424fb9a54301378d5dae';   // the same Geoapify key Salesly uses (map tiles + geocoding)
-const PM_LAB = [['active', 'Active', '#5fbe7d'], ['new', 'New', '#12a5a0'], ['winback', 'Winback', '#8e5bd1'], ['falloff', 'Falloff', '#e08a2e'], ['inactive', 'Inactive', '#cf3f3f']];
-const PM_HEAT = [['green', 'Good', '#2e9e5b'], ['yellow', 'Okay', '#bf9b16'], ['red', 'Poor', '#cf3f3f'], ['closed', 'Closed', '#b8860b']];
+/* DL102: the same marks Salesly's pins and filters use (VDA121), so the two maps agree */
+const PM_LAB = [['active', 'Active', '#1f9a55'], ['new', 'New', '#4a5fd0'], ['winback', 'Winback', '#7650cf'], ['falloff', 'Falloff', '#c27a0e'], ['inactive', 'Inactive', '#c2362f']];
+const PM_HEAT = [['green', 'Good', '#1f9a55'], ['yellow', 'Okay', '#e59a1a'], ['red', 'Poor', '#d64541'], ['closed', 'Closed', '#d29b14']];
 const PM_TIERS = [['A', 'A prospects'], ['B', 'B prospects'], ['S', 'Customers']];
 const PM_ST = (() => { const m = {}; ('AL Alabama|AK Alaska|AZ Arizona|AR Arkansas|CA California|CO Colorado|CT Connecticut|DE Delaware|DC District of Columbia|FL Florida|GA Georgia|' +
   'HI Hawaii|ID Idaho|IL Illinois|IN Indiana|IA Iowa|KS Kansas|KY Kentucky|LA Louisiana|ME Maine|MD Maryland|MA Massachusetts|MI Michigan|MN Minnesota|MS Mississippi|' +
