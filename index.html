@@ -40,7 +40,7 @@
 </script>
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; font-src 'self' data:; img-src 'self' data: blob: https://cdn.jsdelivr.net https://maps.geoapify.com; connect-src 'self' https://hfzizrzqrneuciykpuez.supabase.co wss://hfzizrzqrneuciykpuez.supabase.co https://api.geocod.io https://api.geoapify.com https://api.openrouteservice.org https://nominatim.openstreetmap.org; frame-src https://www.google.com https://maps.google.com; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'self'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
-<title>Lab Sales Dashboard v2026.11.22-DL102</title>
+<title>Lab Sales Dashboard v2026.11.23-DL104</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js" integrity="sha384-D/t0ZMqQW31H3az8ktEiNb39wyKnS82iFY52QPACM+IjKW3jDUhyIgh2PApRqJZs" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js" integrity="sha384-dug+JxfBvklEQdJ4AYuBBAIScUz0bVN73xpy273gcAwHjb3qI0fXmuYNaNfdyYJG" crossorigin="anonymous"></script>
@@ -1810,6 +1810,35 @@ html.ui-lite .dm, html.ui-lite .crm-box { background: rgba(255,255,255,.97); }
 }
 html.ui-safe .bg-field { display: none; }
 html.ui-safe .rv-item, html.ui-safe #dashboard.ui-enter .sidebar, html.ui-safe #dashboard.ui-enter .topbar, html.ui-safe .tab-panel.ui-soft { animation: none !important; }
+
+/* ══ DL104: other doctors at the practice · last contact · dead accounts ══ */
+.dr-peers { font-size: 11.5px; color: var(--mut); margin-top: 4px; line-height: 1.5; }
+.dr-peers-l { font-weight: 600; color: var(--dim); }
+.dr-peer { color: var(--accent-ink); font-weight: 600; text-decoration: none; border-bottom: 1px dotted rgba(13,116,128,.4); cursor: pointer; }
+.dr-peer:hover, .dr-peer:focus-visible { border-bottom-style: solid; outline: none; }
+.dr-peer .gm { margin-right: 2px; }
+.dr-peer-more { font: inherit; font-size: 10.5px; font-weight: 700; color: var(--accent-ink); background: var(--accent-soft); border: 0; border-radius: 999px; padding: 1px 7px; margin-left: 2px; cursor: pointer; }
+.dr-peer-more:hover { background: rgba(36,191,205,.22); }
+.dr-peers-c { font-size: 12px; }
+.grid-table td .dr-peers-c { white-space: normal; display: inline-block; min-width: 140px; max-width: 260px; }
+.dd-peers { font-size: 12.5px; color: var(--mut); margin-top: 6px; }
+.dr-lc { margin-top: 5px; }
+.lc { font-size: 11.5px; color: var(--dim); }
+.lc b { color: var(--ink); font-weight: 700; }
+.lc-ago { color: var(--mut); }
+.lc-none, .lc-wait { color: var(--mut-2); font-style: normal; }
+.lc-old b, .lc-old .lc-ago, span.lc-old { color: var(--amb); }
+.lc-tag { font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px; background: rgba(18,72,84,.06); color: var(--dim); }
+.lc-tag b { color: var(--ink); }
+.lc-tag.lc-old { background: rgba(229,154,26,.13); }
+.lc-tag.lc-none, .lc-tag.lc-wait { color: var(--mut); font-weight: 500; }
+.dead-tag { display: inline-flex; align-items: center; font-size: 11px; font-weight: 700; color: #3f565e; background: rgba(18,72,84,.08); border: 1px solid rgba(18,72,84,.16); border-radius: 999px; padding: 1px 9px; margin-left: 4px; vertical-align: 1px; white-space: nowrap; }
+.detail-name .dead-tag { font-size: 12px; padding: 3px 10px; }
+.gl-dead { font: inherit; font-size: 11px; font-weight: 700; color: #3f565e; background: none; border: 1px solid rgba(18,72,84,.2); border-radius: 999px; padding: 1px 8px; cursor: pointer; opacity: .8; }
+.gl-dead:hover { opacity: 1; background: rgba(18,72,84,.06); }
+.gl-deadbox summary { color: var(--ink); }
+.gl-deadnote { font-size: 12px; color: var(--mut); margin: 6px 0 4px; }
+.gl-deadcount { color: var(--dim); font-weight: 600; }
 </style>
 </head>
 <body>
@@ -1845,16 +1874,6 @@ html.ui-safe .rv-item, html.ui-safe #dashboard.ui-enter .sidebar, html.ui-safe #
         <button class="primary" id="dbSignGo">Sign in &amp; load</button>
       </div>
       <div id="dbSignErr" style="flex:1 1 100%;color:#b3402f;font-size:12.5px;display:none"></div>
-    </div>
-    <div id="cached-banner">
-      <div>
-        <b>Cached data available</b>
-        <div class="cb-meta" id="cbMeta"></div>
-      </div>
-      <div style="display:flex;gap:8px">
-        <button id="cbDiscard">Discard</button>
-        <button class="primary" id="cbLoad">Reload last dataset</button>
-      </div>
     </div>
   </div>
 </div>
@@ -1956,7 +1975,6 @@ html.ui-safe .rv-item, html.ui-safe #dashboard.ui-enter .sidebar, html.ui-safe #
       </div>
 
       <div class="topbar-actions">
-        <button class="btn-text" id="btnSaveData" title="Save current dataset to your browser">Save</button>
         <button class="btn-text" id="btnAddData" title="Add more data from another CSV (deduped by case number)">＋ Add Data</button>
         <button class="btn-text" id="btnExportAll" title="Download the full merged dataset as CSV">⬇ Export All</button>
         <button class="btn-text" id="btnNewUpload">↑ New Data</button>
@@ -2334,7 +2352,7 @@ function uiBootHoldPrompt() {
     m.querySelector('#uiHoldNo').onclick = () => { m.remove(); if (window.uiBootOk) uiBootOk(); resolve(false); };
   });
 }
-const RAW_PHONE_MSG = 'On a phone the dashboard keeps only what it shows, so it has room to run. Use a computer to export, save or add data.';
+const RAW_PHONE_MSG = 'On a phone the dashboard keeps only what it shows, so it has room to run. Use a computer to export or add data.';
 const DATE_POOL = new Map();
 function parseDateShared(s) {
   if (!s || s instanceof Date) return parseDate(s);
@@ -2618,64 +2636,25 @@ const APP = {
 
 /* Bump when normalization logic changes, so it's possible to tell at a glance
    (bottom of the Avg Turnaround card) which build a browser is running. */
-const BUILD_ID = 'DL102 · 2026-11-22';
+const BUILD_ID = 'DL104 · 2026-11-23';
 
 const DB_NAME = 'LabOpsCache';
 const DB_STORE = 'datasets';
 const DB_KEY = 'last';
 
-function dbOpen() {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, 1);
-    req.onupgradeneeded = () => req.result.createObjectStore(DB_STORE);
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
+/* DL103: NOTHING is kept in the browser. The dashboard loads from the database on every open,
+   like any website. dbForget() deletes the whole store an older version may have left behind
+   (it was encrypted, and its keys are gone from the database too, so it could never be read).
+   dbPut / dbGet / dbDelete stay as harmless stand-ins so nothing that still names them breaks. */
+function dbForget() {
+  return new Promise(resolve => {
+    try { const r = indexedDB.deleteDatabase(DB_NAME); r.onsuccess = r.onerror = r.onblocked = () => resolve(true); }
+    catch (e) { resolve(false); }
   });
 }
-
-async function dbPut(value) {
-  try {
-    /* DL92: only ever stored ENCRYPTED, with a key held by the database for a signed-in admin.
-       No key (not signed in, not an admin, offline) → nothing is stored, and an older copy is removed. */
-    const box = await secEncrypt(value);
-    if (!box) { await dbDelete(); return false; }
-    const db = await dbOpen();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(DB_STORE, 'readwrite');
-      tx.objectStore(DB_STORE).put(box, DB_KEY);
-      tx.oncomplete = () => resolve(true);
-      tx.onerror = () => reject(tx.error);
-    });
-  } catch (e) { console.warn('IDB put failed', e); return false; }
-}
-
-async function dbGet() {
-  try {
-    const db = await dbOpen();
-    return new Promise((resolve) => {
-      const tx = db.transaction(DB_STORE, 'readonly');
-      const req = tx.objectStore(DB_STORE).get(DB_KEY);
-      req.onsuccess = () => resolve(req.result || null);
-      req.onerror = () => resolve(null);
-    }).then(async raw => {
-      if (!raw) return null;
-      if (raw.enc !== 1) { await dbDelete(); return null; }   // DL92: an old unencrypted copy is deleted, never shown
-      return await secDecrypt(raw);                         // null unless signed in as the admin who saved it
-    });
-  } catch (e) { return null; }
-}
-
-async function dbDelete() {
-  try {
-    const db = await dbOpen();
-    return new Promise((resolve) => {
-      const tx = db.transaction(DB_STORE, 'readwrite');
-      tx.objectStore(DB_STORE).delete(DB_KEY);
-      tx.oncomplete = () => resolve(true);
-      tx.onerror = () => resolve(false);
-    });
-  } catch (e) { return false; }
-}
+async function dbPut() { return false; }
+async function dbGet() { return null; }
+async function dbDelete() { return dbForget(); }
 
 /* ──────────────────────────────────────────
    4. CSV INGEST — streaming with progress
@@ -2784,9 +2763,7 @@ function finishIngest(rawRows, fileName, freshUpload) {
     // merged CSV and so "Add Data" can merge new rows by Case_Number.
     APP.rawRows = rawRows;
     /* DL101: a phone showing the database's data keeps only the cleaned-up records. The raw
-       lines exist for Export All, Save to browser, Add Data and pushing a fresh upload — all
-       computer jobs — and the encrypted saved copy needs several full copies in memory while
-       it's being made, which is exactly what a phone runs out of. */
+       lines exist for Export All, Add Data and pushing a fresh upload — all computer jobs. */
     const phoneLean = !freshUpload && uiTouchDevice();
     APP.rawDropped = false;
     APP.meta = {
@@ -2799,11 +2776,7 @@ function finishIngest(rawRows, fileName, freshUpload) {
     APP._restoredAt = null;
     // Cache to IndexedDB (store CSV text for max compatibility — we re-normalize on load)
     // For very large files we cache only if reasonable
-    if (records.length <= 200000 && !phoneLean) {
-      // Reconstruct compact CSV from the original via Papa.unparse would be slow; cache the parsed rows instead
-      // Store the database fingerprint alongside the rows, so the next visit can
-      // spot a newer sync. Empty when the data came from a plain CSV upload.
-      dbPut({ rows: rawRows, meta: APP.meta, labStamp: LAB_LAST_STAMP || '' });
+    if (records.length <= 200000) {   // DL103: nothing is saved in the browser any more
       /* A fresh upload is the ONLY moment new invoices enter the system, so
          push them to the database right here instead of relying on someone
          remembering the button. Skipped when the data came FROM the database
@@ -3265,7 +3238,7 @@ let FIN_DROPPED = { lines: 0, amount: 0 }, OB_DROPPED = { lines: 0, amount: 0 };
    Kept in Supabase's app_settings (admins only — the 11 am job signs in as one),
    so every admin, every computer and the emailed reports use the same choices.
    Cached in this browser so a CSV-only session still has them. */
-const SETTINGS_KEYS = ['list_removals', 'list_additions', 'remake_reason_types'];
+const SETTINGS_KEYS = ['list_removals', 'list_additions', 'remake_reason_types', 'dead_accounts'];   // DL104: + dead accounts
 const SETTINGS = (() => { const o = {}; SETTINGS_KEYS.forEach(k => { try { o[k] = JSON.parse(localStorage.getItem('vda_set_' + k) || 'null'); } catch (e) { o[k] = null; } }); return o; })();
 async function settingsLoad() {
   const db = typeof pgClient === 'function' ? pgClient() : null; if (!db) return false;
@@ -3425,7 +3398,7 @@ async function listAdd(kind, id, name) {
   listRefresh(); return h1 === 'shared' && h2 === 'shared' ? 'shared' : 'local';
 }
 function listRefresh() {
-  if (APP.derived) { delete APP.derived.goldenIds; delete APP.derived.silverIds; delete APP.derived.silverMatch; }
+  if (APP.derived) { ['goldenIds', 'silverIds', 'goldenIdsAll', 'silverIdsAll', 'silverMatch', 'goldenNames', 'silverNames'].forEach(k => delete APP.derived[k]); }
   APP.rendered = {}; if (typeof CS !== 'undefined' && CS && CS.cache) CS.cache._xs = null;
 }
 
@@ -4591,7 +4564,7 @@ async function offerDbSignIn() {
   try {   // DL92: say why the screen is empty after a sign-out / the 2-hour limit
     const why = sessionStorage.getItem('dash_timeout') ? 'Signed out after ' + pgDashHoursText() + ' — sign in again to continue.'
               : sessionStorage.getItem('dash_mfa_needed') ? 'Two-step login is now required. Sign in again — the setup takes about 2 minutes and walks you through it.'
-              : sessionStorage.getItem('dash_signed_out') ? 'Signed out. Data saved in this browser was deleted.' : '';
+              : sessionStorage.getItem('dash_signed_out') ? 'Signed out.' : '';
     sessionStorage.removeItem('dash_timeout'); sessionStorage.removeItem('dash_signed_out'); sessionStorage.removeItem('dash_mfa_needed');
     if (why) { const m = document.getElementById('dbSignMeta'); if (m) m.textContent = why; }
   } catch (e) {}
@@ -4606,7 +4579,7 @@ async function offerDbSignIn() {
     try {
       await pgSignIn(email, pass);
       banner.style.display = 'none';
-      await checkCache();   // DL92: same path as opening the page signed in (production logins, saved copy, fresh data)
+      await checkCache();   // DL92: same path as opening the page signed in (production logins, fresh data)
     } catch (e) {
       err.textContent = (e && e.message) || 'Sign-in failed.';
       err.style.display = 'block';
@@ -4623,10 +4596,11 @@ async function offerDbSignIn() {
 }
 
 async function checkCache() {
-  /* DL92: who is signed in comes FIRST. The saved copy is encrypted and opens only for a
-     signed-in admin. DL93: a production login gets the whole dashboard, view-only — the
-     database hides case details from it, and exports are switched off (secExportGate). */
-  let cached = null;
+  /* DL92: who is signed in comes FIRST. DL93: a production login gets the whole dashboard,
+     view-only — the database hides case details from it, and exports are switched off.
+     DL103: no saved copy any more — every open loads fresh from the database (and a copy an
+     older version left in this browser is deleted). */
+  dbForget();
   try {
     if (pgClient() && await pgSession()) {
       if (!(await secStepUp(PG))) { await pgSignOut(); }
@@ -4634,85 +4608,49 @@ async function checkCache() {
         if (!SEC.info) await secRefresh(PG);
         secApplyRole();
         if (window.uiBootPrev > 0) secLog('page_restarted', uiDeviceInfo({ times: window.uiBootPrev }));   // DL101
-        cached = await dbGet();
       }
     }
   } catch (e) { console.warn('[dashboard] startup sign-in check', e); }
-  /* No cached copy on THIS browser (new machine, cleared data, someone else's
-     laptop) — try the database before falling back to "upload a CSV". This is
-     what makes the dashboard travel with its link. A cached copy still wins:
-     it is instant, and re-downloading 190k rows on every refresh would be
-     wasteful. Failures here are silent by design — no Supabase config, not
-     signed in, or an empty lab table all just leave the normal upload screen. */
-  if (!cached || !cached.rows || !cached.rows.length) {
-    /* Say WHY when the database route can't be used. Silently showing the
-       upload screen gave no clue whether the URL was missing, the SQL wasn't
-       installed, the account wasn't an admin, or the table was empty. */
-    try {
-      const cfg = sbCfg();
-      if (!cfg.url || !cfg.token) {
-        dbBootNote('No Supabase connection configured in this browser. Fill in SB_DEFAULT_URL and ' +
-                   'SB_DEFAULT_KEY at the top of this file, or enter them under the Salesly Bridge tab.');
-      } else if (!pgClient()) {
-        dbBootNote('Could not create the Supabase client — check the URL and key are correct.');
-      } else {
-        await pgSession();
-        if (pgUser) {
-          if (window.uiBootHold && !(await uiBootHoldPrompt())) return;   // DL101
-          const r = await labPullAll({ diagnose: true });
-          if (r === true) return;
-          dbBootNote(r || 'Signed in, but no invoices were returned.');
-        } else if (await offerDbSignIn()) {
-          return;
-        }
+  /* "New Data" brings you back here to upload an export instead of loading the database. */
+  let newData = false;
+  try { newData = sessionStorage.getItem('dash_new_data') === '1'; sessionStorage.removeItem('dash_new_data'); } catch (e) {}
+  if (newData) { newDataNote(); return; }
+  /* Say WHY when the database route can't be used. Silently showing the upload screen gave
+     no clue whether the URL was missing, the account wasn't an admin, or the table was empty. */
+  try {
+    const cfg = sbCfg();
+    if (!cfg.url || !cfg.token) {
+      dbBootNote('No Supabase connection configured in this browser. Fill in SB_DEFAULT_URL and ' +
+                 'SB_DEFAULT_KEY at the top of this file, or enter them under the Salesly Bridge tab.');
+    } else if (!pgClient()) {
+      dbBootNote('Could not create the Supabase client — check the URL and key are correct.');
+    } else {
+      await pgSession();
+      if (pgUser) {
+        if (window.uiBootHold && !(await uiBootHoldPrompt())) return;   // DL101
+        const r = await labPullAll({ diagnose: true });
+        if (r === true) return;
+        dbBootNote(r || 'Signed in, but no invoices were returned.');
+      } else if (await offerDbSignIn()) {
+        return;
       }
-    } catch (e) {
-      dbBootNote('Startup error: ' + ((e && e.message) || e));
     }
+  } catch (e) {
+    dbBootNote('Startup error: ' + ((e && e.message) || e));
   }
-  /* A cached copy exists. It is instant, so it normally wins — but one person
-     syncs each day and everyone else must see that sync. Ask the database for
-     its fingerprint (one tiny query, no download): if it differs from what this
-     cache was built from, pull the new data instead of showing stale numbers.
-     Any failure here just falls through to the cached copy. */
-  if (cached && cached.rows && cached.rows.length) {
-    try {
-      const db = pgClient();
-      if (db) {
-        await pgSession();
-        if (pgUser) {
-          const { data: sum, error } = await db.rpc('lab_summary');
-          if (!error && sum && Number(sum.rows) > 0) {
-            const serverStamp = labStamp(sum);
-            const cachedStamp = cached.labStamp || '';
-            if (serverStamp && serverStamp !== cachedStamp) {
-              console.log('[dashboard] newer data in the database — refreshing',
-                          { cached: cachedStamp || '(from CSV upload)', server: serverStamp });
-              if (await labPullAll({ silent: true })) return;
-            }
-          }
-        }
-      }
-    } catch (e) { /* offline or not signed in: use the cached copy */ }
-    const banner = document.getElementById('cached-banner');
-    const meta = cached.meta || {};
-    document.getElementById('cbMeta').textContent =
-      `${meta.fileName || 'Unknown'} · ${(meta.rowCount || cached.rows.length).toLocaleString()} rows · ${new Date(meta.uploadedAt || Date.now()).toLocaleString()}`;
-    banner.classList.add('show');
-    banner.style.display = 'flex';
-    document.getElementById('cbLoad').addEventListener('click', async () => {
-      banner.style.display = 'none';
-      showProgress('Loading cached data', 20, 'preparing…', '20%');
-      APP._restoredAt = meta.uploadedAt || null;   // keep the time this copy was really loaded
-      // Normalize cached raw rows
-      setTimeout(() => finishIngest(cached.rows, meta.fileName || 'cached.csv'), 30);
-    });
-    document.getElementById('cbDiscard').addEventListener('click', async () => {
-      await dbDelete();
-      banner.style.display = 'none';
-      toast('Cached data discarded');
-    });
-  }
+}
+/* DL103: the upload screen, reached from "New Data" — with a way back to the database */
+function newDataNote() {
+  try {
+    const wrap = document.querySelector('#upload-screen .upload-wrap'); if (!wrap || document.getElementById('newDataNote')) return;
+    const n = document.createElement('div'); n.id = 'newDataNote';
+    n.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:0 0 14px;padding:14px 16px;border-radius:18px;' +
+      'background:var(--glass-strong,#fff);border:1px solid var(--glass-edge,#dbe6e9);box-shadow:var(--shadow-md,none)';
+    n.innerHTML = '<div><b>Upload a new export</b><div class="cb-meta" style="font-size:12px;color:var(--mut,#5c7179);margin-top:2px">Drop the CSV below. It replaces what the dashboard shows and is saved to the database.</div></div>' +
+      '<button class="btn-text" id="newDataBack" style="padding:8px 14px;font-weight:600">Load the dashboard instead</button>';
+    wrap.insertBefore(n, wrap.firstChild);
+    n.querySelector('#newDataBack').onclick = () => { if (window.uiBootOk) uiBootOk(); location.reload(); };
+  } catch (e) {}
 }
 
 function bindUploadUI() {
@@ -4811,21 +4749,9 @@ function initDashboard() {
 
   // Bind topbar actions
   document.getElementById('btnNewUpload').addEventListener('click', () => {
-    if (confirm('Load a different dataset? Current data will remain cached.')) {
+    if (confirm('Upload a new export? The page reopens on the upload screen.')) {   // DL103
+      try { sessionStorage.setItem('dash_new_data', '1'); } catch (e) {}
       if (window.uiBootOk) uiBootOk(); location.reload();
-    }
-  });
-
-  // Save: explicitly persist the current rawRows to IndexedDB
-  document.getElementById('btnSaveData').addEventListener('click', async () => {
-    if (APP.rawDropped) { toast(RAW_PHONE_MSG, 'err'); return; }   // DL101
-    if (!APP.rawRows || !APP.rawRows.length) { toast('No data to save'); return; }
-    toast('Saving ' + APP.rawRows.length.toLocaleString() + ' rows…');
-    try {
-      await dbPut({ rows: APP.rawRows, meta: APP.meta });
-      toast('Saved ' + APP.rawRows.length.toLocaleString() + ' rows to your browser');
-    } catch (e) {
-      toast('Save failed: ' + e.message);
     }
   });
 
@@ -4887,8 +4813,6 @@ function initDashboard() {
             uploadedAt: new Date().toISOString(),
             rowCount: APP.raw.length
           };
-          // Auto-save after merging so the new combined dataset survives a reload
-          dbPut({ rows: APP.rawRows, meta: APP.meta }).catch(err => console.error('Auto-save failed:', err));
           /* …and push it to the DATABASE, which is what every other browser and
              user reads. This path used to save only to the local cache, so added
              data looked fine on the machine that added it and simply did not
@@ -7319,8 +7243,10 @@ function gridBindHeaders(which, cols, redraw) {
 }
 const gridDay = d => d ? d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
 const DGRID_COLS = [
-  { k: 'name', l: 'Doctor', f: d => `${goldMark(d.drId)}<b>${esc(d.name)}</b> ${quietMark(quietInfo().get(d.drId))}` },
-  { k: 'practice', l: 'Practice' }, { k: 'city', l: 'City' }, { k: 'state', l: 'State' },
+  { k: 'name', l: 'Doctor', f: d => `${goldMark(d.drId)}<b>${esc(d.name)}</b> ${quietMark(quietInfo().get(d.drId))}${deadTag(d.drId)}` },
+  { k: 'practice', l: 'Practice' },
+  { k: 'peers', l: 'Other doctors here', num: 1, v: d => peersOf(d.drId, d.practice).length || null, f: d => peersHTML(d.drId, d.practice, 2, true) },   // DL104
+  { k: 'city', l: 'City' }, { k: 'state', l: 'State' },
   { k: 'status', l: 'Status', v: d => (statusBadgeHTML(d.drId, 'sm') || '').replace(/<[^>]+>/g, '').trim(), f: d => statusBadgeHTML(d.drId, 'sm') || '' },
   { k: 'revenue', l: 'Revenue', num: 1, f: d => fmtUSD(d.revenue) },
   { k: 'trend12', l: 'Last 12 months', v: d => trendOf(d.drId).m.reduce((a, b) => a + b, 0), f: d => sparkSVG(trendOf(d.drId).m) },
@@ -7333,6 +7259,7 @@ const DGRID_COLS = [
   { k: 'tatChg', l: 'TAT vs prior', num: 1, v: d => trendOf(d.drId).tatD, f: d => tatChg(trendOf(d.drId)) },
   { k: 'quiet', l: 'Since last case', num: 1, v: d => { const q = quietInfo().get(d.drId); return q ? q.bd : null; },
     f: d => { const q = quietInfo().get(d.drId); return q ? `${quietMark(q)} ${bdWord(q.bd)}${q.usual ? ` <small class="text-mut">· usually ${q.usual}</small>` : ''}` : '—'; } },
+  { k: 'lastContact', l: 'Last contact', num: 1, v: d => { const c = lcGet(d.drId); return c ? lcDays(c.date) : null; }, f: d => lcCellHTML(d.drId) },   // DL104
   { k: 'cases', l: 'Cases', num: 1, f: d => fmtN(d.cases) },
   { k: 'units', l: 'Units', num: 1, f: d => fmtN(d.units) },
   { k: 'avgCase', l: 'Avg case', num: 1, f: d => fmtUSDFull(d.avgCase) },
@@ -7653,7 +7580,7 @@ function goldenMatch() {
 }
 function silverMatch() {
   if (APP.derived && APP.derived.silverMatch) return APP.derived.silverMatch;
-  const gold = goldenIds(), m = listMatch(SILVER_DEFAULT), ids = new Set(); let dupes = 0;
+  const gold = goldenIdsAll(), m = listMatch(SILVER_DEFAULT), ids = new Set(); let dupes = 0;   // DL104: a dead Golden doctor doesn't drop into Silver
   m.perRow.forEach(r => { if (r.length && r.every(id => gold.has(id))) dupes++; r.forEach(id => { if (!gold.has(id)) ids.add(id); }); });
   const out = { ids, unmatched: m.unmatched, total: SILVER_DEFAULT.length, dupes, src: 'the Silver list file' };
   if (APP.derived && APP.raw && APP.raw.length) APP.derived.silverMatch = out;
@@ -7661,18 +7588,33 @@ function silverMatch() {
 }
 
 /* ⭐ + ! beside a doctor's name, the same everywhere a doctor appears */
-function goldenIds() {
-  if (APP.derived && APP.derived.goldenIds) return APP.derived.goldenIds;
+/* DL104: …All = the list as kept (file + added − removed); the list everyone sees is that
+   minus the DEAD ACCOUNTS. Every tab, mark, report and the Salesly sync read goldenIds() /
+   silverIds(), so a dead account drops out of all of them at once. */
+function goldenIdsAll() {
+  if (APP.derived && APP.derived.goldenIdsAll) return APP.derived.goldenIdsAll;
   const rm = listRemoved('golden'), have = (APP.raw && APP.raw.length);
   const ids = new Set([...(have ? goldenMatch().ids : []), ...(have ? Object.keys(listAdded('golden')) : [])].filter(id => !rm[id]));   // DL66/73: + added − removed
+  if (APP.derived && APP.raw && APP.raw.length) APP.derived.goldenIdsAll = ids;
+  return ids;
+}
+function goldenIds() {
+  if (APP.derived && APP.derived.goldenIds) return APP.derived.goldenIds;
+  const ids = new Set([...goldenIdsAll()].filter(id => !isDead(id)));
   if (APP.derived && APP.raw && APP.raw.length) APP.derived.goldenIds = ids;
   return ids;
 }
 const isGolden = id => !!id && goldenIds().has(id);
+function silverIdsAll() {
+  if (APP.derived && APP.derived.silverIdsAll) return APP.derived.silverIdsAll;
+  const rm = listRemoved('silver'), have = (APP.raw && APP.raw.length), gold = have ? goldenIdsAll() : new Set();
+  const ids = new Set([...(have ? silverMatch().ids : []), ...(have ? Object.keys(listAdded('silver')) : [])].filter(id => !rm[id] && !gold.has(id)));   // DL66/73: + added − removed, never a Golden doctor
+  if (APP.derived && APP.raw && APP.raw.length) APP.derived.silverIdsAll = ids;
+  return ids;
+}
 function silverIds() {
   if (APP.derived && APP.derived.silverIds) return APP.derived.silverIds;
-  const rm = listRemoved('silver'), have = (APP.raw && APP.raw.length), gold = have ? goldenIds() : new Set();
-  const ids = new Set([...(have ? silverMatch().ids : []), ...(have ? Object.keys(listAdded('silver')) : [])].filter(id => !rm[id] && !gold.has(id)));   // DL66/73: + added − removed, never a Golden doctor
+  const ids = new Set([...silverIdsAll()].filter(id => !isDead(id)));
   if (APP.derived && APP.raw && APP.raw.length) APP.derived.silverIds = ids;
   return ids;
 }
@@ -7681,6 +7623,169 @@ const goldMark = id => isGolden(id) ? '<span class="gm" title="Golden List" aria
                      : isSilver(id) ? '<span class="gm" title="Silver List" aria-label="Silver List">🥈</span>' : '';
 const drBadges = id => goldMark(id) + ' ' + quietMark(quietInfo().get(id));
 const goldMarkEmail = id => isGolden(id) ? '<span title="Golden List" style="margin-right:3px">⭐</span>' : isSilver(id) ? '<span title="Silver List" style="margin-right:3px">🥈</span>' : '';
+/* ══ DL104: DEAD ACCOUNTS ═════════════════════════════════════════════════════
+   A doctor you know is inactive (retired, practice closed, gone to another lab) is
+   marked a dead account: off the Golden AND Silver lists everywhere — tabs, ⭐/🥈 marks,
+   reports, the Salesly sync — and listed under "Dead accounts" on both list tabs until
+   brought back. Kept with the other shared settings (app_settings, admins write). */
+const deadAccounts = () => SETTINGS.dead_accounts || {};
+const isDead = id => !!id && Object.prototype.hasOwnProperty.call(deadAccounts(), id);
+const deadWho = () => { try { return String((typeof pgUser !== 'undefined' && pgUser && pgUser.email) || '').split('@')[0]; } catch (e) { return ''; } };
+const deadDay = iso => { const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); };
+async function deadMark(id, name, note) {
+  const D = JSON.parse(JSON.stringify(SETTINGS.dead_accounts || {}));
+  D[id] = { name: name || '', at: new Date().toISOString(), by: deadWho(), note: String(note || '').trim().slice(0, 200) };
+  const how = await settingsSave('dead_accounts', D); listRefresh(); return how;
+}
+async function deadRevive(id) {
+  const D = JSON.parse(JSON.stringify(SETTINGS.dead_accounts || {})); delete D[id];
+  const how = await settingsSave('dead_accounts', D); listRefresh(); return how;
+}
+// null = cancelled; '' = no reason given
+const deadPrompt = name => prompt(`Mark ${name} as a dead account?\n\nThey come off the Golden and Silver lists everywhere — the tabs, the ⭐/🥈 marks, the reports and Salesly — and move to "Dead accounts", where you can bring them back.\n\nWhy? (optional — e.g. retired, practice closed, moved labs)`, '');
+function deadTip(id) {
+  const x = deadAccounts()[id] || {};
+  return 'Dead account' + (x.at ? ' since ' + deadDay(x.at) : '') + (x.by ? ' (marked by ' + x.by + ')' : '') + (x.note ? ' — ' + x.note : '') + '. Off the Golden and Silver lists until brought back.';
+}
+const deadTag = id => isDead(id) ? ` <span class="dead-tag" title="${esc(deadTip(id))}">Dead account</span>` : '';
+// "· 2 dead accounts", for a list tab's heading
+function deadCountNote(kind) {
+  const all = kind === 'golden' ? goldenIdsAll() : silverIdsAll(), n = [...all].filter(isDead).length;
+  return n ? ` <span class="gl-deadcount">${n} marked as ${n === 1 ? 'a dead account' : 'dead accounts'} — listed at the bottom.</span>` : '';
+}
+function deadListHTML(kind) {
+  const D = deadAccounts(), ids = Object.keys(D); if (!ids.length) return '';
+  const byId = new Map(aggByDoctor().map(d => [d.drId, d])), gAll = goldenIdsAll(), sAll = silverIdsAll(), can = !secViewOnly();
+  const mine = ids.filter(id => (kind === 'golden' ? gAll : sAll).has(id)).length;
+  ids.sort((a, b) => String(D[a].name || a).localeCompare(String(D[b].name || b)));
+  return `<details class="card gl-removed gl-deadbox"><summary>Dead accounts — ${ids.length}${mine && mine !== ids.length ? ` <small class="text-mut">(${mine} from this list)</small>` : ''}</summary>
+    <div class="gl-deadnote">Doctors marked inactive. They’re off the Golden and Silver lists everywhere until brought back.</div>
+    ${ids.map(id => { const x = D[id], d = byId.get(id);
+      const was = gAll.has(id) ? '<small class="gm-tag">was Golden</small>' : sAll.has(id) ? '<small class="gm-tag sv">was Silver</small>' : '';
+      const info = [d && d.practice, d && [d.city, d.stateAbbr || d.state].filter(Boolean).join(', '), d && d.lastDate ? 'last case ' + gridDay(d.lastDate) : ''].filter(Boolean).join(' · ');
+      return `<div class="gl-rrow"><span><a href="#" class="dr-peer" data-dr="${esc(id)}">${esc(x.name || (d && d.name) || id)}</a> ${was}
+        <small class="text-mut">${info ? ' · ' + esc(info) : ''} · marked ${esc(deadDay(x.at))}${x.by ? ' by ' + esc(x.by) : ''}${x.note ? ' — “' + esc(x.note) + '”' : ''}</small></span>
+        ${can ? `<button type="button" class="btn-text gl-revive" data-id="${esc(id)}" data-nm="${esc(x.name || '')}">↩ Bring back</button>` : ''}</div>`; }).join('')}</details>`;
+}
+
+/* ══ DL104: OTHER DOCTORS AT THE PRACTICE ═════════════════════════════════════
+   Every practice a doctor bills under, and who else bills under it (in the current
+   filters, biggest first). Each name opens that doctor's Detail. */
+function practicePeerMap() {
+  const docs = aggByDoctor();
+  if (APP.derived && APP.derived.peerMap && APP.derived.peerMapFor === docs) return APP.derived.peerMap;
+  const m = new Map();
+  docs.forEach(d => {
+    const names = d.practiceInfo && d.practiceInfo.list && d.practiceInfo.list.length ? d.practiceInfo.list.map(p => p.name) : [d.practice];
+    new Set(names.map(n => String(n || '').trim().toLowerCase()).filter(Boolean)).forEach(k => (m.get(k) || m.set(k, []).get(k)).push(d));
+  });
+  m.forEach(list => list.sort((a, b) => (b.revenue || 0) - (a.revenue || 0)));
+  if (APP.derived) { APP.derived.peerMap = m; APP.derived.peerMapFor = docs; }
+  return m;
+}
+const peersOf = (drId, practice) => (practicePeerMap().get(String(practice || '').trim().toLowerCase()) || []).filter(d => d.drId !== drId);
+const peerLink = d => `<a href="#" class="dr-peer" data-dr="${esc(d.drId)}" title="Open ${esc(d.name)}">${goldMark(d.drId)}${esc(d.name)}</a>${isDead(d.drId) ? ' <small class="text-mut">(dead)</small>' : ''}`;
+// up to `max` names, the rest behind "+N more"; compact = a table cell
+function peersHTML(drId, practice, max, compact) {
+  const ps = peersOf(drId, practice); if (!ps.length) return compact ? '<span class="text-mut">—</span>' : '';
+  const rest = ps.slice(max), lbl = '+' + rest.length + ' more';
+  const more = rest.length ? `<span class="dr-peer-rest" hidden>, ${rest.map(peerLink).join(', ')}</span> <button type="button" class="dr-peer-more" data-lbl="${lbl}" aria-expanded="false">${lbl}</button>` : '';
+  const shown = ps.slice(0, max).map(peerLink).join(', ');
+  return compact ? `<span class="dr-peers dr-peers-c">${shown}${more}</span>`
+    : `<div class="dr-peers"><span class="dr-peers-l">${ps.length === 1 ? 'Also at this practice' : ps.length + ' other doctors here'}:</span> ${shown}${more}</div>`;
+}
+// Doctor Detail: the selected practice, or each of the doctor's practices
+function ddPeersHTML(drId, tabs) {
+  const list = (APP.ddPractice ? tabs.filter(t => t.key === APP.ddPractice) : tabs).slice(0, 4), many = tabs.length > 1;
+  return list.map(t => peersOf(drId, t.name).length ? `<div class="dd-peers"><span class="dr-peers-l">${many ? 'Also at ' + esc(t.name) : 'Also at this practice'}:</span> ${peersHTML(drId, t.name, 6, true)}</div>` : '').join('');
+}
+// a name opens that doctor (before the card or row underneath gets the click); "+N more" opens up the rest
+document.addEventListener('click', e => {
+  const t = e.target; if (!t || !t.closest) return;
+  const more = t.closest('.dr-peer-more');
+  if (more) { e.preventDefault(); e.stopPropagation(); const r = more.previousElementSibling;
+    if (r && r.classList.contains('dr-peer-rest')) { r.hidden = !r.hidden; more.textContent = r.hidden ? more.dataset.lbl : 'fewer'; more.setAttribute('aria-expanded', String(!r.hidden)); } return; }
+  const a = t.closest('.dr-peer'); if (!a || !a.dataset.dr) return;
+  e.preventDefault(); e.stopPropagation();
+  APP.selectedDoctorId = a.dataset.dr; switchTab('docdetail');
+}, true);
+
+/* ══ DL104: LAST CONTACT ══════════════════════════════════════════════════════
+   The newest entry in the doctor's Salesly offices' visit history — a rep's
+   in-person visit, or a call / email / visit logged from the dashboard (those are
+   written into the same history). An office is the doctor's by the same rule as
+   Doctor Detail's "Visits & calls": the Salesly Bridge has written the doctor onto it
+   ("📊 LAB … · Dr. <name> · …"), or it carries the practice's name. Only offices with
+   visits are read (a few hundred). */
+const LC = { loaded: false, loading: null, offices: [], map: null, mapFor: null, error: '' };
+const LC_KIND = { visit: 'in person', call: 'call', email: 'email', text: 'text' };
+async function lcLoad(force) {
+  if ((LC.loaded && !force) || LC.loading) return LC.loading;
+  LC.loading = (async () => {
+    const db = typeof pgClient === 'function' ? pgClient() : null;
+    if (!db || !(await pgSession())) { LC.error = 'signin'; return; }
+    try {
+      const rows = [], PAGE = 1000;
+      for (let from = 0; from < 20000; from += PAGE) {
+        const { data, error } = await db.from('offices').select('id,name,state,notes,visits,deleted_at,merged_into,active').neq('visits', '').order('id').range(from, from + PAGE - 1);
+        if (error) throw new Error(error.message);
+        rows.push(...(data || [])); if (!data || data.length < PAGE) break;
+      }
+      LC.offices = rows.filter(o => !o.deleted_at && !o.merged_into && o.active !== false);
+      LC.loaded = true; LC.error = ''; LC.map = null;
+    } catch (e) { LC.error = e.message || String(e); }
+  })();
+  try { await LC.loading; } finally { LC.loading = null; }
+  lcRedraw();
+}
+function lcRedraw() {
+  const a = document.querySelector('.tab-btn.active'), t = a && a.dataset.tab, grids = ['docgrid', 'golden', 'silver'];
+  if (grids.includes(t) && document.getElementById('dgGrid')) drawDGrid();
+  grids.forEach(k => { if (k !== t && APP.rendered) APP.rendered[k] = false; });
+}
+const lcNameKey = s => String(s || '').toLowerCase().replace(/^dr\.?\s+/, '').replace(/\s+/g, ' ').trim();
+function lastContactMap() {
+  if (!LC.loaded) return null;
+  const docs = aggByDoctor();
+  if (LC.map && LC.mapFor === docs) return LC.map;
+  const byName = new Map(), byPrac = new Map(), out = new Map();
+  const add = (m, k, id) => { if (k) (m.get(k) || m.set(k, []).get(k)).push(id); };
+  docs.forEach(d => { add(byName, lcNameKey(d.name), d.drId); add(byPrac, String(d.practice || '').trim().toLowerCase(), d.drId); });
+  LC.offices.forEach(o => {
+    const v = svParseVisits(o.visits)[0]; if (!v) return;   // newest first
+    const ids = new Set();
+    svLabFigures(o.notes).forEach(e => (byName.get(lcNameKey(e.dr)) || []).forEach(id => ids.add(id)));
+    (byPrac.get(String(o.name || '').trim().toLowerCase()) || []).forEach(id => ids.add(id));
+    ids.forEach(id => { const c = out.get(id); if (!c || v.date > c.date) out.set(id, { date: v.date, kind: crmKind(v.note), rep: v.rep, office: o.name || '', color: v.color }); });
+  });
+  LC.map = out; LC.mapFor = docs; return out;
+}
+const lcGet = id => { const m = lastContactMap(); return m ? m.get(id) || null : null; };
+const lcDays = iso => Math.max(0, Math.round((new Date(crmToday() + 'T12:00:00') - new Date(iso + 'T12:00:00')) / 864e5));
+const lcAgo = n => n === 0 ? 'today' : n === 1 ? 'yesterday' : n < 60 ? n + ' days ago' : n < 730 ? Math.round(n / 30.4) + ' months ago' : Math.round(n / 365) + ' years ago';
+const lcTip = c => `${(LC_KIND[c.kind] || 'in person').replace(/^./, m => m.toUpperCase())}${c.rep ? ' — ' + c.rep : ''}${c.office ? ', at ' + c.office : ''}, ${svDay(c.date)}`;
+function lcHTML(drId) {
+  if (!LC.loaded) return LC.loading ? '<span class="lc lc-wait">Last contact: checking Salesly…</span>' : '';
+  const c = lcGet(drId); if (!c) return '<span class="lc lc-none">No visit, call or email logged</span>';
+  const n = lcDays(c.date);
+  return `<span class="lc${n > 60 ? ' lc-old' : ''}" title="${esc(lcTip(c))}">Last contact <b>${esc(svDay(c.date))}</b> · ${LC_KIND[c.kind] || 'in person'}${c.rep ? ' · ' + esc(c.rep) : ''} <span class="lc-ago">(${lcAgo(n)})</span></span>`;
+}
+function lcCellHTML(drId) {
+  if (!LC.loaded) return '<span class="text-mut">—</span>';
+  const c = lcGet(drId); if (!c) return '<span class="text-mut">none logged</span>';
+  const n = lcDays(c.date);
+  return `<span class="${n > 60 ? 'lc-old' : ''}" title="${esc(lcTip(c))}">${esc(svDay(c.date))} <small class="text-mut">· ${LC_KIND[c.kind] || 'in person'} · ${lcAgo(n)}</small></span>`;
+}
+// Doctor Detail's header, filled from the "Visits & calls" card's own list
+function ddLastContactPaint(items, offs) {
+  const el = document.getElementById('ddLastContact'); if (!el) return;
+  el.style.display = '';
+  if (!items.length) { el.className = 'lc-tag lc-none'; el.textContent = offs.length ? 'No visit, call or email logged yet' : 'No Salesly office linked yet'; el.title = ''; return; }
+  const v = items[0].v, c = { date: v.date, kind: crmKind(v.note), rep: v.rep, office: items[0].o.name || '' }, n = lcDays(c.date);
+  el.className = 'lc-tag' + (n > 60 ? ' lc-old' : ''); el.title = lcTip(c);
+  el.innerHTML = `Last contact <b>${esc(svDay(c.date))}</b> · ${LC_KIND[c.kind] || 'in person'}${c.rep ? ' · ' + esc(c.rep) : ''} <span class="lc-ago">(${lcAgo(n)})</span>`;
+}
+
 // the Golden doctors' names, for matching Salesly offices by the doctors on their lab lines
 function listNameKeys(kind) {
   const ck = kind + 'Names'; if (APP.derived && APP.derived[ck]) return APP.derived[ck];
@@ -7716,7 +7821,7 @@ function renderDoctorGrid(mode) {
           ? `The Diamond-list doctors — the same view as the Doctor Grid. ${goldenIds().size} doctors · ${LM.total - LM.unmatched.length} of ${LM.total} found, from ${esc(LM.src)}${Object.keys(listAdded('golden')).length ? ` · ${Object.keys(listAdded('golden')).length} added` : ''}${Object.keys(listRemoved('golden')).length ? ` · ${Object.keys(listRemoved('golden')).length} removed` : ''}.`
           : kind === 'silver'
           ? `The Silver-list doctors who aren’t on the Golden List — the same view as the Doctor Grid. ${silverIds().size} doctors · ${LM.dupes} of the list’s ${LM.total} names are on the Golden List instead${Object.keys(listAdded('silver')).length ? ` · ${Object.keys(listAdded('silver')).length} added` : ''}${Object.keys(listRemoved('silver')).length ? ` · ${Object.keys(listRemoved('silver')).length} removed` : ''}.`
-          : 'All accounts as cards — search, sort, click for the full profile.'}</div>
+          : 'All accounts as cards — search, sort, click for the full profile.'}${kind ? deadCountNote(kind) : ''}</div>
         ${LM && LM.unmatched.length ? `<details class="gl-miss"><summary>${LM.unmatched.length} not found in the lab data</summary>${LM.unmatched.map(u => `<div><b>${esc(u.doc)}</b> <span>${esc(u.prac)}</span></div>`).join('')}</details>` : ''}
       </div>
       <div class="section-actions">
@@ -7738,6 +7843,7 @@ function renderDoctorGrid(mode) {
         <button class="pill" data-sort="avgCase">Avg Case</button>
         <button class="pill" data-sort="remakeRate">Remake %</button>
         <button class="pill" data-sort="avgTat">Turnaround</button>
+        <button class="pill" data-sort="contact" title="Longest since anyone visited, called or emailed them — first">Last contact</button>
         <button class="pill" data-sort="name">A → Z</button>
       </div>
       <div class="qm-sort" id="dgQuietSort" role="group" aria-label="Sort a gone-quiet colour first">
@@ -7793,10 +7899,15 @@ function renderDoctorGrid(mode) {
       remake_rate_last_30_bd: trendOf(d.drId).remL == null ? '' : +(trendOf(d.drId).remL * 100).toFixed(2), remake_rate_prior_30_bd: trendOf(d.drId).remP == null ? '' : +(trendOf(d.drId).remP * 100).toFixed(2),
       avg_tat_last_30_bd: trendOf(d.drId).tatL == null ? '' : +trendOf(d.drId).tatL.toFixed(1), avg_tat_prior_30_bd: trendOf(d.drId).tatP == null ? '' : +trendOf(d.drId).tatP.toFixed(1),
       business_days_since_last_case: (quietInfo().get(d.drId) || {}).bd ?? '', usual_gap_business_days: (quietInfo().get(d.drId) || {}).usual ?? '',
+      other_doctors_at_practice: peersOf(d.drId, d.practice).map(x => x.name).join('; '),
+      last_contact_date: (lcGet(d.drId) || {}).date || '', last_contact_type: lcGet(d.drId) ? LC_KIND[lcGet(d.drId).kind] || '' : '',
+      last_contact_by: (lcGet(d.drId) || {}).rep || '', days_since_contact: lcGet(d.drId) ? lcDays(lcGet(d.drId).date) : '',
+      dead_account: isDead(d.drId) ? 'yes' : '',
       top_products: d.topProducts.join('; ')
     })));
   });
 
+  lcLoad();   // DL104: last contact, from Salesly — the grid redraws when it arrives
   drawDGrid();
 }
 
@@ -7824,6 +7935,10 @@ function dgFilteredDocs() {
     const key = q => { const r = quietRank(q); return r && r === pick ? 9 : r; };
     docs.sort((a, b) => { const qa = Q.get(a.drId), qb = Q.get(b.drId);
       return key(qb) - key(qa) || ((qa ? qa.bd : 1e9) - (qb ? qb.bd : 1e9)) || (b.revenue || 0) - (a.revenue || 0); });
+  }
+  else if (DGRID.sort === 'contact') {   // DL104: never contacted, then the longest ago, first
+    const M = lastContactMap() || new Map(), age = d => { const c = M.get(d.drId); return c ? lcDays(c.date) : 1e9; };
+    docs.sort((a, b) => age(b) - age(a) || (b.revenue || 0) - (a.revenue || 0));
   }
   else if (DGRID.sort === 'name') docs.sort((a,b) => a.name.localeCompare(b.name));
   else if (DGRID.sort === 'grow' || DGRID.sort === 'slip') {
@@ -7870,9 +7985,15 @@ function dgBindRemove(grid) {
     ev.stopPropagation();
     if (!confirm(`Remove ${b.dataset.nm} from the ${label}?\n\nThey'll come off this list everywhere — the tab, the ⭐/🥈 marks, the reports and Salesly — until you put them back.`)) return;
     const how = await listRemove(kind, b.dataset.rm, b.dataset.nm);
-    const moved = kind === 'golden' && isSilver(b.dataset.rm);
+    const moved = kind === 'golden' && isSilver(b.dataset.rm) && !isDead(b.dataset.rm);
     toast(`${b.dataset.nm} removed from the ${label} — ${settingsSaidHow(how)}${moved ? '. They’re on the Silver list file, so they now show as 🥈 Silver' : ''}`);
     renderDoctorGrid(kind);
+  }));
+  grid.querySelectorAll('.gl-dead').forEach(b => b.addEventListener('click', async ev => {   // DL104
+    ev.stopPropagation();
+    const why = deadPrompt(b.dataset.nm); if (why === null) return;
+    const how = await deadMark(b.dataset.dead, b.dataset.nm, why);
+    toast(`${b.dataset.nm} moved to Dead accounts — ${settingsSaidHow(how)}`); renderDoctorGrid(kind);
   }));
   const R = listRemoved(kind), ids = Object.keys(R), A = listAdded(kind), aids = Object.keys(A);
   if (!box) return;
@@ -7880,7 +8001,7 @@ function dgBindRemove(grid) {
     ${aids.sort((a, b) => String(A[a].name).localeCompare(String(A[b].name))).map(id => `<div class="gl-rrow"><span><b>${esc(A[id].name || id)}</b>
       <small class="text-mut"> · added ${A[id].at ? esc(new Date(A[id].at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })) : ''}</small></span>
       <button type="button" class="btn-text gl-unadd" data-id="${esc(id)}" data-nm="${esc(A[id].name || '')}">✕ Take off the list</button></div>`).join('')}</details>` : '';
-  box.innerHTML = addedHTML + (ids.length ? `<details class="card gl-removed"><summary>Removed from the ${label} — ${ids.length}</summary>
+  box.innerHTML = deadListHTML(kind) + addedHTML + (ids.length ? `<details class="card gl-removed"><summary>Removed from the ${label} — ${ids.length}</summary>
     ${ids.sort((a, b) => String(R[a].name).localeCompare(String(R[b].name))).map(id => `<div class="gl-rrow"><span><b>${esc(R[id].name || id)}</b>
       <small class="text-mut"> · removed ${R[id].at ? esc(new Date(R[id].at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })) : ''}</small></span>
       <button type="button" class="btn-text gl-restore" data-id="${esc(id)}">↩ Put back</button></div>`).join('')}</details>` : '');
@@ -7889,6 +8010,8 @@ function dgBindRemove(grid) {
   glBindAdd(kind, label);
   box.querySelectorAll('.gl-restore').forEach(b => b.addEventListener('click', async () => {
     const how = await listRestore(kind, b.dataset.id); toast(`Put back on the ${label} — ${settingsSaidHow(how)}`); renderDoctorGrid(kind); }));
+  box.querySelectorAll('.gl-revive').forEach(b => b.addEventListener('click', async () => {   // DL104
+    const how = await deadRevive(b.dataset.id); toast(`${b.dataset.nm || 'Doctor'} brought back from Dead accounts — ${settingsSaidHow(how)}`); renderDoctorGrid(kind); }));
 }
 function drawDGrid() {
   const docs = dgFilteredDocs();
@@ -7926,10 +8049,12 @@ function drawDGrid() {
           <div style="min-width:0">
             <div class="dr-name">${goldMark(d.drId)}${esc(d.name)} ${quietMark(quietInfo().get(d.drId))}</div>
             ${practiceDisplayHTML(d.practiceInfo, 'dr-practice')}
+            ${peersHTML(d.drId, d.practice, 3)}
             <div class="dr-loc">${esc(d.city || '—')}${d.state ? ', ' + esc(d.state) : ''}</div>
-            ${statusBadgeHTML(d.drId, 'sm')}
+            ${statusBadgeHTML(d.drId, 'sm')}${deadTag(d.drId)}
+            <div class="dr-lc">${lcHTML(d.drId)}</div>
           </div>
-          <div class="dr-card-r">${tag}${d.remakeRate > 0 || d.remakeCaseRate > 0 ? `<small class="rc-sub" title="Cases remade ÷ cases">by case ${fmtPct(d.remakeCaseRate)}</small>` : ''}${DGRID === DG_GOLD || DGRID === DG_SILV ? `<button type="button" class="gl-rm" data-rm="${esc(d.drId)}" data-nm="${esc(d.name)}" title="Remove from the ${DGRID === DG_GOLD ? 'Golden' : 'Silver'} List">✕ Remove</button>` : ''}</div>
+          <div class="dr-card-r">${tag}${d.remakeRate > 0 || d.remakeCaseRate > 0 ? `<small class="rc-sub" title="Cases remade ÷ cases">by case ${fmtPct(d.remakeCaseRate)}</small>` : ''}${DGRID === DG_GOLD || DGRID === DG_SILV ? `<button type="button" class="gl-rm" data-rm="${esc(d.drId)}" data-nm="${esc(d.name)}" title="Remove from the ${DGRID === DG_GOLD ? 'Golden' : 'Silver'} List">✕ Remove</button>${secViewOnly() ? '' : `<button type="button" class="gl-dead" data-dead="${esc(d.drId)}" data-nm="${esc(d.name)}" title="They're inactive: take them off the Golden and Silver lists and onto the Dead accounts list">Dead account</button>`}` : ''}</div>
         </div>
         <div class="dr-stats">
           <div><label>Revenue</label><div class="val">${fmtUSD(d.revenue)}</div></div>
@@ -8175,10 +8300,13 @@ function renderDoctorDetail() {
         <div class="detail-name" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
           <span>${esc(s.drName)}</span>
           ${statusBadgeHTML(APP.selectedDoctorId, 'lg')}
-          ${isGolden(APP.selectedDoctorId) ? '<span class="gm-tag">Golden List</span>' : isSilver(APP.selectedDoctorId) ? '<span class="gm-tag sv">Silver List</span>' : ''}
-          <span class="dd-gl">${isGolden(APP.selectedDoctorId) ? '<button type="button" class="btn-text" data-gl="rm:golden">✕ Remove from Golden</button>'
+          ${isGolden(APP.selectedDoctorId) ? '<span class="gm-tag">Golden List</span>' : isSilver(APP.selectedDoctorId) ? '<span class="gm-tag sv">Silver List</span>' : ''}${deadTag(APP.selectedDoctorId)}
+          <span class="dd-gl">${isDead(APP.selectedDoctorId) ? (secViewOnly() ? '' : '<button type="button" class="btn-text" data-dead="revive">↩ Bring back</button>')
+            : (isGolden(APP.selectedDoctorId) ? '<button type="button" class="btn-text" data-gl="rm:golden">✕ Remove from Golden</button>'
             : isSilver(APP.selectedDoctorId) ? '<button type="button" class="btn-text" data-gl="add:golden">Move to Golden</button><button type="button" class="btn-text" data-gl="rm:silver">✕ Remove from Silver</button>'
-            : '<button type="button" class="btn-text" data-gl="add:golden">＋ ⭐ Golden</button><button type="button" class="btn-text" data-gl="add:silver">＋ 🥈 Silver</button>'}</span>
+            : '<button type="button" class="btn-text" data-gl="add:golden">＋ ⭐ Golden</button><button type="button" class="btn-text" data-gl="add:silver">＋ 🥈 Silver</button>')
+              + (secViewOnly() ? '' : '<button type="button" class="btn-text dd-deadbtn" data-dead="mark" title="They\'re inactive: off the Golden and Silver lists, onto Dead accounts">Dead account</button>')}</span>
+          <span class="lc-tag lc-wait" id="ddLastContact">Last contact: checking Salesly…</span>
           ${(() => { const q = quietInfo().get(APP.selectedDoctorId), L = q && quietLevel(q.bd); return L ? `<span class="qm-tag qm-${L[1]}" title="${esc(quietTip(q))}"><b>!</b> ${bdWord(q.bd)} since the last case${q.usual ? ` · usually every ${q.usual}` : ''}</span>` : ''; })()}
         </div>
         ${ddPracticeTabs.length === 1
@@ -8193,6 +8321,7 @@ function renderDoctorDetail() {
                      title="${esc(t.name)} — ${fmtN(t.cases)} cases. Click to show only this office.">${esc(t.name)} <span class="dp-count">${fmtN(t.cases)}</span></button>`).join('')}
                </div>`
             : ''}
+        ${ddPeersHTML(APP.selectedDoctorId, ddPracticeTabs)}
         <div class="detail-meta">
           ${(ddContact.email || s.email) ? `<span>${esc(ddContact.email || s.email)}</span>` : ''}
           ${(ddContact.phone || s.phone) ? `<span>${esc(ddContact.phone || s.phone)}</span>` : ''}
@@ -8290,6 +8419,12 @@ function renderDoctorDetail() {
     if (act === 'rm' && !confirm(`Remove ${nm} from the ${label}?`)) return;
     const how = act === 'add' ? await listAdd(kind, id, nm) : await listRemove(kind, id, nm);
     toast(`${nm} ${act === 'add' ? 'added to' : 'removed from'} the ${label} — ${settingsSaidHow(how)}`); renderDoctorDetail(); }));
+  el.querySelectorAll('[data-dead]').forEach(b => b.addEventListener('click', async () => {   // DL104: dead account / bring back
+    const id = APP.selectedDoctorId, nm = s.drName;
+    if (b.dataset.dead === 'mark') { const why = deadPrompt(nm); if (why === null) return;
+      toast(`${nm} moved to Dead accounts — ${settingsSaidHow(await deadMark(id, nm, why))}`); }
+    else toast(`${nm} brought back from Dead accounts — ${settingsSaidHow(await deadRevive(id))}`);
+    renderDoctorDetail(); }));
   document.getElementById('ddBack').addEventListener('click', () => switchTab('docgrid'));
   ddBindCaseSort(cases);   // DL85: All Cases — newest first; click a heading to sort
 
@@ -16440,7 +16575,7 @@ function secExportGate(what) {
   return false;
 }
 const SEC_EXPORT_KEEP = new Set(['sbLabPull']);   // ⬇ buttons that load data rather than download it
-const SEC_ADMIN_BTNS = new Set(['btnSaveData', 'btnAddData', 'btnNewUpload', 'sbLabPush']);   // save / mix in / replace the data: admins
+const SEC_ADMIN_BTNS = new Set(['btnAddData', 'btnNewUpload', 'sbLabPush']);   // save / mix in / replace the data: admins
 function secIsExportBtn(b) {
   if (!b || SEC_EXPORT_KEEP.has(b.id)) return false;
   if (SEC_ADMIN_BTNS.has(b.id)) return true;
@@ -16580,7 +16715,7 @@ async function secPaintAdmin(el) {
     <table style="width:100%;font-size:12px;border-collapse:collapse"><thead><tr style="text-align:left;color:var(--text-muted,#5c7179)"><th>Name</th><th>Role</th><th>Two-step</th><th>Last sign-in</th></tr></thead><tbody>
     ${(rows || []).map(r => `<tr style="border-top:1px solid var(--line,#e9f0f2)"><td>${esc(r.name || '')} <span style="color:var(--text-muted,#5c7179)">${esc(r.email || '')}</span></td><td>${esc(r.role || '')}${r.active ? '' : ' (off)'}</td>
       <td>${r.exempt ? 'exempt (automation)' : r.has_mfa ? '✓ on' + (r.user_id && (!pgUser || r.user_id !== pgUser.id) ? ` <button class="btn-text sec-reset" data-uid="${esc(r.user_id)}" data-who="${esc(r.name || r.email || '')}" style="font-size:11px;padding:1px 6px" title="Lost phone? Clears their two-step login so they can set it up again at their next sign-in">Reset</button>` : '') : '<span style="color:#9a5b00">not set up</span>'}</td><td>${r.last_sign_in ? esc(new Date(r.last_sign_in).toLocaleDateString()) : '—'}</td></tr>`).join('')}</tbody></table>
-    <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn-text" id="secLogBtn">Access log</button><button class="btn-text" id="secWipe" title="Every browser's saved copy of the invoices becomes unreadable">Wipe all saved browser copies</button></div>
+    <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn-text" id="secLogBtn">Access log</button></div>
     <div id="secLogBox"></div></div>`;
   el.querySelector('#secReq').onclick = async () => {
     if (!req && needs.length && !confirm(needs.length + ' dashboard login(s) haven’t set up two-step login yet. They’ll get the setup screen (QR code + phone app) at their next sign-in and can’t see data until they finish it. Require it now?')) return;
@@ -16594,12 +16729,6 @@ async function secPaintAdmin(el) {
     if (e5) { toast('Could not reset: ' + e5.message, 'err'); return; }
     toast('Two-step login reset for ' + b.dataset.who, 'ok'); secPaintAdmin(el);
   });
-  el.querySelector('#secWipe').onclick = async () => {
-    if (!confirm('Make every saved browser copy of the invoices unreadable (all computers)? Each person’s next sign-in downloads fresh data.')) return;
-    const { error: e3 } = await db.rpc('dashboard_cache_key_reset', { p_all: true });
-    if (e3) { toast('Could not wipe: ' + e3.message, 'err'); return; }
-    SEC.key = null; SEC.keyFor = null; secLog('cache_cleared', { all: true }); toast('Saved copies wiped', 'ok');
-  };
   el.querySelector('#secLogBtn').onclick = async () => {
     const box = el.querySelector('#secLogBox'); box.innerHTML = '<div class="sb-hint">Loading…</div>';
     const { data: L, error: e4 } = await db.rpc('access_log_recent', { p_limit: 200 });
@@ -16608,30 +16737,7 @@ async function secPaintAdmin(el) {
       ${(L || []).map(x => `<tr style="border-top:1px solid var(--line,#e9f0f2)"><td style="white-space:nowrap">${esc(new Date(x.at).toLocaleString())}</td><td>${esc(x.email || x.role || '')}</td><td>${esc(String(x.action || '').replace(/_/g, ' '))}</td><td>${esc(x.detail ? JSON.stringify(x.detail) : '')}</td></tr>`).join('')}</tbody></table></div>`;
   };
 }
-/* ── encrypted browser copy ─────────────────────────────────────────────────── */
-async function secCacheKey() {
-  const db = PG; if (!db || !pgUser || !(window.crypto && crypto.subtle)) return null;
-  if (SEC.key && SEC.keyFor === pgUser.id) return SEC.key;
-  try {
-    const { data, error } = await db.rpc('dashboard_cache_key');
-    if (error || !data) return null;
-    const raw = Uint8Array.from(atob(String(data)), c => c.charCodeAt(0));
-    SEC.key = await crypto.subtle.importKey('raw', raw, 'AES-GCM', false, ['encrypt', 'decrypt']); SEC.keyFor = pgUser.id;
-    return SEC.key;
-  } catch (e) { return null; }
-}
-async function secEncrypt(value) {
-  const key = await secCacheKey(); if (!key) return null;
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(JSON.stringify(value)));
-  return { enc: 1, iv, ct, who: pgUser.id };
-}
-async function secDecrypt(box) {
-  if (!box || box.enc !== 1) return null;
-  const key = await secCacheKey(); if (!key || box.who !== (pgUser && pgUser.id)) return null;
-  try { return JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: box.iv }, key, box.ct))); }
-  catch (e) { return null; }   // a reset key, another person's copy, or a damaged copy: treat as no copy
-}
+/* DL103: the encrypted browser copy (secCacheKey / secEncrypt / secDecrypt) is gone — nothing is saved in the browser. */
 /* framing guard: this page refuses to run inside someone else's page (clickjacking) */
 try { if (window.top !== window.self) { document.documentElement.style.display = 'none'; window.top.location = window.self.location.href; } } catch (e) { document.documentElement.style.display = 'none'; }
 
@@ -17555,15 +17661,7 @@ function renderBridge() {
             (d.from ? ' (' + d.from + ' → ' + d.to + ')' : ''), 'ok');
       if (totalReplaced) sbLog('  ✓ replaced: ' + totalReplaced.toLocaleString() + ' line' + (totalReplaced === 1 ? '' : 's') + ' no longer in the export removed (voided or superseded)', 'ok');
       if (replaceSkipped) sbLog('  the database did NOT replace these days: over 10% of the stored lines are missing from this file. Check the export is complete.', 'warn');
-      /* Stamp our own cache with the database's NEW fingerprint. Without this
-         the person who just uploaded would look stale to the freshness check on
-         their next visit, and re-download the 190k rows they just sent up. */
-      try {
-        const { data: sum2 } = await db.rpc('lab_summary');
-        LAB_LAST_STAMP = labStamp(sum2);
-        const cached = await dbGet();
-        if (cached && cached.rows) { cached.labStamp = LAB_LAST_STAMP; await dbPut(cached); }
-      } catch (e) {}
+      try { const { data: sum2 } = await db.rpc('lab_summary'); LAB_LAST_STAMP = labStamp(sum2); } catch (e) {}
       // DL77/78: a new-layout load updates amounts and may remove lines — the queue reloads once, after the last upload
       if (newLayout) LAB_PUSH_RELOAD = true;
     } catch (e) {
@@ -21245,6 +21343,7 @@ function crmOpen(offices, onSaved) {
     if (error) { btn.disabled = false; msg.textContent = /log_office_contact|function|schema cache/i.test(error.message || '') ? 'Run salesly_log_contact.sql in Supabase once to turn this on.' : 'Couldn’t save: ' + error.message; return; }
     o.visits = SLF.parseVisits(data || '');
     if (typeof SV !== 'undefined' && SV) SV.loaded = false;   // Sales Visits re-reads offices next time
+    if (typeof LC !== 'undefined') { LC.loaded = false; LC.map = null; }   // DL104: so is everyone's last contact
     close(); toast(`${crmIcon(kind)} Logged — reps see it in Salesly on their next sync`);
     if (onSaved) onSaved(o, data);
   };
@@ -21332,6 +21431,8 @@ async function ddCrmLoad(drName, practice, drId) {
   const host = document.getElementById('ddCrm'); if (!host) return;
   const r = await crmFindOffices(drName, practice);
   if (APP.selectedDoctorId !== drId) return;   // moved on to another doctor meanwhile
+  const lcEl = document.getElementById('ddLastContact');
+  if (r.error && lcEl) lcEl.style.display = 'none';   // DL104: nothing to say without Salesly
   if (r.error === 'signin') { host.innerHTML = ddCrmHead(0, false) + '<div class="crm-nil">Sign in on the Salesly Bridge tab to see visits and calls here, and to log them.</div>'; return; }
   if (r.error) { host.innerHTML = ddCrmHead(0, false) + `<div class="crm-nil">Couldn’t read Salesly: ${esc(r.error)}</div>`; return; }
   host._offs = r.offs; host._lim = 12;
@@ -21347,6 +21448,7 @@ function ddCrmPaint(host, drName) {
   const offs = host._offs || [], items = [];
   offs.forEach(o => (o.visits || []).forEach(v => items.push({ v, o })));
   items.sort((a, b) => a.v.date < b.v.date ? 1 : a.v.date > b.v.date ? -1 : 0);
+  ddLastContactPaint(items, offs);   // DL104: the header's "Last contact", from the same list
   const res = c => CRM_RESULTS.find(x => x[0] === c && c);
   const day = s => { const d = new Date(s + 'T12:00:00'); return isNaN(d) ? s : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); };
   host.innerHTML = ddCrmHead(items.length, offs.length > 0) +
