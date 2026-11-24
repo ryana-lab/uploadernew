@@ -40,7 +40,7 @@
 </script>
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; font-src 'self' data:; img-src 'self' data: blob: https://cdn.jsdelivr.net https://maps.geoapify.com; connect-src 'self' https://hfzizrzqrneuciykpuez.supabase.co wss://hfzizrzqrneuciykpuez.supabase.co https://api.geocod.io https://api.geoapify.com https://api.openrouteservice.org https://nominatim.openstreetmap.org; frame-src https://www.google.com https://maps.google.com; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'self'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
-<title>Lab Sales Dashboard v2026.11.23-DL104</title>
+<title>Lab Sales Dashboard v2026.11.24-DL105</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js" integrity="sha384-D/t0ZMqQW31H3az8ktEiNb39wyKnS82iFY52QPACM+IjKW3jDUhyIgh2PApRqJZs" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js" integrity="sha384-dug+JxfBvklEQdJ4AYuBBAIScUz0bVN73xpy273gcAwHjb3qI0fXmuYNaNfdyYJG" crossorigin="anonymous"></script>
@@ -1839,6 +1839,13 @@ html.ui-safe .rv-item, html.ui-safe #dashboard.ui-enter .sidebar, html.ui-safe #
 .gl-deadbox summary { color: var(--ink); }
 .gl-deadnote { font-size: 12px; color: var(--mut); margin: 6px 0 4px; }
 .gl-deadcount { color: var(--dim); font-weight: 600; }
+
+/* ══ DL105: tie-out to Pilot · data freshness ══ */
+.kpi-sub.kpi-pilot { margin-top: 6px; padding-top: 6px; border-top: 1px dashed rgba(18,72,84,.14); color: var(--dim); }
+.kpi-sub.kpi-pilot b { color: var(--ink); }
+.kpi-sub.kpi-pilot span { color: var(--mut); }
+.ov-fresh { display: block; margin-top: 3px; color: var(--mut); }
+.ov-fresh b { color: var(--dim); }
 </style>
 </head>
 <body>
@@ -2242,6 +2249,7 @@ const fmtUSD = n => {
   if (Math.abs(n) >= 1e3) return '$' + (n/1e3).toFixed(1) + 'K';
   return '$' + Math.round(n).toLocaleString();
 };
+const fmtUSDc = n => (n < 0 ? '−$' : '$') + Math.abs(+n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });   // DL105: to the cent, as Pilot shows it
 const fmtUSDFull = n => {
   if (n == null || isNaN(n)) return '—';
   return '$' + Math.round(n).toLocaleString();
@@ -2636,7 +2644,7 @@ const APP = {
 
 /* Bump when normalization logic changes, so it's possible to tell at a glance
    (bottom of the Avg Turnaround card) which build a browser is running. */
-const BUILD_ID = 'DL104 · 2026-11-23';
+const BUILD_ID = 'DL105 · 2026-11-24';
 
 const DB_NAME = 'LabOpsCache';
 const DB_STORE = 'datasets';
@@ -3892,6 +3900,9 @@ function agg(name, fn) {
 function aggKPIs() {
   return agg('kpis', data => {
     const totalRev = data.reduce((s,r) => s + r.netCost, 0);
+    /* DL105: Pilot's "Invoiced" counts remake lines BEFORE their remake discount; revenue here is
+       what doctors were billed (after it). Revenue + remake discounts = Pilot's figure. */
+    const remakeDisc = data.reduce((s, r) => s + (r.remakeDiscount || 0), 0);
     const totalUnits = data.reduce((s,r) => s + r.qty, 0);
     // Case-level, not row-level: one case spans several line-item rows
     const totalCases = countCases(data);
@@ -3911,7 +3922,7 @@ function aggKPIs() {
     const _tatVals = tatValues(data);
     const avgTAT = _tatVals.length ? _tatVals.reduce((a,b)=>a+b,0)/_tatVals.length : null;
     return {
-      totalRev, totalCases, totalUnits,
+      totalRev, remakeDisc, totalCases, totalUnits,
       avgCase: totalCases ? totalRev / totalCases : 0,
       /* Case values are heavily right-skewed: a single crown is $79, but a
          full-arch or multi-unit implant case can run into the thousands, and
@@ -4070,8 +4081,9 @@ function aggByMonth() {
     for (const r of data) {
       if (!r.anchorMonth) continue;
       let m = map.get(r.anchorMonth);
-      if (!m) { m = { key: r.anchorMonth, revenue: 0, caseSet: new Set(), units: 0, remakeSet: new Set() }; map.set(r.anchorMonth, m); }
+      if (!m) { m = { key: r.anchorMonth, revenue: 0, remakeDisc: 0, caseSet: new Set(), units: 0, remakeSet: new Set() }; map.set(r.anchorMonth, m); }
       m.revenue += r.netCost;
+      m.remakeDisc += r.remakeDiscount || 0;   // DL105: what Pilot's "Invoiced" still counts
       addCase(m.caseSet, r.caseKey);
       m.units += r.qty;          // the "Units" series on the overview chart
       m.uAll = (m.uAll || 0) + (r.rmQty || 0); if (r.remake) { addCase(m.remakeSet, r.caseKey); m.remakeUnits = (m.remakeUnits || 0) + (r.rmRem || 0); }
@@ -6111,7 +6123,7 @@ function renderOverview() {
     <div class="section-header">
       <div>
         <div class="section-title">Sales Overview</div>
-        <div class="section-sub">Headline performance across the current filter selection.</div>
+        <div class="section-sub">Headline performance across the current filter selection.${dataFreshHTML()}</div>
       </div>
       <div class="section-actions">
         <button class="btn-text" id="ovExport">⬇ Export Filtered CSV</button>
@@ -6119,7 +6131,7 @@ function renderOverview() {
     </div>
 
     <div class="kpi-row">
-      <div class="kpi"><div class="kpi-label">Total Revenue</div><div class="kpi-value">${fmtUSDFull(k.totalRev)}</div><div class="kpi-sub">${fmtN(k.totalCases)} invoiced cases</div></div>
+      <div class="kpi"><div class="kpi-label">Total Revenue</div><div class="kpi-value">${fmtUSDFull(k.totalRev)}</div><div class="kpi-sub">${fmtN(k.totalCases)} invoiced cases · what doctors were billed</div>${k.remakeDisc > 0 ? `<div class="kpi-sub kpi-pilot" title="Pilot's “Invoiced” counts remake lines before their remake discount; this dashboard counts what was actually billed. Add the two and they match.">Pilot “Invoiced”: <b>${fmtUSDc(k.totalRev + k.remakeDisc)}</b> <span>= ${fmtUSDc(k.totalRev)} billed + ${fmtUSDc(k.remakeDisc)} remake discounts</span></div>` : ''}</div>
       <div class="kpi"><div class="kpi-label">Median Case Value</div><div class="kpi-value">${fmtUSDFull(k.medianCase)}</div><div class="kpi-sub">mean ${fmtUSDFull(k.avgCase)} · ${fmtN(k.totalUnits)} units shipped</div></div>
       <div class="kpi"><div class="kpi-label">Active Doctors</div><div class="kpi-value">${fmtN(k.doctors)}</div><div class="kpi-sub">${fmtN(k.products)} unique products</div></div>
       <div class="kpi"><div class="kpi-label">Remake Rate</div><div class="kpi-value">${fmtPct(k.remakeRate)}</div><div class="kpi-sub">${fmtN(k.remakeUnits)} of ${fmtN(k.rmUnitsAll)} units reworked · <b>by case ${fmtPct(k.remakeCaseRate)}</b> (${fmtN(k.remakeCount)} of ${fmtN(k.rmCaseBase)})</div></div>
@@ -6190,6 +6202,14 @@ function renderOverview() {
     },
     options: {
       ...co,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { ...co.plugins, tooltip: { ...co.plugins.tooltip, footerColor: '#ffffff', footerFont: { family: 'Segoe UI, sans-serif', size: 11.5, weight: '600' }, footerMarginTop: 8,
+        callbacks: {   // DL105: dollars, and how the month ties to Pilot's "Invoiced"
+          label: c => c.dataset.yAxisID === 'y' ? ` Revenue (billed): ${fmtUSDc(c.parsed.y)}` : ` Units: ${fmtN(c.parsed.y)}`,
+          footer: items => { const m = months[items[0].dataIndex]; if (!m) return [];
+            const out = m.remakeDisc ? [`+ Remake discounts: ${fmtUSDc(m.remakeDisc)}`, `= Pilot “Invoiced”: ${fmtUSDc(m.revenue + m.remakeDisc)}`] : [];
+            if (m.key === _partialKey && _mx) out.push(`Through ${_mx.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} — month in progress`);
+            return out; } } } },
       scales: {
         ...co.scales,
         y:  { ...co.scales.y, position: 'left', ticks: { ...co.scales.y.ticks, callback: v => fmtUSD(v) } },
@@ -16243,11 +16263,21 @@ const LAB_PAGE = 5000;
 /* A cheap fingerprint of the database's contents: row count + latest invoice
    date. Comparing this against what the cached copy was built from tells us
    whether the local data is stale WITHOUT downloading anything. */
+/* DL105: "Pilot data through Mon, Nov 23 · last loaded Mon 11:20 PM" — so a live Pilot figure isn't
+   compared with an earlier load without anyone knowing. */
+function dataFreshHTML() {
+  const mx = getMaxDate(); if (!mx) return '';
+  const day = mx.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  const la = LAB_SUM && LAB_SUM.loaded_at ? new Date(LAB_SUM.loaded_at) : null;
+  const at = la && !isNaN(la) ? la.toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'America/Chicago' }) : '';
+  return ` <span class="ov-fresh">${LAB_SUM ? 'Pilot data' : 'Data'} through <b>${esc(day)}</b>${at ? ` · last loaded from Pilot ${esc(at)}` : ''}.${LAB_SUM ? ' Anything newer in Pilot shows up after its next load.' : ''}</span>`;
+}
 function labStamp(sum) {
   if (!sum) return '';
   return String(sum.rows || 0) + '|' + String(sum.to || '') + '|' + String(sum.from || '');
 }
 let LAB_LAST_STAMP = '';
+let LAB_SUM = null;   // DL105: the last lab_summary (rows, date range, when Pilot data was last loaded)
 async function labPullAll(opts) {
   opts = opts || {};
   const db = pgClient();
@@ -16298,7 +16328,7 @@ async function labPullAll(opts) {
     // straight back to Salesly would be pointless churn.
     // Remember the database's fingerprint at the moment of this pull, so a
     // later visit can tell in one cheap query whether it has gone stale.
-    try { LAB_LAST_STAMP = labStamp(sum); } catch (e) {}
+    try { LAB_LAST_STAMP = labStamp(sum); LAB_SUM = sum || null; } catch (e) {}
     try { Object.defineProperty(rows, '__interned', { value: true, configurable: true }); } catch (e) {}
     finishIngest(rows, 'database (' + rows.length.toLocaleString() + ' rows)', false);
     return true;
@@ -17661,7 +17691,7 @@ function renderBridge() {
             (d.from ? ' (' + d.from + ' → ' + d.to + ')' : ''), 'ok');
       if (totalReplaced) sbLog('  ✓ replaced: ' + totalReplaced.toLocaleString() + ' line' + (totalReplaced === 1 ? '' : 's') + ' no longer in the export removed (voided or superseded)', 'ok');
       if (replaceSkipped) sbLog('  the database did NOT replace these days: over 10% of the stored lines are missing from this file. Check the export is complete.', 'warn');
-      try { const { data: sum2 } = await db.rpc('lab_summary'); LAB_LAST_STAMP = labStamp(sum2); } catch (e) {}
+      try { const { data: sum2 } = await db.rpc('lab_summary'); LAB_LAST_STAMP = labStamp(sum2); LAB_SUM = sum2 || LAB_SUM; } catch (e) {}
       // DL77/78: a new-layout load updates amounts and may remove lines — the queue reloads once, after the last upload
       if (newLayout) LAB_PUSH_RELOAD = true;
     } catch (e) {
