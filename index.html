@@ -40,7 +40,7 @@
 </script>
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; font-src 'self' data:; img-src 'self' data: blob: https://cdn.jsdelivr.net https://maps.geoapify.com; connect-src 'self' https://hfzizrzqrneuciykpuez.supabase.co wss://hfzizrzqrneuciykpuez.supabase.co https://api.geocod.io https://api.geoapify.com https://api.openrouteservice.org https://nominatim.openstreetmap.org; frame-src https://www.google.com https://maps.google.com; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'self'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
-<title>Lab Sales Dashboard v2026.11.24-DL106</title>
+<title>Lab Sales Dashboard v2026.11.25-DL108</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js" integrity="sha384-D/t0ZMqQW31H3az8ktEiNb39wyKnS82iFY52QPACM+IjKW3jDUhyIgh2PApRqJZs" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js" integrity="sha384-dug+JxfBvklEQdJ4AYuBBAIScUz0bVN73xpy273gcAwHjb3qI0fXmuYNaNfdyYJG" crossorigin="anonymous"></script>
@@ -2644,7 +2644,7 @@ const APP = {
 
 /* Bump when normalization logic changes, so it's possible to tell at a glance
    (bottom of the Avg Turnaround card) which build a browser is running. */
-const BUILD_ID = 'DL106 · 2026-11-24';
+const BUILD_ID = 'DL108 · 2026-11-25';
 
 const DB_NAME = 'LabOpsCache';
 const DB_STORE = 'datasets';
@@ -2791,7 +2791,7 @@ function finishIngest(rawRows, fileName, freshUpload) {
          (freshUpload false) — that would just send it straight back. */
       if (freshUpload) {
         setTimeout(() => {
-          try { if (typeof window.__labPushRaw === 'function') window.__labPushRaw({ auto: true }); }
+          try { labSave({ auto: true }); }   // DL107: works without opening Salesly Bridge first
           catch (e) {}
         }, 1200);
       }
@@ -3246,7 +3246,7 @@ let FIN_DROPPED = { lines: 0, amount: 0 }, OB_DROPPED = { lines: 0, amount: 0 };
    Kept in Supabase's app_settings (admins only — the 11 am job signs in as one),
    so every admin, every computer and the emailed reports use the same choices.
    Cached in this browser so a CSV-only session still has them. */
-const SETTINGS_KEYS = ['list_removals', 'list_additions', 'remake_reason_types', 'dead_accounts'];   // DL104: + dead accounts
+const SETTINGS_KEYS = ['list_removals', 'list_additions', 'remake_reason_types', 'dead_accounts', 'arpp_pilot'];   // DL104: + dead accounts · DL108: + the ARPP pilot lists
 const SETTINGS = (() => { const o = {}; SETTINGS_KEYS.forEach(k => { try { o[k] = JSON.parse(localStorage.getItem('vda_set_' + k) || 'null'); } catch (e) { o[k] = null; } }); return o; })();
 async function settingsLoad() {
   const db = typeof pgClient === 'function' ? pgClient() : null; if (!db) return false;
@@ -4833,7 +4833,7 @@ function initDashboard() {
           const addedRows = res.data;
           setTimeout(() => {
             try {
-              if (typeof window.__labPushRaw === 'function') window.__labPushRaw({ auto: true, rows: addedRows });
+              labSave({ auto: true, rows: addedRows });   // DL107: works without opening Salesly Bridge first
             } catch (e) {}
           }, 800);
           // Re-establish filter bounds and rebuild
@@ -16278,6 +16278,24 @@ function labStamp(sum) {
 }
 let LAB_LAST_STAMP = '';
 let LAB_SUM = null;   // DL105: the last lab_summary (rows, date range, when Pilot data was last loaded)
+/* DL107: every line downloaded from the database. A save must only ever send lines that came
+   from a FILE — a downloaded line carries the masked case number ("•…"), so the database could
+   not recognise it as a line it already holds and stored it a second time (Nov 24, 2026). */
+const DB_ROWS = new WeakSet();
+/* DL107: the save lives inside the Salesly Bridge panel and only existed once that tab had been
+   opened, so "+ Add Data" silently saved nothing until then — and the usual way round it, pressing
+   "Save invoices to database", re-sent every line on screen. Set the panel up quietly first. */
+function labSave(opts) {
+  if (typeof window.__labPushRaw !== 'function') { try { renderBridge(); } catch (e) {} }
+  if (typeof window.__labPushRaw === 'function') return window.__labPushRaw(opts);
+  toast('Could not save to the database — open Salesly Bridge and press "Save invoices to database".', 'err');
+}
+function labIsFromDb(r) {
+  if (!r || typeof r !== 'object') return false;
+  if (DB_ROWS.has(r)) return true;
+  const c = r.Case_Number != null ? r.Case_Number : r.case_number;
+  return typeof c === 'string' && c.charAt(0) === '•';
+}
 /* DL106: one busy moment on the database (a page cut off at its 8-second limit, a dropped
    connection) used to throw away the whole download. Retry that one page a few times,
    waiting a little longer each time, before giving up. Sign-in and permission errors are
@@ -16332,7 +16350,8 @@ async function labPullAll(opts) {
       const got = (data && data.rows) || [];
       if (!got.length) break;
       for (let i = 0; i < got.length; i++) { const g = got[i];   // DL101: shared values, page by page, so the download never holds 7M copies
-        if (g && typeof g === 'object') for (const k in g) { const v = g[k]; if (typeof v === 'string' && k !== 'Case_Number') g[k] = strIntern(v); }
+        if (g && typeof g === 'object') { for (const k in g) { const v = g[k]; if (typeof v === 'string' && k !== 'Case_Number') g[k] = strIntern(v); }
+          DB_ROWS.add(g); }   // DL107: remembered as "came from the database" — never sent back to it
         rows.push(g); }
       after = Number(data.last_id) || after;
       const pct = Math.min(90, Math.round(rows.length / total * 90));
@@ -17565,9 +17584,15 @@ function renderBridge() {
     const db = pgClient();
     if (!db) { if (!opts.auto) sbLog('Connect to Supabase first (Test connection).', 'warn'); return; }
     // An explicit row set (from Add Data) wins; otherwise send the whole dataset.
-    const all = (opts.rows && opts.rows.length) ? opts.rows : ((APP && APP.rawRows) || []);
-    if (!all.length && APP && APP.rawDropped) { if (!opts.auto) sbLog(RAW_PHONE_MSG, 'warn'); return; }   // DL101
-    if (!all.length) { if (!opts.auto) sbLog('No CSV loaded — upload your export first.', 'warn'); return; }
+    const all0 = (opts.rows && opts.rows.length) ? opts.rows : ((APP && APP.rawRows) || []);
+    if (!all0.length && APP && APP.rawDropped) { if (!opts.auto) sbLog(RAW_PHONE_MSG, 'warn'); return; }   // DL101
+    if (!all0.length) { if (!opts.auto) sbLog('No CSV loaded — upload your export first.', 'warn'); return; }
+    /* DL107: only lines that came from a FILE are ever sent. Lines downloaded from the database
+       are already stored there, and their masked case numbers made the database store them twice. */
+    const all = all0.filter(r => !labIsFromDb(r));
+    if (all.length < all0.length) sbLog('Leaving out ' + (all0.length - all.length).toLocaleString() + ' line' + (all0.length - all.length === 1 ? '' : 's') +
+                                        ' that came from the database — only lines from your file are sent.');
+    if (!all.length) { if (!opts.auto) sbLog('✓ Nothing to send — every line on screen came from the database. Use "+ Add Data" to add a file.', 'ok'); return; }
 
     /* DL77 — a file in the NEW JG layout (Gross_Cost on its lines). Its amounts can differ from
        what is stored even on days whose line COUNT matches (credits, $0 remakes), so every day is
@@ -17711,8 +17736,10 @@ function renderBridge() {
       if (totalReplaced) sbLog('  ✓ replaced: ' + totalReplaced.toLocaleString() + ' line' + (totalReplaced === 1 ? '' : 's') + ' no longer in the export removed (voided or superseded)', 'ok');
       if (replaceSkipped) sbLog('  the database did NOT replace these days: over 10% of the stored lines are missing from this file. Check the export is complete.', 'warn');
       try { const { data: sum2 } = await db.rpc('lab_summary'); LAB_LAST_STAMP = labStamp(sum2); LAB_SUM = sum2 || LAB_SUM; } catch (e) {}
-      // DL77/78: a new-layout load updates amounts and may remove lines — the queue reloads once, after the last upload
-      if (newLayout) LAB_PUSH_RELOAD = true;
+      // DL77/78: a new-layout load updates amounts and may remove lines — the queue reloads once, after the last upload.
+      // DL107: every save reloads, so the screen always shows exactly what the database holds (a file merged
+      // on screen could otherwise sit next to the same lines downloaded from the database and look doubled).
+      LAB_PUSH_RELOAD = true;
     } catch (e) {
       const m = (e && e.message) || String(e);
       sbLog('✗ ' + m, 'err');
@@ -21100,6 +21127,669 @@ function pmPopupHTML(o, compact) {
     <div class="pm-pop-crm"><button type="button" class="btn-text" data-crm="${esc(o.id)}">Log call / email / visit</button></div></div>`;
 }
 
+/* ══ DL108: ARPP EXPANSION PILOT — cohorts, call prep, playbook and pilot report ══
+   Lives inside Rep Progress (Rep activity · ARPP pilot · Pilot report · Call playbook).
+   • COHORTS, laid out like the Project AM sheet (Customer Cohort · Customer Count · Criteria,
+     then the totals). Built from the invoices on screen — every line ever loaded, not the
+     date filter — as of a day (the pilot's freeze day once locked, the latest day before).
+     A "month" is a 30-day block counted back from that day. Toggles: practices ↔ doctors,
+     adjusted ↔ the sheet's rules exactly as written. Each account sits in ONE cohort,
+     checked in the order New, Churned, Declining, Ramped, Ramping.
+   • PILOT LISTS: an admin locks them once (normally on Dec 1, as of Nov 30). Each cohort is
+     shuffled at random; the sheet's count goes to the pilot (reps work it) and the rest is the
+     comparison group (not called), so the report can tell pilot lift from normal drift.
+     Saved in app_settings ('arpp_pilot') like the other shared settings.
+   • REPORT: pilot vs comparison, by cohort — revenue per account per 30 days in the pilot so
+     far against the SAME number of days just before it, the lift, a weekly trend, which product
+     categories accounts order (and new ones they start), and the calls logged. */
+const ARPP = { view: 'activity', unit: 'practice', rules: 'adjusted', cohort: 'new', group: 'all', q: '', limit: 60, cache: null, rep: null, chart: null, rcohort: 'all' };
+const ARPP_DEF = { start: '2026-12-01', end: '2027-02-28', asOf: '2026-11-30', targets: { new: 25, ramping: 45, ramped: 40, declining: 45, churned: 35 }, sheetCustomers: 641 };
+const ARPP_COHORTS = [
+  { k: 'new', l: 'New',
+    written: 'Sent a case in the last 30 days but hadn’t sent anything in the 12 months before that.',
+    adjusted: 'Sent a case in the last 30 days but hadn’t sent anything in the 12 months before that.' },
+  { k: 'ramping', l: 'Ramping',
+    written: 'Spent between $200 and $1,000 each month over the last 6 months.',
+    adjusted: 'Averaged $200–$1,000 a month over the last 6 months, with something sent every month.' },
+  { k: 'ramped', l: 'Ramped',
+    written: 'Spent over $1,000 each month for the last 6 months.',
+    adjusted: 'Spent over $1,000 each month for the last 6 months.' },
+  { k: 'declining', l: 'Declining',
+    written: 'Spent over $1,000 a month on average over the last 6 months, but each of the last 3 months was below $1,000.',
+    adjusted: 'Averaged over $1,000 a month in months 4–6, then each of the last 3 months below $1,000 (still sending).' },
+  { k: 'churned', l: 'Churned',
+    written: 'Spent over $1,000 a month on average over the last 6 months, but hasn’t submitted a case in the last 3 months.',
+    adjusted: 'Averaged over $500 a month in the 6 months before the last 3, then no case for the last 3 months.' }
+];
+const ARPP_ORDER = ['new', 'churned', 'declining', 'ramped', 'ramping'];   // one cohort per account, first match wins
+const arppColor = k => BRAND.cat[Math.max(0, ARPP_COHORTS.findIndex(c => c.k === k))];
+const arppLabel = k => (ARPP_COHORTS.find(c => c.k === k) || {}).l || '—';
+// the categories worth asking about, most valuable expansion first; and how a rep says them
+const ARPP_PITCH = ['Implant Crowns', 'Implant Components', 'Dentures & Partials', 'Nightguards / Splints', 'E.max / Lithium Disilicate', 'Zirconia Crowns & Bridges', 'Veneers', 'Surgical Guides', 'PFM Crowns', 'Full Cast / Metal Crowns', 'Retainers', 'Whitening / Trays'];
+const ARPP_SAY = { 'Implant Crowns': 'implant crowns', 'Implant Components': 'abutments', 'Dentures & Partials': 'dentures or partials', 'Nightguards / Splints': 'nightguards',
+  'E.max / Lithium Disilicate': 'E.max', 'Zirconia Crowns & Bridges': 'zirconia crowns', 'Veneers': 'veneers', 'Surgical Guides': 'surgical guides', 'PFM Crowns': 'PFMs',
+  'Full Cast / Metal Crowns': 'full-cast crowns', 'Retainers': 'retainers', 'Whitening / Trays': 'whitening trays', 'Other': 'other work' };
+const ARPP_NOT_DIGITAL = new Set(['', 'Unknown', 'Not Applicable', 'Physical Impression']);
+const arppIsoNum = iso => { const [y, m, d] = String(iso).split('-').map(Number); return Math.floor(Date.UTC(y, m - 1, d) / 864e5); };
+const arppDayNum = d => Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 864e5);
+const arppNumIso = n => new Date(n * 864e5).toISOString().slice(0, 10);
+const arppDay = n => svDay(arppNumIso(n));
+const arppPilot = () => (SETTINGS.arpp_pilot && SETTINGS.arpp_pilot.members) ? SETTINGS.arpp_pilot : null;
+const arppCfg = () => Object.assign({}, ARPP_DEF, arppPilot() || {});
+function arppDataEnd() {   // the latest invoice day on screen
+  const raw = APP.raw || []; if (ARPP._endFor === raw) return ARPP._end;
+  let mx = 0; for (let i = 0; i < raw.length; i++) { const d = raw[i] && raw[i].anchorDate; if (d) { const n = arppDayNum(d); if (n > mx) mx = n; } }
+  ARPP._endFor = raw; ARPP._end = mx; return mx;
+}
+function arppDataStart() {
+  const raw = APP.raw || []; if (ARPP._startFor === raw) return ARPP._start;
+  let mn = Infinity; for (let i = 0; i < raw.length; i++) { const d = raw[i] && raw[i].anchorDate; if (d) { const n = arppDayNum(d); if (n < mn) mn = n; } }
+  ARPP._startFor = raw; ARPP._start = mn; return mn;
+}
+// the day cohorts are measured from: the locked freeze day, else the freeze day once the data reaches it, else the latest day
+function arppAsOf() {
+  const P = arppPilot(); if (P) return P.asOf;
+  const end = arppDataEnd(), freeze = arppIsoNum(ARPP_DEF.asOf);
+  return arppNumIso(end && end >= freeze ? freeze : end);
+}
+
+/* ── every account's figures as of a day, practices and doctors in one pass ── */
+function arppAccounts(asOfIso) {
+  const raw = APP.raw || [];
+  if (ARPP.cache && ARPP.cache.raw === raw && ARPP.cache.asOf === asOfIso) return ARPP.cache;
+  const A = arppIsoNum(asOfIso), out = { raw, asOf: asOfIso, practice: new Map(), doctor: new Map() };
+  const blank = (unit, key) => ({ unit, key, name: '', m: [0, 0, 0, 0, 0, 0], s90_269: 0, c1: 0, c3: 0, c60: 0, prior12: 0, first: null, last: null, rev12: 0,
+    cats12: new Map(), catsEver: new Set(), dig: 0, tot: 0, brands: new Map(), states: new Map(), cities: new Map(), drs: new Map(), pracs: new Map(), phone: '', email: '' });
+  const add = (a, r, age) => {
+    const amt = r.netCost || 0, isCase = !!r.caseKey;
+    if (age < 180) a.m[Math.floor(age / 30)] += amt;
+    if (age >= 90 && age < 270) a.s90_269 += amt;
+    if (isCase) {
+      if (age < 30) a.c1++;
+      if (age < 60) a.c60++;
+      if (age < 90) a.c3++;
+      if (age >= 30 && age < 395) a.prior12++;
+      const dn = A - age;
+      if (a.first == null || dn < a.first) a.first = dn;
+      if (a.last == null || dn > a.last) a.last = dn;
+      if (r.mainProduct) a.catsEver.add(r.productCat);
+    }
+    if (age < 365) {
+      a.rev12 += amt;
+      if (isCase && r.mainProduct) {
+        const c = a.cats12.get(r.productCat) || a.cats12.set(r.productCat, { rev: 0, cases: new Set() }).get(r.productCat);
+        c.rev += amt; c.cases.add(r.caseKey);
+        a.tot++; if (!ARPP_NOT_DIGITAL.has(r.scanner || '')) { a.dig++; a.brands.set(r.scanner, (a.brands.get(r.scanner) || 0) + 1); }
+      }
+    }
+    if (r.stateAbbr) a.states.set(r.stateAbbr, (a.states.get(r.stateAbbr) || 0) + 1);
+    if (r.city) a.cities.set(r.city, (a.cities.get(r.city) || 0) + 1);
+    if (!a.phone && r.phone) a.phone = r.phone;
+    if (!a.email && r.email) a.email = r.email;
+  };
+  for (let i = 0; i < raw.length; i++) {
+    const r = raw[i]; if (!r || !r.anchorDate) continue;
+    const age = A - arppDayNum(r.anchorDate); if (age < 0) continue;
+    if (r.practice) {
+      const p = out.practice.get(r.practice) || out.practice.set(r.practice, blank('practice', r.practice)).get(r.practice);
+      p.name = r.practice; add(p, r, age);
+      if (r.drId) { const d = p.drs.get(r.drId) || p.drs.set(r.drId, { id: r.drId, name: r.drName, rev: 0 }).get(r.drId); if (age < 365) d.rev += r.netCost || 0; }
+    }
+    if (r.drId) {
+      const d = out.doctor.get(r.drId) || out.doctor.set(r.drId, blank('doctor', r.drId)).get(r.drId);
+      d.name = r.drName || d.name; add(d, r, age);
+      if (r.practice) d.pracs.set(r.practice, (d.pracs.get(r.practice) || 0) + 1);
+    }
+  }
+  const top = m => { let b = '', n = -1; m.forEach((v, k) => { if (v > n) { n = v; b = k; } }); return b; };
+  ['practice', 'doctor'].forEach(u => out[u].forEach(a => {
+    a.state = top(a.states); a.city = top(a.cities);
+    a.practice = u === 'doctor' ? top(a.pracs) : a.name;
+    a.doctors = u === 'practice' ? [...a.drs.values()].sort((x, y) => y.rev - x.rev) : [{ id: a.key, name: a.name }];
+    a.dead = u === 'doctor' ? isDead(a.key) : (a.doctors.length > 0 && a.doctors.every(d => isDead(d.id)));
+    a.avg6 = a.m.reduce((t, v) => t + v, 0) / 6;
+    a.cohort = { written: arppCohortOf(a, 'written'), adjusted: arppCohortOf(a, 'adjusted') };
+    a.active60 = a.c60 > 0;
+  }));
+  ARPP.cache = out;
+  return out;
+}
+function arppCohortOf(a, rules) {
+  const m = a.m, mn = Math.min(...m), mx3 = Math.max(m[0], m[1], m[2]), avg6 = m.reduce((t, v) => t + v, 0) / 6;
+  if (a.c1 > 0 && a.prior12 === 0) return 'new';
+  if (rules === 'written') {
+    if (avg6 > 1000 && a.c3 === 0) return 'churned';
+    if (avg6 > 1000 && mx3 < 1000 && a.c3 > 0) return 'declining';
+    if (mn > 1000) return 'ramped';
+    if (mn >= 200 && Math.max(...m) <= 1000) return 'ramping';
+    return '';
+  }
+  if (a.s90_269 / 6 > 500 && a.c3 === 0) return 'churned';
+  if ((m[3] + m[4] + m[5]) / 3 > 1000 && mx3 < 1000 && a.c3 > 0) return 'declining';
+  if (mn > 1000) return 'ramped';
+  if (avg6 >= 200 && avg6 <= 1000 && mn > 0) return 'ramping';
+  return '';
+}
+// the accounts of one cohort (live), dead accounts left out
+function arppCohortList(unit, rules, k) {
+  const C = arppAccounts(arppAsOf());
+  return [...C[unit].values()].filter(a => !a.dead && a.cohort[rules] === k).sort((x, y) => (y.avg6 - x.avg6) || String(x.name).localeCompare(String(y.name)));
+}
+// the locked pilot's membership, when it matches what's being looked at
+function arppMembers() {
+  const P = arppPilot(); if (!P) return null;
+  const m = new Map(); P.members.forEach(x => m.set(x.k, x)); return { P, m };
+}
+const arppLockedView = () => { const P = arppPilot(); return !!P && P.unit === ARPP.unit && P.rules === ARPP.rules; };
+
+/* ── account facts, as a rep would say them ── */
+function arppFacts(a) {
+  const end = arppDataEnd(), start0 = arppDataStart(), asOf = arppIsoNum(arppAsOf());
+  const tenureM = a.first != null ? Math.max(0, Math.round((asOf - a.first) / 30.44)) : 0;
+  const atStart = a.first != null && a.first - start0 < 30;
+  const tenure = a.first == null ? '—' : (atStart ? 'since ' + svDay(arppNumIso(a.first), { month: 'short', year: 'numeric' }) + ' or earlier' : 'since ' + svDay(arppNumIso(a.first), { month: 'short', year: 'numeric' }));
+  const tenureSay = a.first == null ? '' : tenureM >= 24 ? Math.floor(tenureM / 12) + ' years' : tenureM >= 12 ? 'over a year' : tenureM >= 2 ? tenureM + ' months' : 'a few weeks';
+  const lastDays = a.last != null ? lcDays(arppNumIso(a.last)) : null;   // days before today
+  const share = a.tot ? a.dig / a.tot : null;
+  let brand = ''; { let n = -1; a.brands.forEach((v, k) => { if (v > n) { n = v; brand = k; } }); }
+  const digital = share == null ? { l: 'Unknown', cls: 'mut' } : share >= 0.7 ? { l: 'Digital' + (brand && !/^digital/i.test(brand) ? ' · ' + brand : ''), cls: 'on' }
+    : share <= 0.3 ? { l: 'Analog (impressions)', cls: 'mut' } : { l: 'Mixed · ' + Math.round(share * 100) + '% digital', cls: 'new' };
+  const sends = [...a.cats12.entries()].map(([c, v]) => ({ c, rev: v.rev, cases: v.cases.size })).sort((x, y) => y.rev - x.rev);
+  const never = ARPP_PITCH.filter(c => !a.catsEver.has(c));
+  const lapsed = ARPP_PITCH.filter(c => a.catsEver.has(c) && !a.cats12.has(c));
+  return { tenure, tenureSay, tenureM, lastDays, digital, share, sends, never, lapsed };
+}
+function arppLastContact(a) {
+  if (!LC.loaded) return null;
+  let best = null; a.doctors.forEach(d => { const c = lcGet(d.id); if (c && (!best || c.date > best.date)) best = c; });
+  return best;
+}
+const arppMoney = n => fmtUSDFull(n);
+function arppBars(a) {   // oldest → newest, the 6 monthly blocks
+  const v = a.m.slice().reverse(), mx = Math.max(1, ...v.map(x => Math.max(0, x)));
+  return `<span class="arpp-bars" title="${v.map((x, i) => (i === 5 ? 'last 30 days' : (6 - i) * 30 + ' days ago') + ': ' + arppMoney(x)).join('\n')}">${v.map((x, i) =>
+    `<i style="height:${Math.max(2, Math.round(Math.max(0, x) / mx * 22))}px;background:${x >= 1000 ? '#1ba8b6' : x >= 200 ? '#8fd3da' : '#d7e3e6'}"></i>`).join('')}</span>`;
+}
+
+/* ── the playbook: one source for the Call playbook view and every account's call prep ── */
+const ARPP_TRACK = {
+  new: { goal: 'Make case two and three happen, and learn what else they send out.',
+    open: (a, f) => `Thanks for sending us your first ${f.sends[0] ? ARPP_SAY[f.sends[0].c] || 'case' : 'case'}${f.sends.length > 1 ? 's' : ''} — I wanted to check in personally. How did it turn out for you and the patient?`,
+    ask: ['What made you give us a try?', 'What else do you send out to a lab today, and who has that work now?', 'What would make us your first call for the next case?', 'Do you scan, or send impressions? Which scanner?'],
+    pitch: 'Offer to take the next case in a category they send elsewhere; make pickup and case submission easy.' },
+  ramping: { goal: 'Take more of the work they already send out — add a category or more volume.',
+    open: (a, f) => `Thanks for the steady work${f.tenureSay ? ' over the last ' + f.tenureSay : ''} — we’ve enjoyed working with you. I see you mostly send us ${f.sends[0] ? ARPP_SAY[f.sends[0].c] || 'crowns' : 'crowns'}${f.never[0] ? ', but you’ve never sent us ' + (ARPP_SAY[f.never[0]] || f.never[0]) + '. Why is that? Where does that work go today?' : '. What other work do you send out, and where does it go?'}`,
+    ask: ['What is hard with your lab partnerships today?', 'What share of your lab work comes to us vs. other labs?', 'Which cases do you send elsewhere, and why there?', 'How can we make your life better?'],
+    pitch: 'Ask for a trial case in a category they send elsewhere (see “Never sent us”).' },
+  ramped: { goal: 'Protect a key partner and grow share — new SKUs and work they give other labs.',
+    open: (a, f) => `Thanks for working with us${f.tenureSay ? ' for ' + f.tenureSay : ''} — you’re one of our key partners and we’ve really enjoyed it. ${f.never[0] ? 'I noticed you’ve never sent us ' + (ARPP_SAY[f.never[0]] || f.never[0]) + ' — why is that? Where do you send it today?' : 'Is there any work you still send to another lab?'}`,
+    ask: ['What is hard with your lab partnerships today?', 'Anything we could do better — turnaround, fit, communication?', 'Which work goes to other labs, and why?', 'How can we make your life better?'],
+    pitch: 'They trust you — ask directly for the categories they send elsewhere, starting with one case.' },
+  declining: { goal: 'Find out why volume dropped, fix it, and win the work back.',
+    open: (a, f) => `Thanks for working with us${f.tenureSay ? ' for ' + f.tenureSay : ''}. I noticed your cases with us have slowed down the last few months — did something change? Was it our turnaround or our quality?`,
+    ask: ['Where is that work going now?', 'What would it take to bring it back?', 'Was there a specific case that went wrong?', 'What is hard with your lab partnerships today?'],
+    pitch: 'We have invested heavily in new workflows that have materially improved our quality — ask for one case to show it.' },
+  churned: { goal: 'Understand what happened, and invite them back with a single case.',
+    open: (a, f) => `I see you stopped sending us work${f.lastDays != null ? ' about ' + lcAgo(f.lastDays).replace(' ago', '') + ' ago' : ''} — what happened? Was it our turnaround or our quality?`,
+    ask: ['Where did you send your work after?', 'How is that going?', 'What would we need to do to earn a case back?', 'We have invested heavily in new workflows that have materially improved our quality — would you try us on one case?'],
+    pitch: 'Lead with listening; offer one case to see the difference.' }
+};
+const ARPP_WHO = [
+  { k: 'front', l: 'Front desk / receptionist', tips: ['Don’t pitch — they’re not the decision-maker, and a pitch gets you screened out.', 'Ask: “Who decides which lab the office uses?” and the best time and way to reach the doctor (or office manager).', 'Ask two easy facts: how many doctors are there, and do they scan or take impressions?', 'Get a name and an email; leave a short message with your name and one reason to call back.'] },
+  { k: 'assistant', l: 'Dental assistant', tips: ['They handle cases every day — ask what’s hard: pickups, turnaround, remakes, adjustments, scanning.', 'Ask which lab they like working with and why; their pain points are your pitch to the doctor.', 'Ask them to pass a message or a sample to the doctor, and for the doctor’s best time.'] },
+  { k: 'doctor', l: 'Doctor', tips: ['Keep it to 2–5 minutes. Thank them, mention one specific thing you noticed (from the facts above), then ask.', 'Ask two or three open questions and listen — this call is about their practice, not our products.', 'If they name a need you serve, ask for the case. Always agree on a next step.'] },
+  { k: 'manager', l: 'Office manager', tips: ['Talk logistics: pricing, billing, pickups, turnaround, how cases are submitted.', 'Ask what slows them down with their current labs.'] }
+];
+const ARPP_PRINCIPLES = [
+  ['The first call is for learning, not selling.', 'Show you want to know their practice and their pain points. What you learn equips you to tailor the pitch on the next call.'],
+  ['Lead with partnership — sell if the door opens.', 'If they name a need you can solve on the first call, ask for that case. Otherwise, dig into the SKUs they don’t send us and the share other labs have.'],
+  ['Know the account before you dial.', 'Open Call prep: how long they’ve worked with us, what they order and don’t, when they last ordered, and whether they’re digital.'],
+  ['Every call ends with a next step.', 'A case to try, a sample, a time to talk to the doctor — and log the call the same day so the pilot report can count it.']
+];
+const ARPP_EMAIL_WHEN = [
+  'Same day, within a few hours, after you speak with the doctor or office manager — while it’s fresh. Recap what you heard, the next step, and one offer that fits.',
+  'After a front-desk or assistant call: send a short intro to the email they gave you, then call again in 3–5 business days.',
+  'Voicemail: leave one short message, send the intro email the same day, and try again in 2–3 business days.',
+  'No reply after two tries: change the channel — a visit, or a text if they’ve texted with us before.'
+];
+function arppEmail(a, f, cohort) {
+  const who = a.unit === 'doctor' ? 'Dr. ' + (String(a.name).split(' ').slice(-1)[0] || '') : 'the team at ' + a.name;
+  const ask = f.never[0] ? `If it would help, we’d love to show you our ${ARPP_SAY[f.never[0]] || f.never[0]} on your next case.` : 'If there’s a case coming up we can help with, I’d love to set it up.';
+  const lead = cohort === 'churned' || cohort === 'declining'
+    ? 'Thank you for being honest about what hasn’t worked. We’ve invested heavily in new workflows that have materially improved our quality, and I’d like the chance to show you.'
+    : 'Thank you for taking the time to talk — it was great to learn more about your practice.';
+  return `Subject: Thank you — following up from today\n\nHi ${who},\n\n${lead}\n\nWhat I heard:\n• [what they told you]\n• [their biggest frustration with labs today]\n\nNext step: [what you agreed — date / case / sample]\n\n${ask}\n\nThanks again,\n[Your name]\n[Phone]`;
+}
+
+/* ── views ── */
+function arppCss() {
+  if (document.getElementById('arppCss')) return;
+  const st = document.createElement('style'); st.id = 'arppCss';
+  st.textContent = `.arpp-switch{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 14px}
+  .arpp-tbl{width:100%;border-collapse:collapse;font-size:13px}.arpp-tbl th{text-align:left;font-size:11.5px;color:var(--text-muted,#5c7179);padding:7px 8px;font-weight:600;border-bottom:1px solid var(--line,#e0e9ec)}
+  .arpp-tbl td{padding:8px;border-top:1px solid var(--line,#e9f0f2);vertical-align:top}.arpp-tbl .n{text-align:right;white-space:nowrap}.arpp-tbl tfoot td{font-weight:700;border-top:2px solid var(--line,#d5e2e6)}
+  .arpp-co{cursor:pointer}.arpp-co:hover td{background:rgba(36,191,205,.06)}.arpp-co.sel td{background:rgba(36,191,205,.12)}
+  .arpp-dot{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:7px;vertical-align:-1px}
+  .arpp-tbl td:first-child{white-space:nowrap}.arpp-acc td:first-child{white-space:normal}
+  .arpp-crit{color:var(--text-muted,#5c7179);font-size:12.5px;line-height:1.45}
+  .arpp-foot{font-size:12.5px;color:var(--text-muted,#5c7179);margin-top:8px;line-height:1.55}
+  .arpp-bars{display:inline-flex;align-items:flex-end;gap:2px;height:24px;vertical-align:middle}.arpp-bars i{display:block;width:7px;border-radius:2px 2px 0 0}
+  .arpp-acc td{font-size:12.5px}.arpp-acc .nm{font-weight:700}.arpp-sub{font-size:11.5px;color:var(--text-muted,#5c7179);line-height:1.4}
+  .arpp-cat{display:inline-block;font-size:11px;padding:1px 7px;border-radius:999px;background:#eef4f6;color:#33505a;margin:1px 2px 1px 0;white-space:nowrap}
+  .arpp-cat.no{background:#fff3e6;color:#8a4b00}
+  .arpp-prep{max-width:860px!important;width:min(860px,96vw)!important;max-height:92vh;overflow:auto}
+  .arpp-facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin:10px 0 14px}
+  .arpp-fact{border:1px solid var(--line,#e0e9ec);border-radius:10px;padding:9px 11px}.arpp-fact b{display:block;font-size:14px;margin-top:2px}
+  .arpp-fl{font-size:11px;color:var(--text-muted,#5c7179)}
+  .arpp-say{background:#f1f8f9;border-left:3px solid #24bfcd;padding:10px 12px;border-radius:6px;font-size:13.5px;line-height:1.5;margin:6px 0 10px}
+  .arpp-h4{font-weight:700;font-size:13px;margin:14px 0 6px}
+  .arpp-ul{margin:0;padding-left:18px;font-size:13px;line-height:1.55}
+  .arpp-who{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px}
+  .arpp-whobox{border:1px solid var(--line,#e0e9ec);border-radius:10px;padding:10px 12px}
+  .arpp-email{width:100%;min-height:210px;font:12.5px/1.5 inherit;border:1px solid var(--line,#d5e2e6);border-radius:8px;padding:10px;box-sizing:border-box}
+  .arpp-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:16px}
+  .arpp-up{color:#15803d;font-weight:700}.arpp-dn{color:#b45309;font-weight:700}
+  .arpp-pb-co{border:1px solid var(--line,#e0e9ec);border-radius:12px;padding:12px 14px;margin-bottom:12px;background:var(--card,#fff)}
+  .arpp-note{font-size:12px;color:var(--text-muted,#5c7179)}
+  .arpp-lockbox{max-width:720px!important;width:min(720px,96vw)!important}.arpp-lockbox .coach-f{min-width:0}.arpp-lockbox input{width:100%;box-sizing:border-box;min-width:0}
+  .arpp-lockgrid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}@media(max-width:640px){.arpp-lockgrid{grid-template-columns:repeat(2,minmax(0,1fr))}}`;
+  document.head.appendChild(st);
+}
+function arppSwitchHTML() {
+  const v = [['activity', 'Rep activity'], ['pilot', 'ARPP pilot'], ['report', 'Pilot report'], ['playbook', 'Call playbook']];
+  return `<div class="arpp-switch pill-group" id="arppSwitch">${v.map(([k, l]) => `<button class="pill${ARPP.view === k ? ' active' : ''}" data-v="${k}">${l}</button>`).join('')}</div>`;
+}
+function arppMountSwitch(el) {
+  if (!el || el.querySelector('#arppSwitch')) return;
+  el.insertAdjacentHTML('afterbegin', arppSwitchHTML());
+  el.querySelectorAll('#arppSwitch [data-v]').forEach(b => b.onclick = () => { ARPP.view = b.dataset.v; ARPP.limit = 60; renderRepProgress(); });
+}
+function arppHeadSub() {
+  const c = arppCfg(), P = arppPilot();
+  const span = svDay(c.start) + ' – ' + svDay(c.end);
+  if (P) return `${span} · lists locked ${esc(svDay(P.lockedAt.slice(0, 10)))}${P.by ? ' by ' + esc(P.by) : ''}, as of ${esc(svDay(P.asOf))} · ${P.unit === 'doctor' ? 'doctors' : 'practices'} · ${P.rules === 'written' ? 'rules as written' : 'adjusted rules'}`;
+  const end = arppDataEnd();
+  return `${span} · <b>preview</b> — measured as of ${esc(svDay(arppAsOf()))}${end < arppIsoNum(ARPP_DEF.asOf) ? ` (data reaches ${esc(arppDay(end))}; lists lock as of ${esc(svDay(ARPP_DEF.asOf))})` : ''}`;
+}
+
+function arppRenderPilot(el) {
+  if (!APP.raw || !APP.raw.length) { el.innerHTML = '<div class="empty-state"><div class="empty-icon">📊</div>Load the invoices first.</div>'; return; }
+  const P = arppPilot(), M = arppMembers(), locked = arppLockedView(), admin = !secViewOnly();
+  const C = arppAccounts(arppAsOf()), all = [...C[ARPP.unit].values()].filter(a => !a.dead);
+  const counts = {}, pilotN = {}, compN = {};
+  ARPP_COHORTS.forEach(c => { counts[c.k] = 0; pilotN[c.k] = 0; compN[c.k] = 0; });
+  all.forEach(a => { const k = a.cohort[ARPP.rules]; if (k) counts[k]++; });
+  if (locked) P.members.forEach(x => { if (x.g === 'pilot') pilotN[x.c]++; else compN[x.c]++; });
+  else { const T = (P && P.targets) || ARPP_DEF.targets; ARPP_COHORTS.forEach(c => { pilotN[c.k] = Math.min(T[c.k] || 0, counts[c.k]); compN[c.k] = counts[c.k] - pilotN[c.k]; }); }
+  const tot = Object.values(counts).reduce((t, v) => t + v, 0), totP = Object.values(pilotN).reduce((t, v) => t + v, 0), totC = Object.values(compN).reduce((t, v) => t + v, 0);
+  const customers = all.filter(a => a.active60).length, target = Math.round(customers * 0.3);
+  const unitWord = ARPP.unit === 'doctor' ? 'doctors' : 'practices';
+  const sel = ARPP_COHORTS.find(c => c.k === ARPP.cohort) || ARPP_COHORTS[0];
+
+  // the accounts list
+  let list = locked ? P.members.filter(x => x.c === sel.k).map(x => Object.assign({ _m: x }, C[ARPP.unit].get(x.k) || { key: x.k, name: x.n, unit: ARPP.unit, m: [0, 0, 0, 0, 0, 0], doctors: (x.d || []).map(id => ({ id, name: id })), cats12: new Map(), catsEver: new Set(), brands: new Map(), avg6: 0 }))
+                    : arppCohortList(ARPP.unit, ARPP.rules, sel.k);
+  if (locked && ARPP.group !== 'all') list = list.filter(a => a._m.g === ARPP.group);
+  if (ARPP.q) { const q = ARPP.q.toLowerCase(); list = list.filter(a => (a.name + ' ' + (a.doctors || []).map(d => d.name).join(' ') + ' ' + (a.city || '') + ' ' + (a.state || '')).toLowerCase().includes(q)); }
+  list.sort((x, y) => (y.avg6 - x.avg6) || String(x.name).localeCompare(String(y.name)));
+  const shown = list.slice(0, ARPP.limit);
+  const row = a => {
+    const f = arppFacts(a), lc = arppLastContact(a), g = a._m ? a._m.g : '';
+    const docs = ARPP.unit === 'practice' ? (a.doctors || []).slice(0, 3).map(d => peerLink({ drId: d.id, name: d.name })).join(', ') + ((a.doctors || []).length > 3 ? ` <span class="text-mut">+${a.doctors.length - 3}</span>` : '')
+                                          : (a.practice ? esc(a.practice) : '');
+    return `<tr class="arpp-acc"><td><div class="nm">${ARPP.unit === 'doctor' ? peerLink({ drId: a.key, name: a.name }) : esc(a.name)}</div><div class="arpp-sub">${docs}${a.city || a.state ? ' · ' + esc([a.city, a.state].filter(Boolean).join(', ')) : ''}</div>
+        ${g ? `<span class="rpg-chip ${g === 'pilot' ? 'on' : 'mut'}">${g === 'pilot' ? 'Pilot' : 'Comparison'}</span>` : ''}</td>
+      <td>${esc(f.tenure)}</td>
+      <td>${a.last != null ? esc(arppDay(a.last)) + `<div class="arpp-sub">${lcAgo(f.lastDays)}</div>` : '—'}</td>
+      <td><span class="rpg-chip ${f.digital.cls}">${esc(f.digital.l)}</span></td>
+      <td class="n">${arppBars(a)}<div class="arpp-sub">${arppMoney(a.avg6)}/mo</div></td>
+      <td>${f.sends.slice(0, 3).map(s => `<span class="arpp-cat" title="${esc(s.c)} · ${s.cases} case${s.cases === 1 ? '' : 's'} · ${arppMoney(s.rev)} in 12 months">${esc(ARPP_SAY[s.c] || s.c)}</span>`).join('') || '<span class="text-mut">—</span>'}</td>
+      <td>${f.never.slice(0, 3).map(c => `<span class="arpp-cat no">${esc(ARPP_SAY[c] || c)}</span>`).join('') || '<span class="text-mut">sends it all</span>'}</td>
+      <td>${lc ? `<span title="${esc(lcTip(lc))}">${esc(svDay(lc.date))}<div class="arpp-sub">${LC_KIND[lc.kind] || 'in person'} · ${lcAgo(lcDays(lc.date))}</div></span>` : LC.loaded ? '<span class="text-mut">none logged</span>' : '<span class="text-mut">…</span>'}</td>
+      <td><button type="button" class="btn-text arpp-prepbtn" data-k="${esc(a.key)}">Call prep</button></td></tr>`;
+  };
+
+  el.innerHTML = `
+    <div class="section-header"><div><div class="section-title">ARPP expansion pilot</div>
+      <div class="section-sub">${arppHeadSub()}</div></div>
+      <div class="section-actions">
+        <div class="pill-group" id="arppUnit">${[['practice', 'Practices'], ['doctor', 'Doctors']].map(([k, l]) => `<button class="pill${ARPP.unit === k ? ' active' : ''}" data-u="${k}">${l}</button>`).join('')}</div>
+        <div class="pill-group" id="arppRules">${[['adjusted', 'Adjusted rules'], ['written', 'As written']].map(([k, l]) => `<button class="pill${ARPP.rules === k ? ' active' : ''}" data-r="${k}">${l}</button>`).join('')}</div>
+        <button class="btn-text" id="arppExport">⬇ Export</button>
+        ${admin ? `<button class="btn-text" id="arppLock">${P ? '🔒 Pilot lists…' : '🔒 Lock pilot lists'}</button>` : ''}
+      </div></div>
+    ${P && !locked ? `<div class="arpp-note" style="margin:-4px 0 10px">The pilot lists are locked as <b>${P.unit === 'doctor' ? 'doctors' : 'practices'} · ${P.rules === 'written' ? 'rules as written' : 'adjusted rules'}</b>. This view is a live look with other settings — no Pilot/Comparison split.</div>` : ''}
+    <div class="rpg-box" style="margin-bottom:16px">
+      <table class="arpp-tbl"><thead><tr><th>Customer Cohort</th><th class="n">Customer Count</th><th class="n">${locked ? 'Pilot' : 'Pilot (sheet)'}</th><th class="n">Comparison</th><th>Criteria</th></tr></thead>
+      <tbody>${ARPP_COHORTS.map(c => `<tr class="arpp-co${c.k === sel.k ? ' sel' : ''}" data-c="${c.k}"><td><span class="arpp-dot" style="background:${arppColor(c.k)}"></span><b>${c.l}</b></td>
+        <td class="n">${counts[c.k].toLocaleString()}</td><td class="n">${pilotN[c.k]}${!locked && pilotN[c.k] < ((P && P.targets) || ARPP_DEF.targets)[c.k] ? ` <span class="text-mut" title="Fewer accounts qualify than the sheet’s ${((P && P.targets) || ARPP_DEF.targets)[c.k]}">of ${((P && P.targets) || ARPP_DEF.targets)[c.k]}</span>` : ''}</td>
+        <td class="n">${compN[c.k] || (counts[c.k] ? '<span class="text-mut" title="Every qualifying account is in the pilot, so there is nothing to compare with">0</span>' : '0')}</td>
+        <td class="arpp-crit">${esc(c[ARPP.rules])}</td></tr>`).join('')}</tbody>
+      <tfoot><tr><td>Total</td><td class="n">${tot.toLocaleString()}</td><td class="n">${totP}</td><td class="n">${totC}</td><td></td></tr></tfoot></table>
+      <div class="arpp-foot">Pilot <b>${totP}</b> of <b>${customers.toLocaleString()}</b> customers = <b>${customers ? (totP / customers * 100).toFixed(2) : '0'}%</b> · 30% of customers is <b>${target}</b>${target - totP ? ` — ${Math.abs(target - totP)} ${target > totP ? 'short' : 'over'}` : ''}.
+        Customers = ${unitWord} that sent a case in the 60 days to ${esc(svDay(arppAsOf()))} (the sheet counted ${ARPP_DEF.sheetCustomers}).
+        Months are 30-day blocks counted back from ${esc(svDay(arppAsOf()))}; each account sits in one cohort.${C[ARPP.unit] && [...C[ARPP.unit].values()].some(a => a.dead) ? ' Dead accounts are left out.' : ''}</div>
+    </div>
+    <div class="rpg-box">
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
+        <div style="font-weight:700"><span class="arpp-dot" style="background:${arppColor(sel.k)}"></span>${sel.l} · ${list.length.toLocaleString()} ${unitWord}</div>
+        ${locked ? `<div class="pill-group" id="arppGroup">${[['all', 'All'], ['pilot', 'Pilot'], ['comparison', 'Comparison']].map(([k, l]) => `<button class="pill${ARPP.group === k ? ' active' : ''}" data-g="${k}">${l}</button>`).join('')}</div>` : '<span class="arpp-note">Pilot / Comparison appear once the lists are locked.</span>'}
+        <input class="gf-select" id="arppQ" placeholder="Search name, doctor, city" value="${esc(ARPP.q)}" style="margin-left:auto;min-width:220px">
+      </div>
+      <div style="overflow-x:auto"><table class="arpp-tbl"><thead><tr><th>${ARPP.unit === 'doctor' ? 'Doctor' : 'Practice'}</th><th>With us</th><th>Last order</th><th>Digital</th><th class="n">Last 6 months</th><th>Sends us</th><th>Never sent us</th><th>Last contact</th><th></th></tr></thead>
+        <tbody>${shown.map(row).join('') || `<tr><td colspan="9" class="text-mut">No ${unitWord} in this cohort.</td></tr>`}</tbody></table></div>
+      ${list.length > shown.length ? `<button class="btn-text" id="arppMore" style="margin-top:8px">Show ${Math.min(60, list.length - shown.length)} more of ${list.length - shown.length}</button>` : ''}
+    </div>`;
+
+  el.querySelectorAll('#arppUnit [data-u]').forEach(b => b.onclick = () => { ARPP.unit = b.dataset.u; ARPP.limit = 60; renderRepProgress(); });
+  el.querySelectorAll('#arppRules [data-r]').forEach(b => b.onclick = () => { ARPP.rules = b.dataset.r; ARPP.limit = 60; renderRepProgress(); });
+  el.querySelectorAll('#arppGroup [data-g]').forEach(b => b.onclick = () => { ARPP.group = b.dataset.g; ARPP.limit = 60; renderRepProgress(); });
+  el.querySelectorAll('.arpp-co[data-c]').forEach(tr => tr.onclick = () => { ARPP.cohort = tr.dataset.c; ARPP.limit = 60; renderRepProgress(); });
+  const q = el.querySelector('#arppQ'); let qt; if (q) q.oninput = () => { clearTimeout(qt); qt = setTimeout(() => { ARPP.q = q.value; ARPP.limit = 60; renderRepProgress().then(() => { const n = document.getElementById('arppQ'); if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); } }); }, 250); };
+  const more = el.querySelector('#arppMore'); if (more) more.onclick = () => { ARPP.limit += 60; renderRepProgress(); };
+  el.querySelectorAll('.arpp-prepbtn').forEach(b => b.onclick = () => { const a = list.find(x => x.key === b.dataset.k); if (a) arppPrep(a, sel.k); });
+  el.querySelector('#arppExport').onclick = () => arppExport();
+  const lk = el.querySelector('#arppLock'); if (lk) lk.onclick = () => arppLockDialog();
+  if (!LC.loaded && !LC.loading) lcLoad().then(() => { if (ARPP.view === 'pilot' && document.getElementById('arppQ')) renderRepProgress(); }).catch(() => {});
+}
+
+function arppExport() {
+  const C = arppAccounts(arppAsOf()), locked = arppLockedView(), P = arppPilot(), rows = [];
+  const accs = locked ? P.members.map(x => ({ a: C[ARPP.unit].get(x.k), x })) : [...C[ARPP.unit].values()].filter(a => !a.dead && a.cohort[ARPP.rules]).map(a => ({ a, x: null }));
+  accs.forEach(({ a, x }) => {
+    if (!a) return; const f = arppFacts(a), lc = arppLastContact(a);
+    rows.push({ cohort: arppLabel(x ? x.c : a.cohort[ARPP.rules]), group: x ? x.g : '', [ARPP.unit]: a.name, doctors: (a.doctors || []).map(d => d.name).join('; '),
+      practice: a.practice || '', city: a.city || '', state: a.state || '', with_us: f.tenure, last_order: a.last != null ? arppNumIso(a.last) : '', days_since_order: f.lastDays,
+      digital: f.digital.l, avg_monthly_6mo: Math.round(a.avg6), m1_last30: Math.round(a.m[0]), m2: Math.round(a.m[1]), m3: Math.round(a.m[2]), m4: Math.round(a.m[3]), m5: Math.round(a.m[4]), m6: Math.round(a.m[5]),
+      sends_us: f.sends.map(s => s.c).join('; '), never_sent: f.never.join('; '), last_contact: lc ? lc.date : '', last_contact_type: lc ? (LC_KIND[lc.kind] || '') : '' });
+  });
+  downloadCSV(`arpp-cohorts-${ARPP.unit}-${ARPP.rules}-${arppAsOf()}.csv`, rows);
+}
+
+/* ── call prep: everything a rep needs for one account, and the call logged from it ── */
+function arppPrep(a, cohort) {
+  const f = arppFacts(a), T = ARPP_TRACK[cohort] || ARPP_TRACK.ramping, lc = arppLastContact(a);
+  document.querySelectorAll('.crm-ov').forEach(x => x.remove());
+  const ov = document.createElement('div'); ov.className = 'crm-ov';
+  const top = (a.doctors || [])[0];
+  ov.innerHTML = `<div class="crm-box arpp-prep" role="dialog" aria-modal="true" aria-labelledby="arppPT">
+    <div class="crm-h"><h3 id="arppPT">Call prep · ${esc(a.name)}</h3><button type="button" class="crm-x" aria-label="Close">✕</button></div>
+    <div><span class="rpg-chip" style="background:${arppColor(cohort)}22;color:#12303a"><span class="arpp-dot" style="background:${arppColor(cohort)}"></span>${esc(arppLabel(cohort))}</span>
+      ${a._m ? ` <span class="rpg-chip ${a._m.g === 'pilot' ? 'on' : 'mut'}">${a._m.g === 'pilot' ? 'Pilot' : 'Comparison — don’t call during the pilot'}</span>` : ''}
+      <span class="arpp-note"> · ${esc([a.city, a.state].filter(Boolean).join(', '))}${a.phone ? ' · ' + esc(a.phone) : ''}</span></div>
+    <div class="arpp-facts">
+      <div class="arpp-fact"><span class="arpp-fl">With us</span><b>${esc(f.tenure)}</b></div>
+      <div class="arpp-fact"><span class="arpp-fl">Last order</span><b>${a.last != null ? esc(arppDay(a.last)) : '—'}</b><span class="arpp-fl">${f.lastDays != null ? lcAgo(f.lastDays) : ''}</span></div>
+      <div class="arpp-fact"><span class="arpp-fl">Digital or not</span><b>${esc(f.digital.l)}</b><span class="arpp-fl">${f.share != null ? Math.round(f.share * 100) + '% of cases scanned, last 12 months' : 'no scanner info'}</span></div>
+      <div class="arpp-fact"><span class="arpp-fl">Last 6 months</span><b>${arppMoney(a.avg6)} / month</b>${arppBars(a)}</div>
+      <div class="arpp-fact"><span class="arpp-fl">Last contact</span><b>${lc ? esc(svDay(lc.date)) : 'none logged'}</b><span class="arpp-fl">${lc ? esc((LC_KIND[lc.kind] || 'in person') + (lc.rep ? ' · ' + lc.rep : '')) : ''}</span></div>
+    </div>
+    <div class="arpp-h4">What they order (last 12 months)</div>
+    <div>${f.sends.map(s => `<span class="arpp-cat">${esc(s.c)} · ${s.cases} case${s.cases === 1 ? '' : 's'} · ${arppMoney(s.rev)}</span>`).join('') || '<span class="text-mut">Nothing in the last 12 months.</span>'}</div>
+    <div class="arpp-h4">What they don’t</div>
+    <div>${f.never.map(c => `<span class="arpp-cat no">${esc(c)}</span>`).join('') || '<span class="text-mut">They’ve sent us every main category.</span>'}
+      ${f.lapsed.length ? `<div class="arpp-sub" style="margin-top:4px">Used to send, not in the last 12 months: ${f.lapsed.map(esc).join(', ')}</div>` : ''}</div>
+    ${a.unit === 'practice' && (a.doctors || []).length ? `<div class="arpp-h4">Doctors here</div><div style="font-size:13px">${a.doctors.slice(0, 12).map(d => peerLink({ drId: d.id, name: d.name })).join(', ')}</div>` : ''}
+    <div class="arpp-h4">Goal of this call</div><div style="font-size:13px">${esc(T.goal)}</div>
+    <div class="arpp-h4">Open with</div><div class="arpp-say">“${esc(T.open(a, f))}”</div>
+    <div class="arpp-h4">Then ask</div><ul class="arpp-ul">${T.ask.map(x => `<li>${esc(x)}</li>`).join('')}</ul>
+    <div class="arpp-h4">If the door opens</div><div style="font-size:13px">${esc(T.pitch)}</div>
+    <div class="arpp-h4">Who picks up</div><div class="arpp-who">${ARPP_WHO.map(w => `<div class="arpp-whobox"><b style="font-size:13px">${esc(w.l)}</b><ul class="arpp-ul" style="font-size:12.5px">${w.tips.map(t => `<li>${esc(t)}</li>`).join('')}</ul></div>`).join('')}</div>
+    <div class="arpp-h4">Follow-up email</div><div class="arpp-note" style="margin-bottom:6px">${esc(ARPP_EMAIL_WHEN[0])}</div>
+    <textarea class="arpp-email" id="arppMail">${esc(arppEmail(a, f, cohort))}</textarea>
+    <div class="crm-msg" id="arppMsg" role="status"></div>
+    <div class="crm-act"><button type="button" class="btn-text" id="arppCopy">Copy email</button>
+      ${top ? '<button type="button" class="btn-text" id="arppDD">Open Doctor Detail</button>' : ''}
+      <button type="button" class="crm-save" id="arppLog">Log the call</button></div>
+  </div>`;
+  document.body.appendChild(ov);
+  const onKey = e => { if (e.key === 'Escape') close(); };
+  const close = () => { ov.remove(); document.removeEventListener('keydown', onKey); };
+  document.addEventListener('keydown', onKey);
+  ov.addEventListener('click', e => { if (e.target === ov) close(); });
+  ov.querySelector('.crm-x').onclick = close;
+  ov.querySelector('#arppCopy').onclick = async () => { const t = ov.querySelector('#arppMail').value; try { await navigator.clipboard.writeText(t); toast('Email copied'); } catch (e) { ov.querySelector('#arppMail').select(); document.execCommand && document.execCommand('copy'); toast('Email copied'); } };
+  const dd = ov.querySelector('#arppDD'); if (dd) dd.onclick = () => { close(); APP.selectedDoctorId = top.id; switchTab('docdetail'); };
+  ov.querySelector('#arppLog').onclick = async () => {
+    const msg = ov.querySelector('#arppMsg'); msg.textContent = 'Finding the office in Salesly…';
+    const r = await crmFindOffices(top ? top.name : a.name, a.practice || (a.unit === 'practice' ? a.name : ''));
+    if (r.error === 'signin') { msg.textContent = 'Sign in on the Salesly Bridge tab first.'; return; }
+    if (r.error) { msg.textContent = 'Couldn’t read Salesly: ' + r.error; return; }
+    if (!r.offs || !r.offs.length) { msg.textContent = 'No Salesly office is linked to this account yet — log it in Salesly on the office.'; return; }
+    close();
+    crmOpen(r.offs, () => { LC.loaded = false; LC.map = null; lcLoad().then(() => { if (ARPP.view === 'pilot' || ARPP.view === 'report') renderRepProgress(); }); });
+  };
+}
+
+/* ── locking the pilot lists ── */
+function arppSeeded(seed) { let s = seed >>> 0; return () => { s = (s + 0x6D2B79F5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+function arppBuildLock(opts) {
+  const C = arppAccounts(opts.asOf), rnd = arppSeeded(opts.seed), members = [];
+  ARPP_COHORTS.forEach(c => {
+    const accs = [...C[opts.unit].values()].filter(a => !a.dead && a.cohort[opts.rules] === c.k).sort((x, y) => String(x.key).localeCompare(String(y.key)));
+    for (let i = accs.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [accs[i], accs[j]] = [accs[j], accs[i]]; }
+    const n = Math.min(opts.targets[c.k] || 0, accs.length);
+    accs.forEach((a, i) => members.push({ k: a.key, n: a.name, c: c.k, g: i < n ? 'pilot' : 'comparison', d: opts.unit === 'practice' ? a.doctors.map(d => d.id) : undefined,
+      b: Math.round(a.avg6) }));
+  });
+  return { v: 1, lockedAt: new Date().toISOString(), by: deadWho(), asOf: opts.asOf, start: opts.start, end: opts.end, unit: opts.unit, rules: opts.rules, targets: opts.targets, seed: opts.seed, members };
+}
+function arppLockDialog() {
+  const P = arppPilot(), c = arppCfg(), end = arppDataEnd();
+  document.querySelectorAll('.crm-ov').forEach(x => x.remove());
+  const ov = document.createElement('div'); ov.className = 'crm-ov';
+  const T = c.targets || ARPP_DEF.targets;
+  ov.innerHTML = `<div class="crm-box arpp-lockbox" role="dialog" aria-modal="true" aria-labelledby="arppLT">
+    <div class="crm-h"><h3 id="arppLT">${P ? 'Pilot lists' : 'Lock the pilot lists'}</h3><button type="button" class="crm-x" aria-label="Close">✕</button></div>
+    ${P ? `<div class="crm-off">Locked ${esc(svDay(P.lockedAt.slice(0, 10)))}${P.by ? ' by ' + esc(P.by) : ''} · as of ${esc(svDay(P.asOf))} · ${P.members.filter(m => m.g === 'pilot').length} pilot, ${P.members.filter(m => m.g !== 'pilot').length} comparison. Locking again draws new lists and replaces these for everyone.</div>` : ''}
+    <div class="crm-off">Uses the current view: <b>${ARPP.unit === 'doctor' ? 'doctors' : 'practices'} · ${ARPP.rules === 'written' ? 'rules as written' : 'adjusted rules'}</b>. Each cohort is shuffled at random: the counts below go to the pilot, the rest to the comparison group.</div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:8px 0">
+      <label class="coach-f"><span>Measured as of</span><input type="date" class="gf-select" id="arppAs" value="${esc(c.asOf)}"></label>
+      <label class="coach-f"><span>Pilot starts</span><input type="date" class="gf-select" id="arppSt" value="${esc(c.start)}"></label>
+      <label class="coach-f"><span>Pilot ends</span><input type="date" class="gf-select" id="arppEn" value="${esc(c.end)}"></label>
+    </div>
+    <div class="arpp-note" style="margin-top:4px">Pilot accounts per cohort (from the sheet). Below each: how many qualify, and what’s left for the comparison group.</div>
+    <div class="arpp-lockgrid">${ARPP_COHORTS.map(x => `<label class="coach-f"><span>${x.l}</span><input type="number" min="0" class="gf-select" data-t="${x.k}" value="${T[x.k] || 0}"><small class="arpp-q" data-q="${x.k}" style="font-size:11px;line-height:1.35"></small></label>`).join('')}</div>
+    <div class="crm-msg" id="arppLM" role="status">${end < arppIsoNum(c.asOf) ? `The data only reaches ${esc(arppDay(end))} — lock once it includes ${esc(svDay(c.asOf))} (the morning of the next day).` : ''}</div>
+    <div class="crm-act">${P ? '<button type="button" class="btn-text" id="arppUnlock" style="margin-right:auto;color:#b3402f">Remove the lock</button>' : ''}<button type="button" class="btn-text" id="arppLC">Cancel</button><button type="button" class="crm-save" id="arppLS">${P ? 'Lock again' : 'Lock lists'}</button></div>
+  </div>`;
+  document.body.appendChild(ov);
+  const close = () => ov.remove();
+  ov.querySelector('.crm-x').onclick = close; ov.querySelector('#arppLC').onclick = close;
+  ov.addEventListener('click', e => { if (e.target === ov) close(); });
+  // DL108: a cohort with no accounts left over has no comparison group — say so before locking
+  const qual = () => {
+    const asOf = ov.querySelector('#arppAs').value, lm = ov.querySelector('#arppLM');
+    if (!asOf || arppIsoNum(asOf) > end) { ov.querySelectorAll('.arpp-q').forEach(q => q.textContent = '');
+      lm.textContent = asOf ? `The data only reaches ${arppDay(end)} — lock once it includes ${svDay(asOf)} (the morning of the next day).` : ''; return; }
+    lm.textContent = '';
+    const C = arppAccounts(asOf), n = {}; ARPP_COHORTS.forEach(c => n[c.k] = 0);
+    C[ARPP.unit].forEach(a => { const k = a.cohort[ARPP.rules]; if (k && !a.dead) n[k]++; });
+    ov.querySelectorAll('.arpp-q').forEach(q => { const k = q.dataset.q, t = Math.max(0, parseInt(ov.querySelector(`[data-t="${k}"]`).value, 10) || 0), left = Math.max(0, n[k] - t);
+      q.innerHTML = `${n[k]} qualify · ${left ? left + ' comparison' : '<b style="color:#b3402f">no comparison</b>'}`; q.title = left ? '' : 'Every qualifying account would be in the pilot, so its lift can’t be measured. Lower the pilot count to keep some back.'; });
+  };
+  ov.querySelectorAll('[data-t]').forEach(i => i.oninput = qual); ov.querySelector('#arppAs').onchange = qual; qual();
+  const un = ov.querySelector('#arppUnlock');
+  if (un) un.onclick = async () => { if (!confirm('Remove the pilot lock? The report stops until the lists are locked again.')) return; const how = await settingsSave('arpp_pilot', null); close(); toast('Pilot lock removed — ' + settingsSaidHow(how)); renderRepProgress(); };
+  ov.querySelector('#arppLS').onclick = async () => {
+    const asOf = ov.querySelector('#arppAs').value, start = ov.querySelector('#arppSt').value, endD = ov.querySelector('#arppEn').value, msg = ov.querySelector('#arppLM');
+    if (!asOf || !start || !endD || endD < start) { msg.textContent = 'Check the dates.'; return; }
+    if (arppIsoNum(asOf) > end) { msg.textContent = `The data only reaches ${arppDay(end)} — it has to include ${svDay(asOf)} first.`; return; }
+    if (P && !confirm('Lock again? This draws new pilot and comparison lists and replaces the current ones for everyone.')) return;
+    const targets = {}; ov.querySelectorAll('[data-t]').forEach(i => targets[i.dataset.t] = Math.max(0, parseInt(i.value, 10) || 0));
+    const L = arppBuildLock({ asOf, start, end: endD, unit: ARPP.unit, rules: ARPP.rules, targets, seed: (Date.now() ^ Math.floor(Math.random() * 1e9)) >>> 0 });
+    msg.textContent = 'Saving…';
+    const how = await settingsSave('arpp_pilot', L); ARPP.cache = null;
+    close(); toast(`Pilot lists locked: ${L.members.filter(m => m.g === 'pilot').length} pilot, ${L.members.filter(m => m.g !== 'pilot').length} comparison — ${settingsSaidHow(how)}`);
+    renderRepProgress();
+  };
+}
+
+/* ── the pilot report ── */
+function arppReportData() {
+  const P = arppPilot(); if (!P) return null;
+  const S = arppIsoNum(P.start), E = arppIsoNum(P.end), D = arppDataEnd(), pe = Math.min(E, D), len = pe - S + 1;
+  const unit = P.unit, mem = new Map(P.members.map(x => [x.k, { x, pre: 0, pil: 0, preCases: 0, pilCases: 0, preCats: new Set(), pilCats: new Set(), hist: new Set(), wk: new Map() }]));
+  const W0 = S - 91;   // 13 weeks before the start
+  const raw = APP.raw || [];
+  for (let i = 0; i < raw.length; i++) {
+    const r = raw[i]; if (!r || !r.anchorDate) continue;
+    const k = unit === 'practice' ? r.practice : r.drId; if (!k) continue;
+    const m = mem.get(k); if (!m) continue;
+    const dn = arppDayNum(r.anchorDate), amt = r.netCost || 0, isCase = !!r.caseKey && r.mainProduct;
+    if (dn >= S - 365 && dn < S && isCase) m.hist.add(r.productCat);
+    if (len > 0 && dn >= S - len && dn < S) { m.pre += amt; if (isCase) { m.preCases++; m.preCats.add(r.productCat); } }
+    if (len > 0 && dn >= S && dn <= pe) { m.pil += amt; if (isCase) { m.pilCases++; m.pilCats.add(r.productCat); } }
+    if (dn >= W0 && dn <= pe) { const w = Math.floor((dn - S) / 7); m.wk.set(w, (m.wk.get(w) || 0) + amt); }
+  }
+  // calls / emails / visits logged during the pilot, by account
+  const contacts = new Map();
+  if (LC.loaded && len > 0) {
+    const C = arppAccounts(P.asOf), byName = new Map(), byPrac = new Map(), addM = (mp, key, id) => { if (key) (mp.get(key) || mp.set(key, new Set()).get(key)).add(id); };
+    C.doctor.forEach(a => { addM(byName, lcNameKey(a.name), a.key); addM(byPrac, String(a.practice || '').trim().toLowerCase(), a.key); });
+    const acctOf = new Map(); P.members.forEach(x => (unit === 'practice' ? (x.d || []) : [x.k]).forEach(id => (acctOf.get(id) || acctOf.set(id, new Set()).get(id)).add(x.k)));
+    LC.offices.forEach(o => {
+      const ids = new Set(); svLabFigures(o.notes).forEach(e => (byName.get(lcNameKey(e.dr)) || []).forEach(id => ids.add(id)));
+      (byPrac.get(String(o.name || '').trim().toLowerCase()) || []).forEach(id => ids.add(id));
+      if (!ids.size) return;
+      svParseVisits(o.visits).forEach(v => { const dn = arppIsoNum(v.date); if (dn < S || dn > pe) return;
+        const key = o.id + '|' + v.date + '|' + (v.note || '').slice(0, 40);
+        ids.forEach(id => (acctOf.get(id) || []).forEach(ak => (contacts.get(ak) || contacts.set(ak, new Set()).get(ak)).add(key))); });
+    });
+  }
+  return { P, S, E, D, pe, len, mem, contacts, W0 };
+}
+function arppAgg(R, filt) {
+  const out = { n: 0, pre: 0, pil: 0, orderPre: 0, orderPil: 0, catsPre: 0, catsPil: 0, starters: 0, starts: 0, contacted: 0, calls: 0 };
+  R.mem.forEach((m, k) => { if (!filt(m.x)) return;
+    out.n++; out.pre += m.pre; out.pil += m.pil; if (m.preCases) out.orderPre++; if (m.pilCases) out.orderPil++;
+    out.catsPre += m.preCats.size; out.catsPil += m.pilCats.size;
+    const nw = [...m.pilCats].filter(c => !m.hist.has(c)).length; if (nw) { out.starters++; out.starts += nw; }
+    const c = R.contacts.get(k); if (c && c.size) { out.contacted++; out.calls += c.size; } });
+  const per = v => out.n && R.len > 0 ? v / out.n / R.len * 30 : 0;
+  out.arppPre = per(out.pre); out.arppPil = per(out.pil);
+  out.chg = out.pre > 0 ? (out.pil - out.pre) / out.pre : null;
+  return out;
+}
+const arppPct = v => v == null ? '—' : (v >= 0 ? '+' : '−') + Math.abs(v * 100).toFixed(1) + '%';
+const arppPP = v => v == null ? '—' : (v >= 0 ? '+' : '−') + Math.abs(v * 100).toFixed(1) + ' pts';
+function arppRenderReport(el) {
+  const P = arppPilot();
+  if (!P) { el.innerHTML = `<div class="section-header"><div><div class="section-title">ARPP pilot report</div><div class="section-sub">${arppHeadSub()}</div></div></div>
+    <div class="empty-state"><div class="empty-icon">🔒</div>The report starts once the pilot lists are locked (ARPP pilot → Lock pilot lists, on ${esc(svDay(ARPP_DEF.start))}).</div>`; return; }
+  const R = arppReportData(), started = R.len > 0, cs = ARPP.rcohort;
+  const inC = x => cs === 'all' || x.c === cs;
+  const G = { pilot: arppAgg(R, x => inC(x) && x.g === 'pilot'), comparison: arppAgg(R, x => inC(x) && x.g !== 'pilot') };
+  // DL108: lift is measured WITHIN each cohort (pilot vs its own comparison), then averaged weighted by pilot
+  // accounts — the two groups hold different mixes of cohorts, so one blended comparison would mislead.
+  // A cohort with no comparison group can't show lift and is left out.
+  const coLift = k => { const p = arppAgg(R, x => x.c === k && x.g === 'pilot'), q = arppAgg(R, x => x.c === k && x.g !== 'pilot');
+    return { n: p.n, l: p.chg != null && q.chg != null && q.n ? p.chg - q.chg : null }; };
+  const lifts = (cs === 'all' ? ARPP_COHORTS.map(c => c.k) : [cs]).map(coLift).filter(x => x.l != null && x.n);
+  const lift = lifts.length ? lifts.reduce((t, x) => t + x.l * x.n, 0) / lifts.reduce((t, x) => t + x.n, 0) : null;
+  const liftLeftOut = cs === 'all' ? ARPP_COHORTS.filter(c => { const x = coLift(c.k); return x.n && x.l == null; }).map(c => c.l) : [];
+  const period = started ? `${svDay(P.start)} – ${arppDay(R.pe)} (${R.len} day${R.len === 1 ? '' : 's'}) vs the ${R.len} days before (${arppDay(R.S - R.len)} – ${arppDay(R.S - 1)})` : '';
+  const cell = (v, good) => v == null ? '—' : `<span class="${v >= 0 ? 'arpp-up' : 'arpp-dn'}">${good(v)}</span>`;
+  const byCo = ARPP_COHORTS.map(c => { const p = arppAgg(R, x => x.c === c.k && x.g === 'pilot'), q = arppAgg(R, x => x.c === c.k && x.g !== 'pilot');
+    return { c, p, q, lift: p.chg != null && q.chg != null ? p.chg - q.chg : null }; });
+  // categories: accounts ordering each, before vs during
+  const cats = new Map();
+  R.mem.forEach(m => { if (!inC(m.x)) return; const g = m.x.g === 'pilot' ? 'p' : 'q';
+    m.preCats.forEach(c => { const o = cats.get(c) || cats.set(c, { p: [0, 0, 0], q: [0, 0, 0] }).get(c); o[g][0]++; });
+    m.pilCats.forEach(c => { const o = cats.get(c) || cats.set(c, { p: [0, 0, 0], q: [0, 0, 0] }).get(c); o[g][1]++; if (!m.hist.has(c)) o[g][2]++; }); });
+  const catRows = [...cats.entries()].sort((a, b) => (b[1].p[1] + b[1].q[1]) - (a[1].p[1] + a[1].q[1]));
+  const pc = (n, N) => N ? Math.round(n / N * 100) + '%' : '—';
+  // accounts table (pilot group)
+  const accs = []; R.mem.forEach((m, k) => { if (inC(m.x) && m.x.g === 'pilot') accs.push({ k, m }); });
+  accs.sort((a, b) => (b.m.pil - b.m.pre) - (a.m.pil - a.m.pre));
+  el.innerHTML = `
+    <div class="section-header"><div><div class="section-title">ARPP pilot report</div><div class="section-sub">${arppHeadSub()}</div></div>
+      <div class="section-actions"><select class="gf-select" id="arppRC"><option value="all">All cohorts</option>${ARPP_COHORTS.map(c => `<option value="${c.k}"${cs === c.k ? ' selected' : ''}>${c.l}</option>`).join('')}</select>
+        <button class="btn-text" id="arppRX">⬇ Export</button></div></div>
+    ${!started ? `<div class="rpg-box" style="margin-bottom:16px"><b>The pilot starts ${esc(svDay(P.start))}.</b> <span class="text-mut">Numbers fill in as invoices after that day arrive. Each day of the pilot is compared with the same number of days just before it.</span></div>` : `
+    <div class="arpp-note" style="margin-bottom:10px">${esc(period)} · revenue = what was billed (net), per account per 30 days · lift = pilot change minus comparison change.</div>
+    <div class="arpp-kpis">
+      <div class="rpg-card"><div class="rpg-cl">Pilot ARPP (per 30 days)</div><div class="rpg-cv">${arppMoney(G.pilot.arppPil)}</div><div class="rpg-cs">before: ${arppMoney(G.pilot.arppPre)} · ${cell(G.pilot.chg, arppPct)}</div></div>
+      <div class="rpg-card"><div class="rpg-cl">Comparison ARPP (per 30 days)</div><div class="rpg-cv">${arppMoney(G.comparison.arppPil)}</div><div class="rpg-cs">before: ${arppMoney(G.comparison.arppPre)} · ${cell(G.comparison.chg, arppPct)}</div></div>
+      <div class="rpg-card"><div class="rpg-cl">Lift</div><div class="rpg-cv">${cell(lift, arppPP)}</div><div class="rpg-cs">pilot change minus comparison change${cs === 'all' ? ', within each cohort, weighted by pilot accounts' : ''}${liftLeftOut.length ? ` · left out (no comparison group): ${esc(liftLeftOut.join(', '))}` : ''}</div></div>
+      <div class="rpg-card"><div class="rpg-cl">Started a new category</div><div class="rpg-cv">${G.pilot.starters}</div><div class="rpg-cs">pilot accounts (${pc(G.pilot.starters, G.pilot.n)}) · comparison ${G.comparison.starters} (${pc(G.comparison.starters, G.comparison.n)})</div></div>
+      <div class="rpg-card"><div class="rpg-cl">Pilot accounts contacted</div><div class="rpg-cv">${G.pilot.contacted} <span class="rpg-chip mut">of ${G.pilot.n}</span></div><div class="rpg-cs">${G.pilot.calls} calls, emails and visits logged${LC.loaded ? '' : ' · loading from Salesly…'}</div></div>
+    </div>`}
+    <div class="rpg-box" style="margin-bottom:16px"><div style="font-weight:700;margin-bottom:6px">By cohort</div>
+      <div style="overflow-x:auto"><table class="arpp-tbl"><thead><tr><th>Customer Cohort</th><th class="n">Pilot</th><th class="n">ARPP before</th><th class="n">ARPP during</th><th class="n">Change</th><th class="n">Comparison</th><th class="n">ARPP before</th><th class="n">ARPP during</th><th class="n">Change</th><th class="n">Lift</th><th class="n">Ordering before → during (pilot)</th><th class="n">New category (pilot)</th><th class="n">Contacted (pilot)</th></tr></thead>
+      <tbody>${byCo.map(({ c, p, q, lift: l }) => `<tr><td><span class="arpp-dot" style="background:${arppColor(c.k)}"></span><b>${c.l}</b></td>
+        <td class="n">${p.n}</td><td class="n">${started ? arppMoney(p.arppPre) : '—'}</td><td class="n">${started ? arppMoney(p.arppPil) : '—'}</td><td class="n">${started ? cell(p.chg, arppPct) : '—'}</td>
+        <td class="n">${q.n}</td><td class="n">${started ? arppMoney(q.arppPre) : '—'}</td><td class="n">${started ? arppMoney(q.arppPil) : '—'}</td><td class="n">${started ? cell(q.chg, arppPct) : '—'}</td>
+        <td class="n">${started ? cell(l, arppPP) : '—'}</td><td class="n">${started ? `${pc(p.orderPre, p.n)} → ${pc(p.orderPil, p.n)}` : '—'}</td><td class="n">${started ? p.starters : '—'}</td><td class="n">${started ? p.contacted + ' of ' + p.n : '—'}</td></tr>`).join('')}</tbody></table></div>
+      <div class="arpp-foot">A cohort whose every qualifying account is in the pilot has no comparison group — its lift can’t be measured.</div></div>
+    ${started ? `<div class="rpg-box" style="margin-bottom:16px"><div style="font-weight:700">Revenue per account, week by week — indexed</div><div class="arpp-note" style="margin-bottom:6px">${cs === 'all' ? 'All cohorts with a comparison group' : arppLabel(cs)} · each group’s 13 weeks before the pilot = 100, so the two lines start level and the gap that opens is the pilot’s effect · ▶ marks the first pilot week</div><div style="height:250px"><canvas id="arppChart"></canvas></div></div>
+    <div class="rpg-two">
+      <div class="rpg-box"><div style="font-weight:700;margin-bottom:6px">What they order — accounts ordering each category</div>
+        <div style="overflow-x:auto"><table class="arpp-tbl"><thead><tr><th>Category</th><th class="n">Pilot before → during</th><th class="n">New (pilot)</th><th class="n">Comparison before → during</th><th class="n">New (comp.)</th></tr></thead>
+        <tbody>${catRows.map(([c, o]) => `<tr><td>${esc(c)}</td><td class="n">${o.p[0]} → <b>${o.p[1]}</b></td><td class="n">${o.p[2] || '<span class="text-mut">·</span>'}</td><td class="n">${o.q[0]} → <b>${o.q[1]}</b></td><td class="n">${o.q[2] || '<span class="text-mut">·</span>'}</td></tr>`).join('') || '<tr><td colspan="5" class="text-mut">No orders yet.</td></tr>'}</tbody></table></div>
+        <div class="arpp-foot">“New” = ordered a category during the pilot that the account hadn’t ordered in the 12 months before it.</div></div>
+      <div class="rpg-box"><div style="font-weight:700;margin-bottom:6px">Pilot accounts — biggest change first</div>
+        <div style="max-height:520px;overflow:auto"><table class="arpp-tbl"><thead><tr><th>Account</th><th class="n">Before</th><th class="n">During</th><th class="n">Change</th><th>New categories</th><th class="n">Contacts</th></tr></thead>
+        <tbody>${accs.map(({ k, m }) => { const nw = [...m.pilCats].filter(c => !m.hist.has(c)), ct = R.contacts.get(k);
+          return `<tr><td><b>${P.unit === 'doctor' ? peerLink({ drId: k, name: m.x.n }) : esc(m.x.n)}</b><div class="arpp-sub"><span class="arpp-dot" style="background:${arppColor(m.x.c)}"></span>${esc(arppLabel(m.x.c))}</div></td>
+            <td class="n">${arppMoney(m.pre)}</td><td class="n">${arppMoney(m.pil)}</td><td class="n">${cell(m.pil - m.pre, v => (v >= 0 ? '+' : '−') + arppMoney(Math.abs(v)))}</td>
+            <td>${nw.map(c => `<span class="arpp-cat">${esc(ARPP_SAY[c] || c)}</span>`).join('') || '<span class="text-mut">—</span>'}</td><td class="n">${ct ? ct.size : '<span class="text-mut">0</span>'}</td></tr>`; }).join('')}</tbody></table></div></div>
+    </div>` : ''}`;
+  el.querySelector('#arppRC').onchange = e => { ARPP.rcohort = e.target.value; renderRepProgress(); };
+  el.querySelector('#arppRX').onclick = () => {
+    const rows = []; R.mem.forEach((m, k) => { const nw = [...m.pilCats].filter(c => !m.hist.has(c)), ct = R.contacts.get(k);
+      rows.push({ cohort: arppLabel(m.x.c), group: m.x.g, account: m.x.n, revenue_before: Math.round(m.pre), revenue_during: Math.round(m.pil), change: Math.round(m.pil - m.pre),
+        days_compared: Math.max(0, R.len), ordered_before: m.preCases ? 'yes' : 'no', ordered_during: m.pilCases ? 'yes' : 'no',
+        categories_before: [...m.preCats].join('; '), categories_during: [...m.pilCats].join('; '), new_categories: nw.join('; '), contacts_logged: ct ? ct.size : 0 }); });
+    downloadCSV(`arpp-pilot-report-${arppNumIso(Math.max(R.S, Math.min(R.pe, R.E)))}.csv`, rows);
+  };
+  if (ARPP.chart) { try { ARPP.chart.destroy(); } catch (e) {} ARPP.chart = null; }
+  const cv = el.querySelector('#arppChart');
+  if (started && cv && typeof Chart !== 'undefined') {
+    const wLast = Math.floor((R.pe - R.S) / 7), weeks = []; for (let w = -13; w <= wLast; w++) weeks.push(w);
+    /* DL108: each group indexed to its own 13 weeks before the pilot (= 100), within each cohort, then averaged
+       weighted by pilot accounts — the same footing as the lift. Cohorts without a comparison group are left out. */
+    const ks = (cs === 'all' ? ARPP_COHORTS.map(c => c.k) : [cs]).filter(k => { let a = 0, b = 0; R.mem.forEach(m => { if (m.x.c === k) { if (m.x.g === 'pilot') a++; else b++; } }); return a && b; });
+    const perAcct = (k, g) => { const v = weeks.map(() => 0); let n = 0; R.mem.forEach(m => { if (m.x.c !== k || (g === 'pilot') !== (m.x.g === 'pilot')) return; n++; weeks.forEach((w, i) => { v[i] += m.wk.get(w) || 0; }); }); return { v: v.map(x => n ? x / n : 0), n }; };
+    const wts = new Map(ks.map(k => [k, perAcct(k, 'pilot').n]));
+    const series = g => { const out = weeks.map(() => 0); let W = 0;
+      ks.forEach(k => { const s0 = perAcct(k, g), base = s0.v.slice(0, 13).reduce((t, x) => t + x, 0) / 13; if (!(base > 0)) return;
+        const wt = wts.get(k); W += wt; s0.v.forEach((x, i) => { out[i] += x / base * 100 * wt; }); });
+      return W ? out.map(x => Math.round(x / W)) : out.map(() => null); };
+    ARPP.chart = new Chart(cv, { type: 'line',
+      data: { labels: weeks.map(w => (w === 0 ? '▶ ' : '') + svDay(arppNumIso(R.S + w * 7), { month: 'short', day: 'numeric' })),
+        datasets: [{ label: 'Pilot', data: series('pilot'), borderColor: BRAND.cat[0], backgroundColor: BRAND.cat[0], borderWidth: 2, pointRadius: 3, tension: 0.25 },
+                   { label: 'Comparison', data: series('comparison'), borderColor: BRAND.cat[1], backgroundColor: BRAND.cat[1], borderWidth: 2, pointRadius: 3, borderDash: [5, 4], tension: 0.25 }] },
+      options: { responsive: true, maintainAspectRatio: false, animation: false, interaction: { mode: 'index', intersect: false },
+        plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } },
+          tooltip: { callbacks: { title: it => 'Week of ' + svDay(arppNumIso(R.S + weeks[it[0].dataIndex] * 7)) + (weeks[it[0].dataIndex] >= 0 ? ' (pilot)' : ' (before)'), label: c => c.dataset.label + ': ' + c.parsed.y + ' (before the pilot = 100)' } } },
+        scales: { x: { grid: { display: false }, ticks: { font: { size: 10.5 }, maxRotation: 0, autoSkip: true } }, y: { beginAtZero: true, title: { display: true, text: 'Revenue per account, before = 100', font: { size: 11 } } } } } });
+  }
+  if (!LC.loaded && !LC.loading) lcLoad().then(() => { if (ARPP.view === 'report') renderRepProgress(); }).catch(() => {});
+}
+
+function arppRenderPlaybook(el) {
+  el.innerHTML = `
+    <div class="section-header"><div><div class="section-title">Call playbook</div><div class="section-sub">ARPP expansion pilot · how to run the first call with each cohort. Every account’s <b>Call prep</b> (ARPP pilot tab) fills these in with its own facts.</div></div></div>
+    <div class="rpg-box" style="margin-bottom:16px"><div style="font-weight:700;margin-bottom:8px">How we call</div>
+      ${ARPP_PRINCIPLES.map(([h, t], i) => `<div style="margin-bottom:8px"><b>${i + 1}. ${esc(h)}</b><div class="arpp-note" style="font-size:13px">${esc(t)}</div></div>`).join('')}
+      <div class="arpp-h4">Before you dial, know</div><ul class="arpp-ul"><li>What types of cases they order — and which they don’t</li><li>When their last order was</li><li>Whether they’re digital (which scanner) or send impressions</li><li>How long they’ve worked with us</li></ul></div>
+    ${ARPP_COHORTS.map(c => { const T = ARPP_TRACK[c.k], ex = { name: 'Example Dental', unit: 'practice' }, f = { tenureSay: '3 years', sends: [{ c: 'Zirconia Crowns & Bridges' }], never: ['Implant Crowns'], lastDays: 120 };
+      return `<div class="arpp-pb-co"><div style="font-weight:700;margin-bottom:4px"><span class="arpp-dot" style="background:${arppColor(c.k)}"></span>${c.l} <span class="arpp-note">· ${esc(c[ARPP.rules])}</span></div>
+        <div style="font-size:13px"><b>Goal:</b> ${esc(T.goal)}</div>
+        <div class="arpp-say">“${esc(T.open(ex, f))}”</div>
+        <ul class="arpp-ul">${T.ask.map(x => `<li>${esc(x)}</li>`).join('')}</ul>
+        <div style="font-size:13px;margin-top:6px"><b>If the door opens:</b> ${esc(T.pitch)}</div></div>`; }).join('')}
+    <div class="rpg-box" style="margin-bottom:16px"><div style="font-weight:700;margin-bottom:8px">Who picks up — how the talk track changes</div><div class="arpp-who">${ARPP_WHO.map(w => `<div class="arpp-whobox"><b style="font-size:13px">${esc(w.l)}</b><ul class="arpp-ul" style="font-size:12.5px">${w.tips.map(t => `<li>${esc(t)}</li>`).join('')}</ul></div>`).join('')}</div></div>
+    <div class="rpg-box"><div style="font-weight:700;margin-bottom:8px">When to send the follow-up email</div><ul class="arpp-ul">${ARPP_EMAIL_WHEN.map(x => `<li>${esc(x)}</li>`).join('')}</ul>
+      <div class="arpp-note" style="margin-top:8px">The example openers use sample facts (3 years with us, sends zirconia crowns, never sent implant crowns). Each account’s Call prep and follow-up email use its real ones.</div></div>`;
+}
+async function arppRender(el) {
+  if (ARPP.view === 'pilot') return arppRenderPilot(el);
+  if (ARPP.view === 'report') return arppRenderReport(el);
+  return arppRenderPlaybook(el);
+}
+
 /* ══ DL91: REP PROGRESS — each rep against his own usual pace ══════════════════
    One rep at a time, measured against HIMSELF (no targets):
      • This week so far vs his usual BY THE SAME POINT of the week (Mon–Thu vs his
@@ -21255,9 +21945,15 @@ function rpgCss() {
   #rpgContacts{max-height:620px;overflow-y:auto}`;
   document.head.appendChild(st);
 }
+/* DL108: Rep Progress holds four views — Rep activity (below), ARPP pilot, Pilot report, Call playbook */
 async function renderRepProgress() {
   const el = document.getElementById('panel-repprog'); if (!el) return;
-  rpgCss();
+  rpgCss(); arppCss();
+  { const P = arppPilot(); if (P && !ARPP._synced) { ARPP.unit = P.unit; ARPP.rules = P.rules; ARPP._synced = true; } }   // open on the locked lists
+  if (ARPP.view === 'activity') await rpgRenderActivity(el); else await arppRender(el);
+  arppMountSwitch(el);
+}
+async function rpgRenderActivity(el) {
   el.innerHTML = '<div class="empty-state"><div class="empty-icon">⏳</div>Loading rep activity from Salesly…</div>';
   await svLoad();
   if (SV.error) return svNotConnected(el, 'Rep Progress');
