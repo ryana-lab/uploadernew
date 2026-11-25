@@ -40,7 +40,7 @@
 </script>
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; font-src 'self' data:; img-src 'self' data: blob: https://cdn.jsdelivr.net https://maps.geoapify.com; connect-src 'self' https://hfzizrzqrneuciykpuez.supabase.co wss://hfzizrzqrneuciykpuez.supabase.co https://api.geocod.io https://api.geoapify.com https://api.openrouteservice.org https://nominatim.openstreetmap.org; frame-src https://www.google.com https://maps.google.com; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'self'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
-<title>Lab Sales Dashboard v2026.11.25-DL109</title>
+<title>Lab Sales Dashboard v2026.11.25-DL110</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js" integrity="sha384-D/t0ZMqQW31H3az8ktEiNb39wyKnS82iFY52QPACM+IjKW3jDUhyIgh2PApRqJZs" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js" integrity="sha384-dug+JxfBvklEQdJ4AYuBBAIScUz0bVN73xpy273gcAwHjb3qI0fXmuYNaNfdyYJG" crossorigin="anonymous"></script>
@@ -2644,7 +2644,7 @@ const APP = {
 
 /* Bump when normalization logic changes, so it's possible to tell at a glance
    (bottom of the Avg Turnaround card) which build a browser is running. */
-const BUILD_ID = 'DL109 · 2026-11-25';
+const BUILD_ID = 'DL110 · 2026-11-25';
 
 const DB_NAME = 'LabOpsCache';
 const DB_STORE = 'datasets';
@@ -9038,6 +9038,8 @@ async function _autoSyncRun() {
   try {
     await sbSync();
     officeMsg = 'offices &amp; statuses pushed to Salesly';
+    // DL110: say so when the duplicate guard held new offices back
+    if (BRIDGE.heldBack) officeMsg += ' — <b>' + BRIDGE.heldBack + ' new offices NOT added</b> (far more than usual, so they may be duplicates; run the sync on the Salesly Bridge tab to review)';
   } catch (e) {
     officeMsg = 'Salesly push failed (' + esc(String(e && e.message || e)) + ')';
   }
@@ -9071,7 +9073,7 @@ async function _autoSyncRun() {
   syncBanner('<b>Sync complete</b> — ' + officeMsg + (queueMsg ? ' · ' + queueMsg : '') +
              '<div style="font-size:11.5px;color:#5c7179;margin-top:4px">' +
              new Date().toLocaleTimeString() + ' · runs automatically on every data upload</div>',
-             failed ? 'err' : 'ok');
+             failed ? 'err' : (BRIDGE.heldBack ? 'warn' : 'ok'));
 }
 
 function maybeAutoSync() {
@@ -17168,7 +17170,9 @@ const SB_LAB_MARK = 'LAB:';
    mixed into the rep's own notes. "💡 OFFER: product · Dr. name · why · ≈$X/yr ·
    confidence · what to say". Salesly VDA118 shows them as "What to offer". */
 const SB_OFFER_MARK = '💡 OFFER:';
-const sbIsSys = l => { const t = String(l || '').trim(); return t.startsWith(SB_LAB_MARK) || t.startsWith(SB_OFFER_MARK); };
+/* DL110: earlier builds wrote "📊 LAB: …". Only "LAB: …" was recognised as the sync's own, so the old 📊 lines were
+   never replaced and Salesly listed every doctor twice (current + stale figures) at 1,424 practices (Nov 2026). */
+const sbIsSys = l => { const t = String(l || '').trim().replace(/^📊\s*/, ''); return t.startsWith(SB_LAB_MARK) || t.startsWith(SB_OFFER_MARK) || /^OFFER:/.test(t); };
 const SB_BASE = { current: 'Active', new: 'New Doctor', falloff: 'Falloff', inactive: 'Inactive' };
 const BRIDGE = { data: null, stop: false, wanted: null };
 
@@ -18378,7 +18382,25 @@ async function sbMergeDupes() {
   }
 }
 
-async function sbSync() {
+// DL110: an unmatched practice, looked up across every active office (any tier). Returns Map(practice → best office row).
+async function sbFindExisting(list) {
+  const db = pgRequire(), out = new Map();
+  const one = async o => {
+    const n = sbStrict(o.name); if (!n) return;
+    const words = n.split(' ').filter(w => w.length > 1).slice(0, 4); if (!words.length) return;
+    const pat = '%' + words.map(w => w.replace(/[%_\\]/g, '')).join('%') + '%';
+    const { data, error } = await db.from('offices').select('*').ilike('name', pat).eq('active', true).is('deleted_at', null).limit(40);
+    if (error || !data) return;
+    const hn = sbHouseNo(o.addr), c = sbNorm(o.city);
+    const cands = data.filter(r => !r.merged_into && sbStrict(r.name) === n && (sbNorm(r.city) === c || (hn && sbHouseNo(r.addr) === hn)));
+    if (!cands.length) return;
+    cands.sort((a, b) => ((b.tier === 'S') - (a.tier === 'S')) || (String(b.visits || '').length - String(a.visits || '').length) || String(a.created_at || '').localeCompare(String(b.created_at || '')));
+    out.set(o, cands[0]);
+  };
+  for (let i = 0; i < list.length; i += 4) await Promise.all(list.slice(i, i + 4).map(o => one(o).catch(() => {})));
+  return out;
+}
+async function sbSync(ev) {
   // An automatic sync usually runs while another tab is on screen, so the Bridge
   // tab may never have rendered and BRIDGE.data would still be null. Build it on
   // demand rather than silently bailing out.
@@ -18509,7 +18531,37 @@ async function sbSync() {
         if (r[ci.lat] && r[ci.lng]) { geo[sbGeoKey(o)] = { lat: r[ci.lat], lng: r[ci.lng], zip: r[ci.zip] || '' }; }
       }
     });
-    const need = push.filter(o => o._row !== -2 && !geo[sbGeoKey(o)] && (o.addr || o.city));
+    /* ══ DL110: NEVER ADD AN OFFICE THAT ALREADY EXISTS ═══════════════════════════
+       The list read above holds customers, pin-less and visited offices only, so a practice that
+       exists as an A/B prospect — or exists twice, which makes name + city ambiguous — came out
+       "not found" and was added again. On Nov 20, 2026 one run added 1,393 copies at once.
+       (1) Every practice still unmatched is looked up across ALL active offices, any tier, and
+           the best match (customer first, then most visits, then oldest) is updated instead.
+       (2) If a run would still add far more offices than usual, it adds none and says so. */
+    const manualRun = !!(ev && ev.type === 'click');
+    BRIDGE.heldBack = 0;
+    { const unmatched = push.filter(o => o._row === -1);
+      if (unmatched.length && unmatched.length <= 80) {
+        sbLog('Looking for ' + unmatched.length + ' practice' + (unmatched.length === 1 ? '' : 's') + ' among ALL Salesly offices before adding any…');
+        const found = await sbFindExisting(unmatched);
+        let reused = 0;
+        found.forEach((rec, o) => {
+          const idx = rows.findIndex(r => String(r[ci.id]) === String(rec.id));
+          if (idx >= 0) o._row = idx;
+          else { const a = pgRowToArr(rec); while (a.length < cols.length) a.push(''); rows.push(a); o._row = rows.length - 1; }
+          const r = rows[o._row]; if (r[ci.lat] && r[ci.lng]) geo[sbGeoKey(o)] = { lat: r[ci.lat], lng: r[ci.lng], zip: r[ci.zip] || '' };
+          reused++;
+        });
+        if (reused) sbLog('✓ ' + reused + ' already in Salesly (as a prospect, or more than once) — updated, not added', 'ok');
+      }
+      const toAdd = push.filter(o => o._row === -1).length, matchedN = push.filter(o => o._row >= 0).length;
+      if (toAdd > 25 && toAdd > matchedN * 0.05) {
+        const go = manualRun && window.confirm('This sync would ADD ' + toAdd + ' new offices to Salesly — far more than usual (' + matchedN + ' matched).\n\n' +
+          'That usually means the office list didn’t load fully, and adding them would create duplicates.\n\nOK = add them anyway · Cancel = update the matched offices only');
+        if (!go) { push.forEach(o => { if (o._row === -1) o._row = -3; }); BRIDGE.heldBack = toAdd;
+          sbLog('⚠ Not adding ' + toAdd + ' new offices — far more than usual, so they may be duplicates. The ' + matchedN + ' matched offices are still updated. Run the sync from this tab to review.', 'warn'); }
+      } }
+    const need = push.filter(o => o._row !== -2 && o._row !== -3 && !geo[sbGeoKey(o)] && (o.addr || o.city));
     sbLog(push.length + ' offices to sync · ' + push.filter(o => o._row >= 0).length + ' already in the Sheet · ' + need.length + ' need geocoding');
     if (need.length) {
       const _orsEl = document.getElementById('sbOrs');
@@ -18537,7 +18589,7 @@ async function sbSync() {
     let updated = 0, added = 0;
     const setIfBlank = (r, c, v) => { if (v && (!r[ci[c]] || String(r[ci[c]]).trim() === '')) r[ci[c]] = v; };
     push.forEach(o => {
-      if (o._row === -2) return;   // tombstoned — leave it deleted
+      if (o._row === -2 || o._row === -3) return;   // tombstoned — leave it deleted · DL110: held back (too many new at once)
       const g = geo[sbGeoKey(o)] || {};
       const lines = o.docs
         .slice().sort((a, b) => b.row.rev90 - a.row.rev90)
