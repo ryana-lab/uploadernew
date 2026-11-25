@@ -40,7 +40,7 @@
 </script>
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; font-src 'self' data:; img-src 'self' data: blob: https://cdn.jsdelivr.net https://maps.geoapify.com; connect-src 'self' https://hfzizrzqrneuciykpuez.supabase.co wss://hfzizrzqrneuciykpuez.supabase.co https://api.geocod.io https://api.geoapify.com https://api.openrouteservice.org https://nominatim.openstreetmap.org; frame-src https://www.google.com https://maps.google.com; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'self'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
-<title>Lab Sales Dashboard v2026.11.24-DL105</title>
+<title>Lab Sales Dashboard v2026.11.24-DL106</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js" integrity="sha384-D/t0ZMqQW31H3az8ktEiNb39wyKnS82iFY52QPACM+IjKW3jDUhyIgh2PApRqJZs" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js" integrity="sha384-dug+JxfBvklEQdJ4AYuBBAIScUz0bVN73xpy273gcAwHjb3qI0fXmuYNaNfdyYJG" crossorigin="anonymous"></script>
@@ -2644,7 +2644,7 @@ const APP = {
 
 /* Bump when normalization logic changes, so it's possible to tell at a glance
    (bottom of the Avg Turnaround card) which build a browser is running. */
-const BUILD_ID = 'DL105 · 2026-11-24';
+const BUILD_ID = 'DL106 · 2026-11-24';
 
 const DB_NAME = 'LabOpsCache';
 const DB_STORE = 'datasets';
@@ -9636,7 +9636,7 @@ async function prodLoadAllInner() {
     ]) {
       let after = 0;
       for (;;) {
-        const { data, error } = await db.rpc(src.rpc, { p_after: after, p_limit: 5000 });
+        const { data, error } = await rpcRetry(db, src.rpc, { p_after: after, p_limit: 5000 });   // DL106: retry a busy page
         if (error) {
           if (missingFn(error)) break;                 // that table/RPC not installed — skip it
           throw Object.assign(new Error(error.message || 'The database refused the request'), { pg: error });
@@ -16278,6 +16278,25 @@ function labStamp(sum) {
 }
 let LAB_LAST_STAMP = '';
 let LAB_SUM = null;   // DL105: the last lab_summary (rows, date range, when Pilot data was last loaded)
+/* DL106: one busy moment on the database (a page cut off at its 8-second limit, a dropped
+   connection) used to throw away the whole download. Retry that one page a few times,
+   waiting a little longer each time, before giving up. Sign-in and permission errors are
+   final — retrying them would only hide the real message. */
+async function rpcRetry(db, name, args, tries) {
+  tries = tries || 4;
+  let last = null;
+  for (let i = 0; i < tries; i++) {
+    let res;
+    try { res = await db.rpc(name, args); }
+    catch (e) { res = { data: null, error: { message: (e && e.message) || String(e) } }; }
+    if (!res.error) return res;
+    last = res;
+    const m = String(res.error.message || '');
+    if (/Admins only|JWT|not authori[sz]ed|permission denied|Could not find the function|does not exist|sign/i.test(m)) return res;
+    if (i < tries - 1) await new Promise(ok => setTimeout(ok, 1500 * Math.pow(2, i)));   // 1.5 s, 3 s, 6 s
+  }
+  return last;
+}
 async function labPullAll(opts) {
   opts = opts || {};
   const db = pgClient();
@@ -16308,7 +16327,7 @@ async function labPullAll(opts) {
 
     const rows = []; let after = 0;
     for (;;) {
-      const { data, error } = await db.rpc('lab_fetch_rows', { p_after: after, p_limit: LAB_PAGE });
+      const { data, error } = await rpcRetry(db, 'lab_fetch_rows', { p_after: after, p_limit: LAB_PAGE });
       if (error) throw new Error(error.message);
       const got = (data && data.rows) || [];
       if (!got.length) break;
