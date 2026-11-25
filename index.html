@@ -40,7 +40,7 @@
 </script>
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; font-src 'self' data:; img-src 'self' data: blob: https://cdn.jsdelivr.net https://maps.geoapify.com; connect-src 'self' https://hfzizrzqrneuciykpuez.supabase.co wss://hfzizrzqrneuciykpuez.supabase.co https://api.geocod.io https://api.geoapify.com https://api.openrouteservice.org https://nominatim.openstreetmap.org; frame-src https://www.google.com https://maps.google.com; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'self'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
-<title>Lab Sales Dashboard v2026.11.25-DL108</title>
+<title>Lab Sales Dashboard v2026.11.25-DL109</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='800' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E">
 <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js" integrity="sha384-D/t0ZMqQW31H3az8ktEiNb39wyKnS82iFY52QPACM+IjKW3jDUhyIgh2PApRqJZs" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js" integrity="sha384-dug+JxfBvklEQdJ4AYuBBAIScUz0bVN73xpy273gcAwHjb3qI0fXmuYNaNfdyYJG" crossorigin="anonymous"></script>
@@ -2644,7 +2644,7 @@ const APP = {
 
 /* Bump when normalization logic changes, so it's possible to tell at a glance
    (bottom of the Avg Turnaround card) which build a browser is running. */
-const BUILD_ID = 'DL108 · 2026-11-25';
+const BUILD_ID = 'DL109 · 2026-11-25';
 
 const DB_NAME = 'LabOpsCache';
 const DB_STORE = 'datasets';
@@ -21401,8 +21401,10 @@ function arppSwitchHTML() {
 }
 function arppMountSwitch(el) {
   if (!el || el.querySelector('#arppSwitch')) return;
-  el.insertAdjacentHTML('afterbegin', arppSwitchHTML());
+  el.insertAdjacentHTML('afterbegin', `<div style="display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap">${arppSwitchHTML()}${secViewOnly() ? '' : '<button type="button" class="crm-save" id="rpgLogAny" style="margin-left:auto">＋ Log a visit</button>'}</div>`);
   el.querySelectorAll('#arppSwitch [data-v]').forEach(b => b.onclick = () => { ARPP.view = b.dataset.v; ARPP.limit = 60; renderRepProgress(); });
+  const lg = el.querySelector('#rpgLogAny');   // DL109: log a visit / call / email to any office, from Rep Progress
+  if (lg) lg.onclick = () => crmLogAny(() => { RPG.data = {}; LC.loaded = false; LC.map = null; svLoad(true).catch(() => {}).then(() => renderRepProgress()); });
 }
 function arppHeadSub() {
   const c = arppCfg(), P = arppPilot();
@@ -21446,7 +21448,7 @@ function arppRenderPilot(el) {
       <td>${f.sends.slice(0, 3).map(s => `<span class="arpp-cat" title="${esc(s.c)} · ${s.cases} case${s.cases === 1 ? '' : 's'} · ${arppMoney(s.rev)} in 12 months">${esc(ARPP_SAY[s.c] || s.c)}</span>`).join('') || '<span class="text-mut">—</span>'}</td>
       <td>${f.never.slice(0, 3).map(c => `<span class="arpp-cat no">${esc(ARPP_SAY[c] || c)}</span>`).join('') || '<span class="text-mut">sends it all</span>'}</td>
       <td>${lc ? `<span title="${esc(lcTip(lc))}">${esc(svDay(lc.date))}<div class="arpp-sub">${LC_KIND[lc.kind] || 'in person'} · ${lcAgo(lcDays(lc.date))}</div></span>` : LC.loaded ? '<span class="text-mut">none logged</span>' : '<span class="text-mut">…</span>'}</td>
-      <td><button type="button" class="btn-text arpp-prepbtn" data-k="${esc(a.key)}">Call prep</button></td></tr>`;
+      <td style="white-space:nowrap"><button type="button" class="btn-text arpp-prepbtn" data-k="${esc(a.key)}">Call prep</button>${secViewOnly() ? '' : ` <button type="button" class="btn-text arpp-logbtn" data-k="${esc(a.key)}" title="Log a visit, call or email">Log</button>`}</td></tr>`;
   };
 
   el.innerHTML = `
@@ -21488,6 +21490,7 @@ function arppRenderPilot(el) {
   const q = el.querySelector('#arppQ'); let qt; if (q) q.oninput = () => { clearTimeout(qt); qt = setTimeout(() => { ARPP.q = q.value; ARPP.limit = 60; renderRepProgress().then(() => { const n = document.getElementById('arppQ'); if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); } }); }, 250); };
   const more = el.querySelector('#arppMore'); if (more) more.onclick = () => { ARPP.limit += 60; renderRepProgress(); };
   el.querySelectorAll('.arpp-prepbtn').forEach(b => b.onclick = () => { const a = list.find(x => x.key === b.dataset.k); if (a) arppPrep(a, sel.k); });
+  el.querySelectorAll('.arpp-logbtn').forEach(b => b.onclick = () => { const a = list.find(x => x.key === b.dataset.k); if (a) arppLogFor(a, b); });
   el.querySelector('#arppExport').onclick = () => arppExport();
   const lk = el.querySelector('#arppLock'); if (lk) lk.onclick = () => arppLockDialog();
   if (!LC.loaded && !LC.loading) lcLoad().then(() => { if (ARPP.view === 'pilot' && document.getElementById('arppQ')) renderRepProgress(); }).catch(() => {});
@@ -21506,6 +21509,19 @@ function arppExport() {
   downloadCSV(`arpp-cohorts-${ARPP.unit}-${ARPP.rules}-${arppAsOf()}.csv`, rows);
 }
 
+// DL109: find the account's Salesly office(s), then the log form; with no office linked, search for it instead
+async function arppLogFor(a, btn, kind) {
+  const top = (a.doctors || [])[0], was = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Finding…'; }
+  const r = await crmFindOffices(top ? top.name : a.name, a.practice || (a.unit === 'practice' ? a.name : ''));
+  if (btn) { btn.disabled = false; btn.textContent = was; }
+  const after = () => { LC.loaded = false; LC.map = null; lcLoad().then(() => { if (ARPP.view === 'pilot' || ARPP.view === 'report') renderRepProgress(); }); };
+  if (r.error === 'signin') { toast('Sign in on the Salesly Bridge tab first.', 'err'); return false; }
+  if (r.error) { toast('Couldn’t read Salesly: ' + r.error, 'err'); return false; }
+  if (!r.offs || !r.offs.length) { toast('No Salesly office is linked to ' + a.name + ' yet — search for it.'); crmLogAny(after); const q = document.getElementById('crmAQ'); if (q) { q.value = String(a.unit === 'practice' ? a.name : (a.practice || a.name)).slice(0, 40); q.dispatchEvent(new Event('input')); } return true; }
+  crmOpen(r.offs, after, kind || 'visit');
+  return true;
+}
 /* ── call prep: everything a rep needs for one account, and the call logged from it ── */
 function arppPrep(a, cohort) {
   const f = arppFacts(a), T = ARPP_TRACK[cohort] || ARPP_TRACK.ramping, lc = arppLastContact(a);
@@ -22048,8 +22064,9 @@ const crmKind = note => { const n = String(note || '').trim(); return /^📞/.te
 const crmIcon = k => ({ call: '📞', email: '✉️', text: '💬', visit: '🚗' })[k] || '🚗';
 const crmToday = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
 const crmWhere = o => [o.name || 'Unnamed office', [o.addr, o.city].filter(Boolean).join(', ')].filter(Boolean).join(' · ');
-function crmOpen(offices, onSaved) {
+function crmOpen(offices, onSaved, startKind) {   // DL109: startKind 'visit' | 'call' | 'email' (default call)
   if (!offices || !offices.length) return;
+  const k0 = CRM_KINDS.some(x => x[0] === startKind) ? startKind : 'call';
   document.querySelectorAll('.crm-ov').forEach(x => x.remove());
   const one = offices.length === 1, ov = document.createElement('div');
   ov.className = 'crm-ov';
@@ -22058,7 +22075,7 @@ function crmOpen(offices, onSaved) {
     ${one ? `<div class="crm-off">${esc(crmWhere(offices[0]))}</div>`
           : `<label class="coach-f"><span>Office</span><select class="gf-select" id="crmOff">${offices.map((o, i) => `<option value="${i}">${esc(crmWhere(o))}</option>`).join('')}</select></label>`}
     <div class="crm-lbl">What happened</div>
-    <div class="crm-seg" id="crmKind" role="group" aria-label="Kind of contact">${CRM_KINDS.map(([k, ic, l], i) => `<button type="button" data-k="${k}" class="${i ? '' : 'on'}" aria-pressed="${!i}">${ic} ${l}</button>`).join('')}</div>
+    <div class="crm-seg" id="crmKind" role="group" aria-label="Kind of contact">${CRM_KINDS.map(([k, ic, l], i) => `<button type="button" data-k="${k}" class="${k === k0 ? 'on' : ''}" aria-pressed="${k === k0}">${ic} ${l}</button>`).join('')}</div>
     <div class="crm-lbl">How did it go?</div>
     <div class="crm-seg" id="crmRes" role="group" aria-label="Result">${CRM_RESULTS.map(([c, l, col]) => `<button type="button" data-c="${c}" class="${c ? '' : 'on'}" aria-pressed="${!c}">${col ? `<i style="background:${col}"></i>` : ''}${l}</button>`).join('')}</div>
     <label class="coach-f crm-date"><span>Date</span><input type="date" class="gf-select" id="crmDate" value="${crmToday()}" max="${crmToday()}"></label>
@@ -22067,7 +22084,7 @@ function crmOpen(offices, onSaved) {
     <div class="crm-act"><button type="button" class="btn-text" id="crmCancel">Cancel</button><button type="button" class="crm-save" id="crmSave">Save to Salesly</button></div>
   </div>`;
   document.body.appendChild(ov);
-  let kind = 'call', color = '';
+  let kind = k0, color = '';
   const onKey = e => { if (e.key === 'Escape') close(); };
   const close = () => { ov.remove(); document.removeEventListener('keydown', onKey); };
   document.addEventListener('keydown', onKey);
@@ -22076,7 +22093,7 @@ function crmOpen(offices, onSaved) {
   const seg = (id, attr, set) => ov.querySelectorAll('#' + id + ' button').forEach(b => b.onclick = () => {
     ov.querySelectorAll('#' + id + ' button').forEach(x => { x.classList.toggle('on', x === b); x.setAttribute('aria-pressed', x === b); }); set(b.dataset[attr]); });
   seg('crmKind', 'k', v => kind = v); seg('crmRes', 'c', v => color = v);
-  ov.querySelector('#crmKind button').focus();
+  (ov.querySelector('#crmKind button.on') || ov.querySelector('#crmKind button')).focus();
   ov.querySelector('#crmSave').onclick = async () => {
     const msg = ov.querySelector('#crmMsg'), btn = ov.querySelector('#crmSave');
     const o = one ? offices[0] : offices[+ov.querySelector('#crmOff').value];
@@ -22092,6 +22109,48 @@ function crmOpen(offices, onSaved) {
     close(); toast(`${crmIcon(kind)} Logged — reps see it in Salesly on their next sync`);
     if (onSaved) onSaved(o, data);
   };
+}
+/* DL109: "＋ Log a visit" — find any Salesly office by name (or city) and log a visit, call or email to
+   it, from Rep Progress. Same form and same save as everywhere else (log_office_contact). */
+async function crmSearchOffices(q) {
+  const db = typeof pgClient === 'function' ? pgClient() : null;
+  if (!db || !(await pgSession())) return { error: 'signin' };
+  // the or() filter can't carry commas, brackets or quotes — they become spaces; % _ \ are escaped
+  const t = q.trim().replace(/[,()"*]/g, ' ').replace(/\s+/g, ' ').replace(/[%_\\]/g, m => '\\' + m);
+  const { data, error } = await db.from('offices').select('*').or(`name.ilike.%${t}%,city.ilike.%${t}%`).is('deleted_at', null).order('name').limit(30);
+  if (error) return { error: error.message };
+  return { offs: (data || []).filter(r => !r.merged_into && r.active !== false).map(r => SLF.fromRow(r)) };
+}
+function crmLogAny(onSaved) {
+  document.querySelectorAll('.crm-ov').forEach(x => x.remove());
+  const ov = document.createElement('div'); ov.className = 'crm-ov';
+  ov.innerHTML = `<div class="crm-box" role="dialog" aria-modal="true" aria-labelledby="crmAT">
+    <div class="crm-h"><h3 id="crmAT">Log a visit</h3><button type="button" class="crm-x" aria-label="Close">✕</button></div>
+    <label class="coach-f crm-note"><span>Office</span><input class="gf-select" id="crmAQ" placeholder="Type the office or practice name, or a city" style="width:100%" autocomplete="off"></label>
+    <div class="crm-msg" id="crmAM" role="status">Type at least 3 letters.</div>
+    <div class="sl-list" id="crmAL"></div></div>`;
+  document.body.appendChild(ov);
+  const onKey = e => { if (e.key === 'Escape') close(); };
+  const close = () => { ov.remove(); document.removeEventListener('keydown', onKey); };
+  document.addEventListener('keydown', onKey);
+  ov.addEventListener('click', e => { if (e.target === ov) close(); });
+  ov.querySelector('.crm-x').onclick = close;
+  const q = ov.querySelector('#crmAQ'), msg = ov.querySelector('#crmAM'), list = ov.querySelector('#crmAL');
+  let tmr, seq = 0; q.focus();
+  q.oninput = () => { clearTimeout(tmr); tmr = setTimeout(async () => {
+    const v = q.value.trim(); list.innerHTML = '';
+    if (v.length < 3) { msg.textContent = 'Type at least 3 letters.'; return; }
+    const my = ++seq; msg.textContent = 'Searching Salesly…';
+    const r = await crmSearchOffices(v); if (my !== seq || !document.body.contains(ov)) return;
+    if (r.error === 'signin') { msg.textContent = 'Sign in on the Salesly Bridge tab first.'; return; }
+    if (r.error) { msg.textContent = 'Couldn’t search Salesly: ' + r.error; return; }
+    if (!r.offs.length) { msg.textContent = 'No office matches “' + v + '”.'; return; }
+    msg.textContent = r.offs.length + (r.offs.length === 30 ? '+' : '') + ' office' + (r.offs.length === 1 ? '' : 's') + ' — pick one:';
+    list.innerHTML = r.offs.map((o, i) => { const lv = SLF.lastVisit(o);
+      return `<div class="sl-it"><div><b>${esc(o.name || 'Office')}</b><small>${esc([o.addr, o.city, o.state].filter(Boolean).join(', '))}${lv ? ' · last visit ' + esc(lv) : ' · not visited yet'}</small></div>
+        <button type="button" class="crm-save" data-i="${i}">Log</button></div>`; }).join('');
+    list.querySelectorAll('[data-i]').forEach(b => b.onclick = () => { const o = r.offs[+b.dataset.i]; close(); crmOpen([o], onSaved, 'visit'); });
+  }, 300); };
 }
 // any [data-crm] button (map popups, the List) opens the form for that office
 document.addEventListener('click', e => {
